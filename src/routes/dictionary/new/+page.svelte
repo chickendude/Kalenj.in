@@ -29,6 +29,11 @@
 		</label>
 
 		<label>
+			Notes
+			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
+		</label>
+
+		<label>
 			Part of speech
 			<select name="partOfSpeech" value={form?.values?.partOfSpeech ?? ''}>
 				<option value="">Select...</option>
@@ -36,11 +41,6 @@
 					<option value={pos}>{pos}</option>
 				{/each}
 			</select>
-		</label>
-
-		<label>
-			Notes
-			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
 		</label>
 
 		<button type="submit">Create word</button>

@@ -38,22 +38,21 @@ export const actions: Actions = {
 
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
-		const english = readText(formData, 'english');
-		const definition = readText(formData, 'definition');
+		const translations = readText(formData, 'translations');
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 
-		if (!kalenjin || !english) {
+		if (!kalenjin || !translations) {
 			return fail(400, {
-				error: 'Kalenjin and English are required.',
-				values: { kalenjin, english, definition, notes, partOfSpeech: partOfSpeechRaw }
+				error: 'Kalenjin and translations are required.',
+				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
 		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
 			return fail(400, {
 				error: 'Invalid part of speech value.',
-				values: { kalenjin, english, definition, notes, partOfSpeech: partOfSpeechRaw }
+				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
@@ -63,8 +62,7 @@ export const actions: Actions = {
 			where: { id: params.id },
 			data: {
 				kalenjin,
-				english,
-				definition: definition || null,
+				translations,
 				notes: notes || null,
 				partOfSpeech
 			}

@@ -22,8 +22,13 @@
 		</label>
 
 		<label>
-			English *
-			<input name="english" required value={values.english ?? ''} />
+			Translations (English) *
+			<input
+				name="translations"
+				required
+				value={values.translations ?? ''}
+				placeholder="comma-separated translations"
+			/>
 		</label>
 
 		<label>
@@ -34,11 +39,6 @@
 					<option value={pos}>{pos}</option>
 				{/each}
 			</select>
-		</label>
-
-		<label>
-			Definition
-			<textarea name="definition" rows="3">{values.definition ?? ''}</textarea>
 		</label>
 
 		<label>

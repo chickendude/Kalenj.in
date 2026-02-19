@@ -15,9 +15,9 @@
 		<label>
 			Language
 			<select name="lang" value={data.language}>
-				<option value="both">English + Kalenjin</option>
-				<option value="english">English</option>
 				<option value="kalenjin">Kalenjin</option>
+				<option value="english">English</option>
+				<option value="both">English + Kalenjin</option>
 			</select>
 		</label>
 

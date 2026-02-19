@@ -8,7 +8,7 @@ function parseLanguage(value: string | null): SearchLanguage {
 		return value;
 	}
 
-	return 'both';
+	return 'kalenjin';
 }
 
 export const load: PageServerLoad = async ({ url }) => {

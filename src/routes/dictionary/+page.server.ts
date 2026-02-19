@@ -18,17 +18,17 @@ export const load: PageServerLoad = async ({ url }) => {
 	const words = await prisma.word.findMany({
 		where: query
 			? language === 'english'
-				? { english: { contains: query, mode: 'insensitive' } }
+				? { translations: { contains: query, mode: 'insensitive' } }
 				: language === 'kalenjin'
 					? { kalenjin: { contains: query, mode: 'insensitive' } }
 					: {
 							OR: [
-								{ english: { contains: query, mode: 'insensitive' } },
+								{ translations: { contains: query, mode: 'insensitive' } },
 								{ kalenjin: { contains: query, mode: 'insensitive' } }
 							]
 						}
 			: undefined,
-		orderBy: [{ kalenjin: 'asc' }, { english: 'asc' }],
+		orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
 		take: 200
 	});
 

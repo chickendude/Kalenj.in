@@ -33,7 +33,7 @@
 			<thead>
 				<tr>
 					<th>Kalenjin</th>
-					<th>English</th>
+					<th>Translations (English)</th>
 					<th>Part of speech</th>
 				</tr>
 			</thead>
@@ -41,7 +41,7 @@
 				{#each data.words as word}
 					<tr>
 						<td><a href={`/dictionary/${word.id}`}>{word.kalenjin}</a></td>
-						<td>{word.english}</td>
+						<td>{word.translations}</td>
 						<td>{word.partOfSpeech ?? '-'}</td>
 					</tr>
 				{/each}

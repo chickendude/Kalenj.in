@@ -29,16 +29,15 @@ enum PartOfSpeech {
 model Word {
   id           String          @id @default(cuid())
   kalenjin     String
-  english      String
+  translations String
   partOfSpeech PartOfSpeech?
-  definition   String?
   notes        String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   sentences    WordSentence[]
 
   @@index([kalenjin])
-  @@index([english])
+  @@index([translations])
 }
 
 model ExampleSentence {

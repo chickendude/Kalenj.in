@@ -35,6 +35,7 @@ model Word {
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   sentences    WordSentence[]
+  tokenLinks   ExampleSentenceToken[]
 
   @@index([kalenjin])
   @@index([translations])
@@ -48,8 +49,27 @@ model ExampleSentence {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   words     WordSentence[]
+  tokens    ExampleSentenceToken[]
 
   @@index([kalenjin])
+}
+
+model ExampleSentenceToken {
+  id                String          @id @default(cuid())
+  exampleSentenceId String
+  wordId            String?
+  tokenOrder        Int
+  surfaceForm       String
+  normalizedForm    String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  exampleSentence   ExampleSentence @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
+  word              Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
+
+  @@unique([exampleSentenceId, tokenOrder])
+  @@index([exampleSentenceId])
+  @@index([wordId])
+  @@index([normalizedForm])
 }
 
 model WordSentence {

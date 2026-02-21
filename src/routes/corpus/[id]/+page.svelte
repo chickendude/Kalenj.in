@@ -16,6 +16,7 @@
 
 	let localError = $state<string | null>(null);
 	let localSuccess = $state<string | null>(null);
+	let activeTooltipTokenId = $state<string | null>(null);
 	let creatingByTokenId = $state<Record<string, boolean>>({});
 	let splittingByTokenId = $state<Record<string, boolean>>({});
 	let splitMarkersByTokenId = $state<Record<string, number[]>>({});
@@ -151,6 +152,14 @@
 		}
 
 		return output;
+	}
+
+	function tokenPopupLines(token: SentenceToken): string[] {
+		if (!token.word) {
+			return ['Not linked yet', `Token: ${token.surfaceForm}`];
+		}
+
+		return [`Kalenjin: ${token.word.kalenjin}`, `English: ${token.word.translations}`];
 	}
 
 	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
@@ -295,6 +304,31 @@
 	{/if}
 
 	<h2>Token mapping</h2>
+	<div class="token-preview" aria-label="Sentence token preview">
+		{#each wordGroups() as group (group.groupKey)}
+			<span class="token-group">
+				{#each group.tokens as token (token.id)}
+					<button
+						type="button"
+						class="token-chip"
+						onmouseenter={() => (activeTooltipTokenId = token.id)}
+						onmouseleave={() => (activeTooltipTokenId = null)}
+						onfocus={() => (activeTooltipTokenId = token.id)}
+						onblur={() => (activeTooltipTokenId = null)}
+					>
+						{token.surfaceForm}
+						{#if activeTooltipTokenId === token.id}
+							<span class="token-tooltip" role="tooltip">
+								{#each tokenPopupLines(token) as line}
+									<span>{line}</span>
+								{/each}
+							</span>
+						{/if}
+					</button>
+				{/each}
+			</span>
+		{/each}
+	</div>
 	<table>
 		<thead>
 			<tr>
@@ -521,6 +555,51 @@
 	.parts {
 		margin: 0.5rem 0 0;
 		padding-left: 1rem;
+	}
+
+	.token-preview {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		margin: 0.75rem 0 1rem;
+	}
+
+	.token-group {
+		display: inline-flex;
+		gap: 0.2rem;
+	}
+
+	.token-chip {
+		background: #f2f4f7;
+		border: 1px solid #d9dee4;
+		border-radius: 0.4rem;
+		cursor: help;
+		display: inline-block;
+		font: inherit;
+		padding: 0.18rem 0.38rem;
+		position: relative;
+	}
+
+	.token-chip:focus-visible {
+		outline: 2px solid #0a66c2;
+		outline-offset: 1px;
+	}
+
+	.token-tooltip {
+		background: #111827;
+		border-radius: 0.45rem;
+		bottom: calc(100% + 0.35rem);
+		color: #f9fafb;
+		display: grid;
+		font-size: 0.84rem;
+		gap: 0.15rem;
+		left: 50%;
+		min-width: 12rem;
+		padding: 0.4rem 0.5rem;
+		position: absolute;
+		transform: translateX(-50%);
+		white-space: normal;
+		z-index: 10;
 	}
 
 	input,

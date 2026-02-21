@@ -71,12 +71,12 @@
 		return groups;
 	}
 
-	function tokenPopupLines(token: PreviewToken): string[] {
+	function tokenPopup(token: PreviewToken): { kalenjin: string; english: string | null } {
 		if (!token.word) {
-			return ['Not linked yet', `Token: ${token.surfaceForm}`];
+			return { kalenjin: token.surfaceForm, english: null };
 		}
 
-		return [`Kalenjin: ${token.word.kalenjin}`, `English: ${token.word.translations}`];
+		return { kalenjin: token.word.kalenjin, english: token.word.translations };
 	}
 </script>
 
@@ -85,6 +85,7 @@
 		<span class="word-group" aria-label={group.fullSurface}>
 			{#each group.tokens as token (token.id)}
 				{@const tooltipKey = `${sentenceId}:${token.id}`}
+				{@const popup = tokenPopup(token)}
 				<button
 					type="button"
 					class="token-part"
@@ -97,9 +98,10 @@
 					{token.surfaceForm}
 					{#if activeTooltipKey === tooltipKey}
 						<span class="token-tooltip" role="tooltip">
-							{#each tokenPopupLines(token) as line}
-								<span>{line}</span>
-							{/each}
+							<em>{popup.kalenjin}</em>
+							{#if popup.english}
+								<span>{popup.english}</span>
+							{/if}
 						</span>
 					{/if}
 				</button>

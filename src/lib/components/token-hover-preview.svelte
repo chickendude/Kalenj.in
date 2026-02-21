@@ -125,7 +125,6 @@
 		background: transparent;
 		border: none;
 		border-radius: 0.2rem;
-		cursor: help;
 		font: inherit;
 		margin: 0;
 		padding: 0;

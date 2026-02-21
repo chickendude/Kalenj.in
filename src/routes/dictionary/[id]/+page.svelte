@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
 	let { data, form } = $props();
 	const values = $derived(form?.values ?? data.word);
@@ -60,7 +61,11 @@
 		<ul>
 			{#each data.word.sentences as link}
 				<li>
-					<strong>{link.exampleSentence.kalenjin}</strong>
+					<TokenHoverPreview
+						sentenceId={link.exampleSentence.id}
+						sentenceText={link.exampleSentence.kalenjin}
+						tokens={link.exampleSentence.tokens}
+					/>
 					<br />
 					<small>{link.exampleSentence.english}</small>
 				</li>

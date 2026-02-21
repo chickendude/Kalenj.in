@@ -14,7 +14,14 @@ export const load: PageServerLoad = async ({ params }) => {
 		include: {
 			sentences: {
 				include: {
-					exampleSentence: true
+					exampleSentence: {
+						include: {
+							tokens: {
+								orderBy: { tokenOrder: 'asc' },
+								include: { word: true }
+							}
+						}
+					}
 				}
 			}
 		}

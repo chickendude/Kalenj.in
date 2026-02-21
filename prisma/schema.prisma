@@ -59,6 +59,9 @@ model ExampleSentenceToken {
   exampleSentenceId String
   wordId            String?
   tokenOrder        Int
+  wordIndex         Int             @default(0)
+  segmentStart      Int             @default(0)
+  segmentEnd        Int             @default(0)
   surfaceForm       String
   normalizedForm    String
   createdAt         DateTime        @default(now())
@@ -70,6 +73,7 @@ model ExampleSentenceToken {
   @@index([exampleSentenceId])
   @@index([wordId])
   @@index([normalizedForm])
+  @@index([exampleSentenceId, wordIndex])
 }
 
 model WordSentence {

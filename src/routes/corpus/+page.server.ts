@@ -21,6 +21,10 @@ export const load: PageServerLoad = async ({ url }) => {
 			: undefined,
 		orderBy: { createdAt: 'desc' },
 		include: {
+			tokens: {
+				orderBy: { tokenOrder: 'asc' },
+				include: { word: true }
+			},
 			_count: { select: { tokens: true } }
 		},
 		take: 100

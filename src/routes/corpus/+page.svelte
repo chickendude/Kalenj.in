@@ -1,4 +1,6 @@
 <script lang="ts">
+	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+
 	let { data, form } = $props();
 </script>
 
@@ -45,7 +47,12 @@
 		<ul class="sentence-list">
 			{#each data.sentences as sentence}
 				<li>
-					<a href={`/corpus/${sentence.id}`}>{sentence.kalenjin}</a>
+					<TokenHoverPreview
+						sentenceId={sentence.id}
+						sentenceText={sentence.kalenjin}
+						tokens={sentence.tokens}
+					/>
+					<p><a href={`/corpus/${sentence.id}`}>Open token mapping</a></p>
 					<br />
 					<small>{sentence.english}</small>
 					<br />

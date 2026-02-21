@@ -58,7 +58,7 @@
 	{#if data.word.sentences.length === 0}
 		<p>No linked sentences yet.</p>
 	{:else}
-		<ul>
+		<ul class="examples-list">
 			{#each data.word.sentences as link}
 				<li>
 					<TokenHoverPreview
@@ -66,8 +66,7 @@
 						sentenceText={link.exampleSentence.kalenjin}
 						tokens={link.exampleSentence.tokens}
 					/>
-					<br />
-					<small>{link.exampleSentence.english}</small>
+					<small class="example-english">{link.exampleSentence.english}</small>
 				</li>
 			{/each}
 		</ul>
@@ -107,5 +106,25 @@
 
 	.delete-form {
 		margin: 0.5rem 0 1.5rem;
+	}
+
+	.examples-list {
+		margin: 0;
+		padding: 0;
+	}
+
+	.examples-list li {
+		list-style: none;
+		margin: 0 0 0.75rem;
+		padding: 0;
+	}
+
+	.examples-list li:last-child {
+		margin-bottom: 0;
+	}
+
+	.example-english {
+		display: block;
+		margin-top: 0.2rem;
 	}
 </style>

@@ -102,49 +102,5 @@ export const actions: Actions = {
 		});
 
 		return { success: 'Token unlinked.' };
-	},
-	createWordAndLink: async ({ request, params }) => {
-		const formData = await request.formData();
-		const tokenId = readText(formData, 'tokenId');
-		const kalenjin = readText(formData, 'kalenjin');
-		const translations = readText(formData, 'translations');
-		const notes = readText(formData, 'notes');
-
-		if (!tokenId || !kalenjin || !translations) {
-			return fail(400, {
-				error: 'Token, Kalenjin lemma, and translations are required.'
-			});
-		}
-
-		const token = await ensureSentenceToken(params.id, tokenId);
-
-		const word = await prisma.word.create({
-			data: {
-				kalenjin,
-				translations,
-				notes: notes || null
-			}
-		});
-
-		await prisma.exampleSentenceToken.update({
-			where: { id: tokenId },
-			data: { wordId: word.id }
-		});
-
-		await prisma.wordSentence.upsert({
-			where: {
-				wordId_exampleSentenceId: {
-					wordId: word.id,
-					exampleSentenceId: token.exampleSentenceId
-				}
-			},
-			update: {},
-			create: {
-				wordId: word.id,
-				exampleSentenceId: token.exampleSentenceId
-			}
-		});
-
-		return { success: 'Created dictionary word and linked token.' };
 	}
 };

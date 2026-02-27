@@ -29,16 +29,16 @@ enum PartOfSpeech {
 model Word {
   id           String          @id @default(cuid())
   kalenjin     String
-  english      String
+  translations String
   partOfSpeech PartOfSpeech?
-  definition   String?
   notes        String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   sentences    WordSentence[]
+  tokenLinks   ExampleSentenceToken[]
 
   @@index([kalenjin])
-  @@index([english])
+  @@index([translations])
 }
 
 model ExampleSentence {
@@ -49,8 +49,31 @@ model ExampleSentence {
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
   words     WordSentence[]
+  tokens    ExampleSentenceToken[]
 
   @@index([kalenjin])
+}
+
+model ExampleSentenceToken {
+  id                String          @id @default(cuid())
+  exampleSentenceId String
+  wordId            String?
+  tokenOrder        Int
+  wordIndex         Int             @default(0)
+  segmentStart      Int             @default(0)
+  segmentEnd        Int             @default(0)
+  surfaceForm       String
+  normalizedForm    String
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  exampleSentence   ExampleSentence @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
+  word              Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
+
+  @@unique([exampleSentenceId, tokenOrder])
+  @@index([exampleSentenceId])
+  @@index([wordId])
+  @@index([normalizedForm])
+  @@index([exampleSentenceId, wordIndex])
 }
 
 model WordSentence {

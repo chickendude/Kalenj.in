@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prisma } from '$lib/server/prisma';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -16,32 +17,32 @@ export const actions: Actions = {
 	default: async ({ request }) => {
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
-		const english = readText(formData, 'english');
-		const definition = readText(formData, 'definition');
+		const translations = readText(formData, 'translations');
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 
-		if (!kalenjin || !english) {
+		if (!kalenjin || !translations) {
 			return fail(400, {
-				error: 'Kalenjin and English are required.',
-				values: { kalenjin, english, definition, notes, partOfSpeech: partOfSpeechRaw }
+				error: 'Kalenjin and translations are required.',
+				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
 		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
 			return fail(400, {
 				error: 'Invalid part of speech value.',
-				values: { kalenjin, english, definition, notes, partOfSpeech: partOfSpeechRaw }
+				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
 		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
+		const kalenjinNormalized = normalizeLemma(kalenjin);
 
 		const word = await prisma.word.create({
 			data: {
 				kalenjin,
-				english,
-				definition: definition || null,
+				kalenjinNormalized,
+				translations,
 				notes: notes || null,
 				partOfSpeech
 			}

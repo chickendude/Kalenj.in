@@ -12,6 +12,7 @@
 	<nav>
 		<a href="/">Home</a>
 		<a href="/dictionary">Dictionary</a>
+		<a href="/corpus">Corpus</a>
 	</nav>
 </header>
 

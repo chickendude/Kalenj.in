@@ -1,17 +1,35 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenCreateLemmaForm from './_components/token-create-lemma-form.svelte';
+	import TokenLinkManager from './_components/token-link-manager.svelte';
+	import WordSplitEditor from './_components/word-split-editor.svelte';
 
 	let { data, form } = $props();
 	let sentenceTokens = $state([...data.sentence.tokens]);
 	let dictionaryWords = $state([...data.words]);
 
+	/** Dictionary word shape available to this page from the server load payload. */
 	type CorpusWord = (typeof data.words)[number];
+	/** Token row for the current sentence, including optional linked dictionary word info. */
 	type SentenceToken = (typeof data.sentence.tokens)[number];
+	/**
+	 * Display-oriented grouping of one sentence word and the token segment(s) that compose it.
+	 * Used by the token mapping table.
+	 */
 	type WordGroup = {
+		/** Stable key for `{#each}` rendering. */
 		groupKey: string;
+		/** Zero-based index of the word within the sentence text. */
 		wordIndex: number;
+		/**
+		 * Token segment(s) that compose this displayed word.
+		 * Each token keeps its own `surfaceForm`: the exact text seen in the sentence.
+		 */
 		tokens: SentenceToken[];
+		/**
+		 * Full surface form for the grouped word: the exact original spelling in the sentence,
+		 * before normalization or lemma linking.
+		 */
 		fullSurface: string;
 	};
 
@@ -19,12 +37,14 @@
 	let localSuccess = $state<string | null>(null);
 	let creatingByTokenId = $state<Record<string, boolean>>({});
 	let splittingByTokenId = $state<Record<string, boolean>>({});
-	let splitMarkersByTokenId = $state<Record<string, number[]>>({});
-	let hoveredMarkerByTokenId = $state<Record<string, number | null>>({});
 
+	/** Unsaved per-token create-lemma form values keyed by token id in `drafts`. */
 	type TokenDraft = {
+		/** Lemma text that will be saved to the dictionary. */
 		kalenjin: string;
+		/** Comma-separated or freeform English translations entered by the user. */
 		translations: string;
+		/** Optional notes for the new dictionary entry. */
 		notes: string;
 	};
 
@@ -111,49 +131,6 @@
 		drafts[tokenId][field] = value;
 	}
 
-	function splitMarkers(tokenId: string): number[] {
-		return splitMarkersByTokenId[tokenId] ?? [];
-	}
-
-	function hoveredMarker(tokenId: string): number | null {
-		return hoveredMarkerByTokenId[tokenId] ?? null;
-	}
-
-	function toggleSplitMarker(tokenId: string, boundary: number, maxLength: number): void {
-		if (boundary <= 0 || boundary >= maxLength) {
-			return;
-		}
-
-		const existing = splitMarkers(tokenId);
-		if (existing.includes(boundary)) {
-			splitMarkersByTokenId[tokenId] = existing.filter((value) => value !== boundary);
-		} else {
-			splitMarkersByTokenId[tokenId] = [...existing, boundary].sort((a, b) => a - b);
-		}
-	}
-
-	function setHoveredMarker(tokenId: string, boundary: number | null): void {
-		hoveredMarkerByTokenId[tokenId] = boundary;
-	}
-
-	function previewSplit(surface: string, markers: number[], hover: number | null): string {
-		const boundaries = [...markers];
-		if (hover !== null && hover > 0 && hover < surface.length && !boundaries.includes(hover)) {
-			boundaries.push(hover);
-		}
-
-		const points = boundaries.sort((a, b) => a - b);
-		let output = '';
-		for (let i = 0; i < surface.length; i += 1) {
-			output += surface[i];
-			if (points.includes(i + 1)) {
-				output += '|';
-			}
-		}
-
-		return output;
-	}
-
 	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
 		ensureDraft(tokenId, defaultLemma);
 		const draft = drafts[tokenId];
@@ -212,29 +189,18 @@
 		}
 	}
 
-	async function applySplit(group: WordGroup): Promise<void> {
-		if (group.tokens.length !== 1) {
-			return;
-		}
-
-		const token = group.tokens[0];
-		const points = splitMarkers(token.id);
-		if (points.length === 0) {
-			localError = 'Choose at least one split marker before applying split.';
-			return;
-		}
-
+	async function applySplit(tokenId: string, splitPoints: number[]): Promise<void> {
 		localError = null;
 		localSuccess = null;
-		splittingByTokenId[token.id] = true;
+		splittingByTokenId[tokenId] = true;
 
 		try {
 			const response = await fetch(`/corpus/${data.sentence.id}/split-token`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					tokenId: token.id,
-					splitPoints: points
+					tokenId,
+					splitPoints
 				})
 			});
 
@@ -258,21 +224,19 @@
 				return;
 			}
 
-			const index = sentenceTokens.findIndex((item) => item.id === token.id);
-			if (index >= 0) {
-				sentenceTokens.splice(index, 1, ...newTokens);
-			}
+				const index = sentenceTokens.findIndex((item) => item.id === tokenId);
+				if (index >= 0) {
+					sentenceTokens.splice(index, 1, ...newTokens);
+				}
 
-			splitMarkersByTokenId[token.id] = [];
-			hoveredMarkerByTokenId[token.id] = null;
-			localSuccess = payload?.success ?? 'Token split.';
-		} catch (err) {
-			console.error(err);
-			localError = 'Network error while splitting token.';
-		} finally {
-			splittingByTokenId[token.id] = false;
+				localSuccess = payload?.success ?? 'Token split.';
+			} catch (err) {
+				console.error(err);
+				localError = 'Network error while splitting token.';
+			} finally {
+				splittingByTokenId[tokenId] = false;
+			}
 		}
-	}
 </script>
 
 <section>
@@ -310,52 +274,17 @@
 				<tr>
 					<td>
 						<strong>{group.fullSurface}</strong>
-						{#if group.tokens.length === 1 && group.fullSurface.length > 1}
-							{@const token = group.tokens[0]}
-							<div class="word-editor">
-								{#each Array.from(group.fullSurface) as char, index}
-									<button
-										type="button"
-										class="letter-char"
-										onclick={() =>
-											index < group.fullSurface.length - 1
-												? toggleSplitMarker(token.id, index + 1, group.fullSurface.length)
-												: null}
-										onmouseenter={() =>
-											setHoveredMarker(
-												token.id,
-												index < group.fullSurface.length - 1 ? index + 1 : null
-											)}
-										onmouseleave={() => setHoveredMarker(token.id, null)}
-									>
-										{char}
-									</button>
-									{#if index < group.fullSurface.length - 1}
-										<span
-											class="marker-inline"
-											class:active={splitMarkers(token.id).includes(index + 1)}
-											class:hovered={hoveredMarker(token.id) === index + 1}
-										>
-											|
-										</span>
-									{/if}
-								{/each}
-							</div>
-							<small class="preview"
-								>{previewSplit(group.fullSurface, splitMarkers(token.id), hoveredMarker(token.id))}</small
-							>
-							<div>
-								<button
-									type="button"
-									disabled={splittingByTokenId[token.id] || splitMarkers(token.id).length === 0}
-									onclick={() => applySplit(group)}
-								>
-									{splittingByTokenId[token.id] ? 'Splitting...' : 'Apply split'}
-								</button>
-							</div>
-						{:else}
-							<ul class="parts">
-								{#each group.tokens as token, partIndex}
+							{#if group.tokens.length === 1 && group.fullSurface.length > 1}
+								{@const token = group.tokens[0]}
+								<WordSplitEditor
+									tokenId={token.id}
+									surface={group.fullSurface}
+									splitting={Boolean(splittingByTokenId[token.id])}
+									onApplySplit={applySplit}
+								/>
+							{:else}
+								<ul class="parts">
+									{#each group.tokens as token, partIndex}
 									<li>Part {partIndex + 1}: "{token.surfaceForm}"</li>
 								{/each}
 							</ul>
@@ -363,86 +292,22 @@
 					</td>
 					<td>
 						{#each group.tokens as token, partIndex}
-							<div class="segment-block">
-								<small>Part {partIndex + 1} ("{token.surfaceForm}")</small>
-								<form method="POST" action="?/linkToken" use:enhance class="inline-form">
-									<input type="hidden" name="tokenId" value={token.id} />
-									<select name="wordId" required>
-										<option value="">Choose dictionary lemma...</option>
-										{#each dictionaryWords as word}
-											<option value={word.id} selected={token.wordId === word.id}>
-												{word.kalenjin} - {word.translations}
-											</option>
-										{/each}
-									</select>
-									<button type="submit">Link part</button>
-								</form>
-								{#if token.word}
-									<p>
-										Linked part {partIndex + 1}: <a href={`/dictionary/${token.word.id}`}
-											>{token.word.kalenjin}</a
-										>
-									</p>
-									<form method="POST" action="?/unlinkToken" use:enhance>
-										<input type="hidden" name="tokenId" value={token.id} />
-										<button type="submit">Unlink part</button>
-									</form>
-								{/if}
-							</div>
+							<TokenLinkManager {token} {partIndex} {dictionaryWords} />
 						{/each}
 					</td>
 					<td>
 						{#each group.tokens as token, partIndex}
 							{@const defaultLemma = token.word?.kalenjin ?? token.normalizedForm}
 							{@const currentDraft = readDraft(token.id, defaultLemma)}
-							<div class="segment-block inline-form">
-								<small>Create lemma for part {partIndex + 1} ("{token.surfaceForm}")</small>
-								<input
-									name="kalenjin"
-									required
-									placeholder="lemma"
-									value={currentDraft.kalenjin}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'kalenjin',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<input
-									name="translations"
-									required
-									placeholder="translations"
-									value={currentDraft.translations}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'translations',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<input
-									name="notes"
-									placeholder="notes (optional)"
-									value={currentDraft.notes}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'notes',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<button
-									type="button"
-									disabled={creatingByTokenId[token.id]}
-									onclick={() => createWordAndLink(token.id, defaultLemma)}
-								>
-									{creatingByTokenId[token.id] ? 'Saving...' : 'Create + link part'}
-								</button>
-							</div>
+							<TokenCreateLemmaForm
+								{token}
+								{partIndex}
+								{defaultLemma}
+								draft={currentDraft}
+								creating={Boolean(creatingByTokenId[token.id])}
+								onDraftChange={setDraft}
+								onCreate={createWordAndLink}
+							/>
 						{/each}
 					</td>
 				</tr>
@@ -475,60 +340,9 @@
 		vertical-align: top;
 	}
 
-	.inline-form {
-		display: grid;
-		gap: 0.4rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.segment-block {
-		border-bottom: 1px dashed #ddd;
-		margin-bottom: 0.6rem;
-		padding-bottom: 0.6rem;
-	}
-
-	.word-editor {
-		align-items: center;
-		display: flex;
-		margin-top: 0.4rem;
-	}
-
-	.letter-char {
-		background: none;
-		border: none;
-		cursor: pointer;
-		font-size: 1rem;
-		padding: 0;
-	}
-
-	.marker-inline {
-		color: #bbb;
-		font-weight: 700;
-		margin: 0 0.1rem;
-	}
-
-	.marker-inline.active {
-		color: #1a7f37;
-	}
-
-	.marker-inline.hovered {
-		color: #0a66c2;
-	}
-
-	.preview {
-		display: block;
-		margin: 0.35rem 0;
-	}
-
 	.parts {
 		margin: 0.5rem 0 0;
 		padding-left: 1rem;
 	}
 
-	input,
-	select,
-	button {
-		font: inherit;
-		padding: 0.4rem 0.45rem;
-	}
 </style>

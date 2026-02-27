@@ -1,6 +1,7 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenCreateLemmaForm from './_components/token-create-lemma-form.svelte';
+	import TokenLinkManager from './_components/token-link-manager.svelte';
 	import WordSplitEditor from './_components/word-split-editor.svelte';
 
 	let { data, form } = $props();
@@ -291,86 +292,22 @@
 					</td>
 					<td>
 						{#each group.tokens as token, partIndex}
-							<div class="segment-block">
-								<small>Part {partIndex + 1} ("{token.surfaceForm}")</small>
-								<form method="POST" action="?/linkToken" use:enhance class="inline-form">
-									<input type="hidden" name="tokenId" value={token.id} />
-									<select name="wordId" required>
-										<option value="">Choose dictionary lemma...</option>
-										{#each dictionaryWords as word}
-											<option value={word.id} selected={token.wordId === word.id}>
-												{word.kalenjin} - {word.translations}
-											</option>
-										{/each}
-									</select>
-									<button type="submit">Link part</button>
-								</form>
-								{#if token.word}
-									<p>
-										Linked part {partIndex + 1}: <a href={`/dictionary/${token.word.id}`}
-											>{token.word.kalenjin}</a
-										>
-									</p>
-									<form method="POST" action="?/unlinkToken" use:enhance>
-										<input type="hidden" name="tokenId" value={token.id} />
-										<button type="submit">Unlink part</button>
-									</form>
-								{/if}
-							</div>
+							<TokenLinkManager {token} {partIndex} {dictionaryWords} />
 						{/each}
 					</td>
 					<td>
 						{#each group.tokens as token, partIndex}
 							{@const defaultLemma = token.word?.kalenjin ?? token.normalizedForm}
 							{@const currentDraft = readDraft(token.id, defaultLemma)}
-							<div class="segment-block inline-form">
-								<small>Create lemma for part {partIndex + 1} ("{token.surfaceForm}")</small>
-								<input
-									name="kalenjin"
-									required
-									placeholder="lemma"
-									value={currentDraft.kalenjin}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'kalenjin',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<input
-									name="translations"
-									required
-									placeholder="translations"
-									value={currentDraft.translations}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'translations',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<input
-									name="notes"
-									placeholder="notes (optional)"
-									value={currentDraft.notes}
-									oninput={(event) =>
-										setDraft(
-											token.id,
-											defaultLemma,
-											'notes',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-								<button
-									type="button"
-									disabled={creatingByTokenId[token.id]}
-									onclick={() => createWordAndLink(token.id, defaultLemma)}
-								>
-									{creatingByTokenId[token.id] ? 'Saving...' : 'Create + link part'}
-								</button>
-							</div>
+							<TokenCreateLemmaForm
+								{token}
+								{partIndex}
+								{defaultLemma}
+								draft={currentDraft}
+								creating={Boolean(creatingByTokenId[token.id])}
+								onDraftChange={setDraft}
+								onCreate={createWordAndLink}
+							/>
 						{/each}
 					</td>
 				</tr>
@@ -403,27 +340,9 @@
 		vertical-align: top;
 	}
 
-	.inline-form {
-		display: grid;
-		gap: 0.4rem;
-		margin-bottom: 0.5rem;
-	}
-
-	.segment-block {
-		border-bottom: 1px dashed #ddd;
-		margin-bottom: 0.6rem;
-		padding-bottom: 0.6rem;
-	}
-
 	.parts {
 		margin: 0.5rem 0 0;
 		padding-left: 1rem;
 	}
 
-	input,
-	select,
-	button {
-		font: inherit;
-		padding: 0.4rem 0.45rem;
-	}
 </style>

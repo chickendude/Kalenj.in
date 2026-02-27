@@ -5,9 +5,7 @@
 	import WordSplitEditor from './_components/word-split-editor.svelte';
 
 	let { data, form } = $props();
-	// svelte-ignore state_referenced_locally
 	let sentenceTokens = $state([...data.sentence.tokens]);
-	// svelte-ignore state_referenced_locally
 	let dictionaryWords = $state([...data.words]);
 
 	/** Dictionary word shape available to this page from the server load payload. */

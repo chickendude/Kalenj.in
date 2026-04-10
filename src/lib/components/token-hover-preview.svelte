@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { groupSentenceTokens } from '$lib/word-groups';
+
 	type TokenWord = {
 		kalenjin: string;
 		translations: string;
@@ -11,12 +13,6 @@
 		word?: TokenWord | null;
 	};
 
-	type WordGroup = {
-		key: string;
-		fullSurface: string;
-		tokens: PreviewToken[];
-	};
-
 	let { sentenceId = 'sentence', sentenceText, tokens } = $props<{
 		sentenceId?: string;
 		sentenceText: string;
@@ -24,52 +20,7 @@
 	}>();
 
 	let activeTooltipKey = $state<string | null>(null);
-
-	function wordGroups(sentence: string, sentenceTokens: PreviewToken[]): WordGroup[] {
-		const sorted = [...sentenceTokens].sort((a, b) => a.tokenOrder - b.tokenOrder);
-		const words = sentence
-			.trim()
-			.split(/\s+/)
-			.filter((word) => word.length > 0);
-		const groups: WordGroup[] = [];
-		let tokenCursor = 0;
-
-		for (let wordIndex = 0; wordIndex < words.length && tokenCursor < sorted.length; wordIndex += 1) {
-			const wordSurface = words[wordIndex];
-			const grouped: PreviewToken[] = [];
-			let combined = '';
-
-			while (tokenCursor < sorted.length && combined.length < wordSurface.length) {
-				const token = sorted[tokenCursor];
-				grouped.push(token);
-				combined += token.surfaceForm;
-				tokenCursor += 1;
-			}
-
-			if (grouped.length === 0) {
-				continue;
-			}
-
-			groups.push({
-				key: `${sentenceId}:${wordIndex}:${grouped.map((token) => token.id).join(':')}`,
-				fullSurface: wordSurface,
-				tokens: grouped
-			});
-		}
-
-		while (tokenCursor < sorted.length) {
-			const token = sorted[tokenCursor];
-			const wordIndex = groups.length;
-			groups.push({
-				key: `${sentenceId}:${wordIndex}:${token.id}`,
-				fullSurface: token.surfaceForm,
-				tokens: [token]
-			});
-			tokenCursor += 1;
-		}
-
-		return groups;
-	}
+	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, sentenceText, tokens }));
 
 	function tokenPopup(token: PreviewToken): { kalenjin: string; english: string | null } {
 		if (!token.word) {
@@ -81,7 +32,7 @@
 </script>
 
 <div class="sentence-preview" aria-label="Token preview">
-	{#each wordGroups(sentenceText, tokens) as group (group.key)}
+	{#each groups as group (group.key)}
 		<span class="word-group" aria-label={group.fullSurface}>
 			{#each group.tokens as token (token.id)}
 				{@const tooltipKey = `${sentenceId}:${token.id}`}

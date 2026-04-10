@@ -4,9 +4,7 @@
 	import TokenLinkManager from './_components/token-link-manager.svelte';
 	import WordSplitEditor from './_components/word-split-editor.svelte';
 
-	let { data, form } = $props();
-	let sentenceTokens = $state([...data.sentence.tokens]);
-	let dictionaryWords = $state([...data.words]);
+	let { data } = $props();
 
 	/** Dictionary word shape available to this page from the server load payload. */
 	type CorpusWord = (typeof data.words)[number];
@@ -36,6 +34,7 @@
 	let localError = $state<string | null>(null);
 	let localSuccess = $state<string | null>(null);
 	let creatingByTokenId = $state<Record<string, boolean>>({});
+	let linkingByTokenId = $state<Record<string, boolean>>({});
 	let splittingByTokenId = $state<Record<string, boolean>>({});
 
 	/** Unsaved per-token create-lemma form values keyed by token id in `drafts`. */
@@ -48,10 +47,50 @@
 		notes: string;
 	};
 
-	let drafts = $state<Record<string, TokenDraft>>({});
+	let sentenceTokens = $state<SentenceToken[]>([]);
+	let dictionaryWords = $state<CorpusWord[]>([]);
+	let localSnapshotSentenceId = $state<string | null>(null);
+	const displayedSentenceTokens = $derived(
+		localSnapshotSentenceId === data.sentence.id ? sentenceTokens : data.sentence.tokens
+	);
+	const displayedDictionaryWords = $derived(
+		localSnapshotSentenceId === data.sentence.id ? dictionaryWords : data.words
+	);
 
-	function wordGroups(): WordGroup[] {
-		const sorted = [...sentenceTokens].sort((a, b) => a.tokenOrder - b.tokenOrder);
+	let drafts = $state<Record<string, TokenDraft>>({});
+	let previousSentenceId: string | null = null;
+
+	$effect(() => {
+		const nextSentenceId = data.sentence.id;
+		const sentenceChanged = previousSentenceId !== nextSentenceId;
+		previousSentenceId = nextSentenceId;
+
+		localSnapshotSentenceId = nextSentenceId;
+		sentenceTokens = [...data.sentence.tokens];
+		dictionaryWords = [...data.words];
+
+		if (sentenceChanged) {
+			drafts = {};
+			creatingByTokenId = {};
+			linkingByTokenId = {};
+			splittingByTokenId = {};
+			localError = null;
+			localSuccess = null;
+		}
+	});
+
+	function ensureLocalSnapshotsReady(): void {
+		if (localSnapshotSentenceId === data.sentence.id) {
+			return;
+		}
+
+		localSnapshotSentenceId = data.sentence.id;
+		sentenceTokens = [...data.sentence.tokens];
+		dictionaryWords = [...data.words];
+	}
+
+	function wordGroups(tokens: SentenceToken[]): WordGroup[] {
+		const sorted = [...tokens].sort((a, b) => a.tokenOrder - b.tokenOrder);
 		const words = data.sentence.kalenjin
 			.trim()
 			.split(/\s+/)
@@ -131,7 +170,104 @@
 		drafts[tokenId][field] = value;
 	}
 
+	async function linkToken(tokenId: string, wordId: string): Promise<void> {
+		ensureLocalSnapshotsReady();
+		localError = null;
+		localSuccess = null;
+		linkingByTokenId[tokenId] = true;
+
+		try {
+			const response = await fetch(`/corpus/${data.sentence.id}/link-token`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ tokenId, wordId })
+			});
+
+			const payload = (await response.json()) as
+				| {
+						error?: string;
+						success?: string;
+						tokenId?: string;
+						linkedWord?: CorpusWord;
+				  }
+				| undefined;
+
+			if (!response.ok) {
+				localError = payload?.error ?? 'Could not link token.';
+				return;
+			}
+
+			const linkedTokenId = payload?.tokenId ?? tokenId;
+			const linkedWord =
+				payload?.linkedWord ?? dictionaryWords.find((candidate) => candidate.id === wordId) ?? null;
+			if (!linkedWord) {
+				localError = 'Linked word could not be found.';
+				return;
+			}
+
+			if (!dictionaryWords.some((word) => word.id === linkedWord.id)) {
+				dictionaryWords = [linkedWord, ...dictionaryWords];
+			}
+
+			const token = sentenceTokens.find((item) => item.id === linkedTokenId);
+			if (token) {
+				token.wordId = linkedWord.id;
+				token.word = linkedWord;
+			}
+
+			localSuccess = payload?.success ?? 'Token linked.';
+		} catch (err) {
+			console.error(err);
+			localError = 'Network error while linking token.';
+		} finally {
+			linkingByTokenId[tokenId] = false;
+		}
+	}
+
+	async function unlinkToken(tokenId: string): Promise<void> {
+		ensureLocalSnapshotsReady();
+		localError = null;
+		localSuccess = null;
+		linkingByTokenId[tokenId] = true;
+
+		try {
+			const response = await fetch(`/corpus/${data.sentence.id}/unlink-token`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ tokenId })
+			});
+
+			const payload = (await response.json()) as
+				| {
+						error?: string;
+						success?: string;
+						tokenId?: string;
+				  }
+				| undefined;
+
+			if (!response.ok) {
+				localError = payload?.error ?? 'Could not unlink token.';
+				return;
+			}
+
+			const linkedTokenId = payload?.tokenId ?? tokenId;
+			const token = sentenceTokens.find((item) => item.id === linkedTokenId);
+			if (token) {
+				token.wordId = null;
+				token.word = null;
+			}
+
+			localSuccess = payload?.success ?? 'Token unlinked.';
+		} catch (err) {
+			console.error(err);
+			localError = 'Network error while unlinking token.';
+		} finally {
+			linkingByTokenId[tokenId] = false;
+		}
+	}
+
 	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
+		ensureLocalSnapshotsReady();
 		ensureDraft(tokenId, defaultLemma);
 		const draft = drafts[tokenId];
 
@@ -190,6 +326,7 @@
 	}
 
 	async function applySplit(tokenId: string, splitPoints: number[]): Promise<void> {
+		ensureLocalSnapshotsReady();
 		localError = null;
 		localSuccess = null;
 		splittingByTokenId[tokenId] = true;
@@ -251,16 +388,16 @@
 
 	{#if localError}
 		<p class="error">{localError}</p>
-	{:else if form?.error}
-		<p class="error">{form.error}</p>
 	{:else if localSuccess}
 		<p class="success">{localSuccess}</p>
-	{:else if form?.success}
-		<p class="success">{form.success}</p>
 	{/if}
 
 	<h2>Token mapping</h2>
-	<TokenHoverPreview sentenceId={data.sentence.id} sentenceText={data.sentence.kalenjin} tokens={sentenceTokens} />
+	<TokenHoverPreview
+		sentenceId={data.sentence.id}
+		sentenceText={data.sentence.kalenjin}
+		tokens={displayedSentenceTokens}
+	/>
 	<table>
 		<thead>
 			<tr>
@@ -270,31 +407,38 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each wordGroups() as group (group.groupKey)}
+			{#each wordGroups(displayedSentenceTokens) as group (group.groupKey)}
 				<tr>
-					<td>
-						<strong>{group.fullSurface}</strong>
-							{#if group.tokens.length === 1 && group.fullSurface.length > 1}
-								{@const token = group.tokens[0]}
+						<td>
+							<strong>{group.fullSurface}</strong>
+								{#if group.tokens.length === 1 && group.fullSurface.length > 1}
+									{@const token = group.tokens[0]}
 								<WordSplitEditor
 									tokenId={token.id}
 									surface={group.fullSurface}
 									splitting={Boolean(splittingByTokenId[token.id])}
 									onApplySplit={applySplit}
 								/>
-							{:else}
-								<ul class="parts">
-									{#each group.tokens as token, partIndex}
-									<li>Part {partIndex + 1}: "{token.surfaceForm}"</li>
-								{/each}
-							</ul>
-						{/if}
-					</td>
-					<td>
-						{#each group.tokens as token, partIndex}
-							<TokenLinkManager {token} {partIndex} {dictionaryWords} />
-						{/each}
-					</td>
+								{:else}
+									<ul class="parts">
+										{#each group.tokens as token, partIndex}
+										<li>Part {partIndex + 1}: "{token.surfaceForm}"</li>
+									{/each}
+								</ul>
+							{/if}
+						</td>
+						<td>
+							{#each group.tokens as token, partIndex}
+								<TokenLinkManager
+									{token}
+									{partIndex}
+									dictionaryWords={displayedDictionaryWords}
+									linking={Boolean(linkingByTokenId[token.id])}
+									onLinkToken={linkToken}
+									onUnlinkToken={unlinkToken}
+								/>
+							{/each}
+						</td>
 					<td>
 						{#each group.tokens as token, partIndex}
 							{@const defaultLemma = token.word?.kalenjin ?? token.normalizedForm}

@@ -1,6 +1,4 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
-
 	type DictionaryWord = {
 		id: string;
 		kalenjin: string;
@@ -19,35 +17,69 @@
 		word?: LinkedWord | null;
 	};
 
-	let { token, partIndex, dictionaryWords } = $props<{
+	type Props = {
 		token: LinkableToken;
 		partIndex: number;
 		dictionaryWords: DictionaryWord[];
-	}>();
+		linking?: boolean;
+		onLinkToken: (tokenId: string, wordId: string) => Promise<void> | void;
+		onUnlinkToken: (tokenId: string) => Promise<void> | void;
+	};
+
+	let {
+		token,
+		partIndex,
+		dictionaryWords,
+		linking = false,
+		onLinkToken,
+		onUnlinkToken
+	}: Props = $props();
+
+	let selectedWordId = $state('');
+
+	$effect(() => {
+		token.wordId;
+		selectedWordId = token.wordId ?? '';
+	});
+
+	async function linkPart(): Promise<void> {
+		const wordId = selectedWordId.trim();
+		if (!wordId || linking) {
+			return;
+		}
+
+		await onLinkToken(token.id, wordId);
+	}
+
+	async function unlinkPart(): Promise<void> {
+		if (linking) {
+			return;
+		}
+
+		await onUnlinkToken(token.id);
+	}
 </script>
 
 <div class="segment-block">
 	<small>Part {partIndex + 1} ("{token.surfaceForm}")</small>
-	<form method="POST" action="?/linkToken" use:enhance class="inline-form">
-		<input type="hidden" name="tokenId" value={token.id} />
-		<select name="wordId" required>
+	<div class="inline-form">
+		<select bind:value={selectedWordId} required disabled={linking}>
 			<option value="">Choose dictionary lemma...</option>
 			{#each dictionaryWords as word}
-				<option value={word.id} selected={token.wordId === word.id}>
-					{word.kalenjin} - {word.translations}
-				</option>
+				<option value={word.id}>{word.kalenjin} - {word.translations}</option>
 			{/each}
 		</select>
-		<button type="submit">Link part</button>
-	</form>
+		<button type="button" disabled={linking || !selectedWordId} onclick={linkPart}>
+			{linking ? 'Saving...' : 'Link part'}
+		</button>
+	</div>
 	{#if token.word}
 		<p>
 			Linked part {partIndex + 1}: <a href={`/dictionary/${token.word.id}`}>{token.word.kalenjin}</a>
 		</p>
-		<form method="POST" action="?/unlinkToken" use:enhance>
-			<input type="hidden" name="tokenId" value={token.id} />
-			<button type="submit">Unlink part</button>
-		</form>
+		<button type="button" disabled={linking} onclick={unlinkPart}>
+			{linking ? 'Saving...' : 'Unlink part'}
+		</button>
 	{/if}
 </div>
 
@@ -64,7 +96,6 @@
 		padding-bottom: 0.6rem;
 	}
 
-	input,
 	select,
 	button {
 		font: inherit;

@@ -48,8 +48,11 @@ All code changes should follow these rules unless explicitly overridden in a tas
 ## Testing and Validation
 - Minimum local validation for behavior changes:
   - `npm run check`
-  - relevant unit/integration tests when present
-- New logic should include tests where feasible, especially for domain/application behavior.
+  - `npm run test:run` when code paths covered by unit tests are affected
+- Unit tests are part of the default development workflow for this repo, not an optional follow-up.
+- New logic should include unit tests unless there is a clear reason it cannot be tested reasonably.
+- Prefer adding or extracting pure helpers for behavior that needs coverage rather than leaving logic embedded in route files.
+- When fixing a bug, add a unit test that would have caught it when feasible.
 
 ## Git Workflow
 - Branch naming:

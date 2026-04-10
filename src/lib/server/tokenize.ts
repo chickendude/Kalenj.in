@@ -14,7 +14,12 @@ export function normalizeToken(value: string): string {
 }
 
 export function tokenizeSentence(sentence: string): TokenizedWord[] {
-	return sentence
+	const trimmedSentence = sentence.trim();
+	if (!trimmedSentence) {
+		return [];
+	}
+
+	return trimmedSentence
 		.split(/\s+/)
 		.map((surfaceForm, wordIndex) => ({
 			wordIndex,

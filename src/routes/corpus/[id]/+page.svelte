@@ -1,38 +1,16 @@
 <script lang="ts">
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import { groupSentenceTokens } from '$lib/word-groups';
 	import TokenCreateLemmaForm from './_components/token-create-lemma-form.svelte';
 	import TokenLinkManager from './_components/token-link-manager.svelte';
 	import WordSplitEditor from './_components/word-split-editor.svelte';
 
 	let { data, form } = $props();
-	let sentenceTokens = $state([...data.sentence.tokens]);
-	let dictionaryWords = $state([...data.words]);
 
 	/** Dictionary word shape available to this page from the server load payload. */
 	type CorpusWord = (typeof data.words)[number];
 	/** Token row for the current sentence, including optional linked dictionary word info. */
 	type SentenceToken = (typeof data.sentence.tokens)[number];
-	/**
-	 * Display-oriented grouping of one sentence word and the token segment(s) that compose it.
-	 * Used by the token mapping table.
-	 */
-	type WordGroup = {
-		/** Stable key for `{#each}` rendering. */
-		groupKey: string;
-		/** Zero-based index of the word within the sentence text. */
-		wordIndex: number;
-		/**
-		 * Token segment(s) that compose this displayed word.
-		 * Each token keeps its own `surfaceForm`: the exact text seen in the sentence.
-		 */
-		tokens: SentenceToken[];
-		/**
-		 * Full surface form for the grouped word: the exact original spelling in the sentence,
-		 * before normalization or lemma linking.
-		 */
-		fullSurface: string;
-	};
-
 	let localError = $state<string | null>(null);
 	let localSuccess = $state<string | null>(null);
 	let creatingByTokenId = $state<Record<string, boolean>>({});
@@ -48,63 +26,51 @@
 		notes: string;
 	};
 
+	let sentenceTokens = $state<SentenceToken[]>([]);
+	let dictionaryWords = $state<CorpusWord[]>([]);
+	let localSnapshotSentenceId = $state<string | null>(null);
+	const displayedSentenceTokens = $derived(
+		localSnapshotSentenceId === data.sentence.id ? sentenceTokens : data.sentence.tokens
+	);
+	const displayedDictionaryWords = $derived(
+		localSnapshotSentenceId === data.sentence.id ? dictionaryWords : data.words
+	);
+
 	let drafts = $state<Record<string, TokenDraft>>({});
+	let previousSentenceId: string | null = null;
+	const groups = $derived(
+		groupSentenceTokens<SentenceToken>({
+			sentenceText: data.sentence.kalenjin,
+			tokens: displayedSentenceTokens
+		})
+	);
 
-	function wordGroups(): WordGroup[] {
-		const sorted = [...sentenceTokens].sort((a, b) => a.tokenOrder - b.tokenOrder);
-		const words = data.sentence.kalenjin
-			.trim()
-			.split(/\s+/)
-			.filter((word) => word.length > 0);
-		const groups: WordGroup[] = [];
-		let tokenCursor = 0;
+	$effect(() => {
+		const nextSentenceId = data.sentence.id;
+		const sentenceChanged = previousSentenceId !== nextSentenceId;
+		previousSentenceId = nextSentenceId;
 
-		for (let wordIndex = 0; wordIndex < words.length && tokenCursor < sorted.length; wordIndex += 1) {
-			const wordSurface = words[wordIndex];
-			const grouped: SentenceToken[] = [];
-			let combined = '';
+		localSnapshotSentenceId = nextSentenceId;
+		sentenceTokens = [...data.sentence.tokens];
+		dictionaryWords = [...data.words];
 
-			while (tokenCursor < sorted.length && combined.length < wordSurface.length) {
-				const token = sorted[tokenCursor];
-				grouped.push(token);
-				combined += token.surfaceForm;
-				tokenCursor += 1;
-			}
+		if (sentenceChanged) {
+			drafts = {};
+			creatingByTokenId = {};
+			splittingByTokenId = {};
+			localError = null;
+			localSuccess = null;
+		}
+	});
 
-			if (grouped.length === 0) {
-				continue;
-			}
-
-			groups.push({
-				groupKey: `${wordIndex}:${grouped.map((item) => item.id).join(':')}`,
-				wordIndex,
-				tokens: grouped,
-				fullSurface: wordSurface
-			});
+	function ensureLocalSnapshotsReady(): void {
+		if (localSnapshotSentenceId === data.sentence.id) {
+			return;
 		}
 
-		while (tokenCursor < sorted.length) {
-			const token = sorted[tokenCursor];
-			const wordIndex = groups.length;
-			groups.push({
-				groupKey: `${wordIndex}:${token.id}`,
-				wordIndex,
-				tokens: [token],
-				fullSurface: token.surfaceForm
-			});
-			tokenCursor += 1;
-		}
-
-		if (groups.length === 0) {
-			return sorted.map((token, wordIndex) => ({
-				groupKey: `${wordIndex}:${token.id}`,
-				wordIndex,
-				tokens: [token],
-				fullSurface: token.surfaceForm
-			}));
-		}
-
-		return groups;
+		localSnapshotSentenceId = data.sentence.id;
+		sentenceTokens = [...data.sentence.tokens];
+		dictionaryWords = [...data.words];
 	}
 
 	function ensureDraft(tokenId: string, defaultLemma: string): void {
@@ -132,6 +98,7 @@
 	}
 
 	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
+		ensureLocalSnapshotsReady();
 		ensureDraft(tokenId, defaultLemma);
 		const draft = drafts[tokenId];
 
@@ -190,6 +157,7 @@
 	}
 
 	async function applySplit(tokenId: string, splitPoints: number[]): Promise<void> {
+		ensureLocalSnapshotsReady();
 		localError = null;
 		localSuccess = null;
 		splittingByTokenId[tokenId] = true;
@@ -260,7 +228,11 @@
 	{/if}
 
 	<h2>Token mapping</h2>
-	<TokenHoverPreview sentenceId={data.sentence.id} sentenceText={data.sentence.kalenjin} tokens={sentenceTokens} />
+	<TokenHoverPreview
+		sentenceId={data.sentence.id}
+		sentenceText={data.sentence.kalenjin}
+		tokens={displayedSentenceTokens}
+	/>
 	<table>
 		<thead>
 			<tr>
@@ -270,7 +242,7 @@
 			</tr>
 		</thead>
 		<tbody>
-			{#each wordGroups() as group (group.groupKey)}
+			{#each groups as group (group.key)}
 				<tr>
 					<td>
 						<strong>{group.fullSurface}</strong>
@@ -290,11 +262,11 @@
 							</ul>
 						{/if}
 					</td>
-					<td>
-						{#each group.tokens as token, partIndex}
-							<TokenLinkManager {token} {partIndex} {dictionaryWords} />
-						{/each}
-					</td>
+						<td>
+							{#each group.tokens as token, partIndex}
+								<TokenLinkManager {token} {partIndex} dictionaryWords={displayedDictionaryWords} />
+							{/each}
+						</td>
 					<td>
 						{#each group.tokens as token, partIndex}
 							{@const defaultLemma = token.word?.kalenjin ?? token.normalizedForm}

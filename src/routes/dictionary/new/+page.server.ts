@@ -1,7 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prisma } from '$lib/server/prisma';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -36,12 +35,10 @@ export const actions: Actions = {
 		}
 
 		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
-		const kalenjinNormalized = normalizeLemma(kalenjin);
 
 		const word = await prisma.word.create({
 			data: {
 				kalenjin,
-				kalenjinNormalized,
 				translations,
 				notes: notes || null,
 				partOfSpeech

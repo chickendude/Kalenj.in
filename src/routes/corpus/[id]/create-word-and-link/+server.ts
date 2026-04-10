@@ -1,6 +1,5 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
 import type { RequestHandler } from './$types';
 
 type CreateWordPayload = {
@@ -43,12 +42,10 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	}
 
 	const token = await ensureSentenceToken(params.id, tokenId);
-	const kalenjinNormalized = normalizeLemma(kalenjin);
 
 	const word = await prisma.word.create({
 		data: {
 			kalenjin,
-			kalenjinNormalized,
 			translations,
 			notes: notes || null
 		},

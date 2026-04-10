@@ -42,7 +42,7 @@ The new feature should extend these foundations instead of creating a second par
 
 The course should follow this hierarchy:
 
-`Section -> Lesson -> Lesson Part -> Target Words`
+`CEFR Level -> Lesson -> Lesson Section -> Lesson Words`
 
 ### Sections
 
@@ -69,15 +69,15 @@ There are five fixed sections:
 - It appears before the lesson parts.
 - It does not count as one of the `2` or `3` lesson parts.
 
-### Lesson Parts
+### Lesson Sections
 
-- A lesson part contains `5` or `6` target words.
-- A lesson part is the main unit where a learner meets new vocabulary.
-- A lesson part should store editorial notes and a publish state.
+- A lesson section contains `5` or `6` target words.
+- A lesson section is the main unit where a learner meets new vocabulary.
+- A lesson section should store editorial notes.
 
 ### Target Words
 
-Each target word in a lesson part should reference a `Word` lemma and include:
+Each lesson word in a lesson section should reference a `Word` lemma and include:
 
 - Lemma / dictionary form.
 - One or more definitions or glosses.
@@ -152,7 +152,7 @@ At minimum, the system should distinguish these states:
 - `in_dictionary`: lemma exists in `Word`
 - `discovered`: lemma appears in a story/corpus item
 - `sentence_ready`: editorial sentence content exists for the lemma
-- `scheduled`: lemma has been assigned to a lesson part
+- `scheduled`: lemma has been assigned to a lesson section
 - `taught`: lemma has been included in a published vocabulary lesson
 
 Important rule:
@@ -172,16 +172,15 @@ This is the recommended direction for the first schema pass.
 
 ### Add Course Structure Models
 
-- `CourseSection`
-  - fixed key: `A1 | A2 | B1 | B2 | C1`
-  - title
-  - order
+- `CefrLevel`
+  - fixed enum: `A1 | A2 | B1 | B2 | C1`
+  - used for lesson grouping and CEFR target grouping
 
 - `CourseLesson`
   - id
-  - sectionId
+  - level
   - title
-  - order
+  - lessonOrder
   - type: `vocabulary | story`
   - vocabularyType: `grammar | vocab | expression` (nullable)
   - grammarMarkdown
@@ -189,32 +188,32 @@ This is the recommended direction for the first schema pass.
   - status: `draft | published`
   - storyId (nullable)
 
-- `CourseLessonPart`
+- `LessonSection`
   - id
   - lessonId
   - title
-  - order
+  - sectionOrder
   - notes
-  - status: `draft | published`
 
-- `LessonPartWord`
+- `LessonWord`
   - id
-  - lessonPartId
+  - lessonSectionId
   - wordId
-  - order
+  - itemOrder
   - sentenceId
   - sentenceTranslation
   - wordForWordTranslation
   - notesMarkdown
-  - taughtAt
 
-`LessonPartWord` should reference a shared `ExampleSentence` record in the corpus. It should still store lesson-specific teaching fields such as sentence translation, word-for-word translation, and notes, because the pedagogical framing may differ from the canonical sentence record.
+`LessonWord` should reference a shared `ExampleSentence` record in the corpus, and that sentence should be required. It should still store lesson-specific teaching fields such as sentence translation, word-for-word translation, and notes, because the pedagogical framing may differ from the canonical sentence record.
 
 `CourseLesson.grammarMarkdown` should be nullable. When present, it is rendered at the top of the lesson as a grammar note before learners begin the vocabulary parts.
 
 `CourseLesson.type` should determine whether the lesson is a vocabulary lesson or a story lesson. When `type = story`, the lesson should point to a `Story` record and still participate in the normal lesson ordering for its section.
 
 `CourseLesson.vocabularyType` should distinguish grammar-focused lessons, pure vocabulary lessons, and expression lessons.
+
+Taught state should be derived from a lesson's publish status rather than stored separately on each `LessonWord`.
 
 ### Add CEFR Planning Models
 
@@ -263,12 +262,12 @@ These queries will drive most of the product behavior:
 
 The first admin workflow should support:
 
-- browsing sections, lessons, and lesson parts
+- browsing CEFR levels, lessons, and lesson sections
 - editing the optional grammar Markdown shown at the start of a lesson
 - choosing whether a lesson is `vocabulary` or `story`
 - choosing whether a vocabulary lesson is `grammar`, `vocab`, or `expression`
-- creating lesson parts with a target size of `5-6` words
-- assigning dictionary lemmas to lesson parts
+- creating lesson sections with a target size of `5-6` words
+- assigning dictionary lemmas to lesson sections
 - attaching or creating example sentences for each lesson item
 - writing lesson-specific notes in Markdown
 - linking lemmas to CEFR English targets
@@ -277,7 +276,7 @@ The first admin workflow should support:
 
 Helpful but optional first-pass enhancements:
 
-- warnings when a part has fewer than `5` or more than `6` target words
+- warnings when a lesson section has fewer than `5` or more than `6` target words
 - warnings when a lesson has fewer than `2` or more than `3` parts
 - warnings when a story introduces too many unknown lemmas
 
@@ -300,12 +299,12 @@ These rules should be encoded clearly in the app:
 
 - add course structure tables
 - add CEFR English target tables
-- add lesson-part word assignment table
+- add lesson section and lesson word tables
 - define the taught state rules
 
 ### Phase 2: Editorial Admin Tools
 
-- lesson/part CRUD
+- lesson/section CRUD
 - lesson grammar Markdown editing
 - lesson type selection and story lesson linking
 - vocabulary lesson subtype selection
@@ -331,7 +330,7 @@ Start by treating:
 
 - `Word` as the canonical lemma
 - `CourseLesson` as the teaching unit
-- `LessonPartWord` as lesson content inside that teaching unit
+- `LessonWord` as lesson content inside that teaching unit
 - `ExampleSentence` as the canonical sample sentence record in the corpus
 - lesson-specific teaching text as a layer on top of the shared sentence record
 - `CefrEnglishTarget` as a separate English planning list that can contain single words or phrases

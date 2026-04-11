@@ -1,10 +1,10 @@
 import { prisma } from '$lib/server/prisma';
 import type { PageServerLoad } from './$types';
 
-type SearchLanguage = 'both' | 'english' | 'kalenjin';
+type SearchLanguage = 'both' | 'translations' | 'kalenjin';
 
 function parseLanguage(value: string | null): SearchLanguage {
-	if (value === 'english' || value === 'kalenjin') {
+	if (value === 'translations' || value === 'kalenjin') {
 		return value;
 	}
 
@@ -17,7 +17,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	const words = await prisma.word.findMany({
 		where: query
-			? language === 'english'
+			? language === 'translations'
 				? { translations: { contains: query, mode: 'insensitive' } }
 				: language === 'kalenjin'
 					? { kalenjin: { contains: query, mode: 'insensitive' } }

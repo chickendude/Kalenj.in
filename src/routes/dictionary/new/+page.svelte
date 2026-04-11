@@ -19,18 +19,13 @@
 		</label>
 
 		<label>
-			Translations (English) *
+			Translations *
 			<input
 				name="translations"
 				required
 				value={form?.values?.translations ?? ''}
 				placeholder="comma-separated translations"
 			/>
-		</label>
-
-		<label>
-			Notes
-			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
 		</label>
 
 		<label>
@@ -43,6 +38,10 @@
 			</select>
 		</label>
 
+		<label>
+			Notes
+			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
+		</label>
 		<button type="submit">Create word</button>
 	</form>
 </section>

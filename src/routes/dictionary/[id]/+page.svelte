@@ -23,18 +23,13 @@
 		</label>
 
 		<label>
-			Translations (English) *
+			Translations *
 			<input
 				name="translations"
 				required
 				value={values.translations ?? ''}
 				placeholder="comma-separated translations"
 			/>
-		</label>
-
-		<label>
-			Notes
-			<textarea name="notes" rows="3">{values.notes ?? ''}</textarea>
 		</label>
 
 		<label>
@@ -47,6 +42,10 @@
 			</select>
 		</label>
 
+		<label>
+			Notes
+			<textarea name="notes" rows="3">{values.notes ?? ''}</textarea>
+		</label>
 		<button type="submit">Save changes</button>
 	</form>
 

@@ -1,9 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { CEFR_LEVELS, LESSON_TYPES, PUBLISH_STATUSES, VOCABULARY_LESSON_TYPES } from '$lib/course';
+import { CEFR_LEVELS, LESSON_TYPES, VOCABULARY_LESSON_TYPES } from '$lib/course';
 import {
 	parseCefrLevelValue,
 	parseLessonTypeValue,
-	parsePublishStatusValue,
 	parseVocabularyLessonTypeValue,
 	readInteger,
 	readOptionalText,
@@ -11,7 +10,35 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { parseStoryImportText } from '$lib/server/story-import';
+import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
+
+async function syncStorySentences(
+	tx: Prisma.TransactionClient,
+	storyId: string,
+	storyText: string | null
+): Promise<void> {
+	const sentences = storyText ? parseStoryImportText(storyText) : [];
+
+	await tx.storySentence.deleteMany({
+		where: { storyId }
+	});
+
+	if (sentences.length === 0) {
+		return;
+	}
+
+	await tx.storySentence.createMany({
+		data: sentences.map((sentence) => ({
+			storyId,
+			sentenceOrder: sentence.sentenceOrder,
+			speaker: sentence.speaker,
+			kalenjin: sentence.kalenjin,
+			english: sentence.english
+		}))
+	});
+}
 
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
@@ -70,11 +97,17 @@ async function ensureWordSentenceLink(wordId: string, exampleSentenceId: string)
 }
 
 export const load: PageServerLoad = async ({ params }) => {
-	const [lesson, words, cefrTargets, stories] = await Promise.all([
+	const [lesson, words, cefrTargets] = await Promise.all([
 		prisma.lesson.findUnique({
 			where: { id: params.id },
 			include: {
-				story: true,
+				story: {
+					include: {
+						sentences: {
+							orderBy: { sentenceOrder: 'asc' }
+						}
+					}
+				},
 				sections: {
 					include: {
 						words: {
@@ -98,9 +131,6 @@ export const load: PageServerLoad = async ({ params }) => {
 		}),
 		prisma.cefrEnglishTarget.findMany({
 			orderBy: [{ level: 'asc' }, { english: 'asc' }]
-		}),
-		prisma.story.findMany({
-			orderBy: { title: 'asc' }
 		})
 	]);
 
@@ -112,11 +142,9 @@ export const load: PageServerLoad = async ({ params }) => {
 		lesson,
 		words,
 		cefrTargets,
-		stories,
 		levels: CEFR_LEVELS,
 		lessonTypes: LESSON_TYPES,
-		vocabularyTypes: VOCABULARY_LESSON_TYPES,
-		publishStatuses: PUBLISH_STATUSES
+		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};
 };
 
@@ -129,16 +157,9 @@ export const actions: Actions = {
 		const type = parseLessonTypeValue(readText(formData, 'type'));
 		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
 		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
-		const notes = readOptionalText(formData, 'notes');
-		const status = parsePublishStatusValue(readText(formData, 'status'));
-		const storyId = readOptionalText(formData, 'storyId');
 
-		if (!title || !level || lessonOrder === null || !type || !status) {
-			return fail(400, { error: 'Level, title, lesson order, type, and status are required.' });
-		}
-
-		if (type === 'STORY' && !storyId) {
-			return fail(400, { error: 'Story lessons must be linked to a story.' });
+		if (!title || !level || lessonOrder === null || !type) {
+			return fail(400, { error: 'Level, title, lesson order, and type are required.' });
 		}
 
 		if (type === 'VOCABULARY' && !vocabularyType) {
@@ -146,23 +167,54 @@ export const actions: Actions = {
 		}
 
 		try {
-			await prisma.lesson.update({
-				where: { id: params.id },
-				data: {
-					title,
-					level,
-					lessonOrder,
-					type,
-					vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
-					grammarMarkdown,
-					notes,
-					status,
-					storyId: type === 'STORY' ? storyId : null
+			await prisma.$transaction(async (tx) => {
+				const existingLesson = await tx.lesson.findUnique({
+					where: { id: params.id },
+					select: { storyId: true }
+				});
+
+				if (!existingLesson) {
+					throw new Error('Lesson not found.');
 				}
+
+				let nextStoryId: string | null = null;
+
+				if (type === 'STORY') {
+					if (existingLesson.storyId) {
+						nextStoryId = existingLesson.storyId;
+						await tx.story.update({
+							where: { id: existingLesson.storyId },
+							data: { title }
+						});
+						await syncStorySentences(tx, existingLesson.storyId, grammarMarkdown);
+					} else {
+						const createdStory = await tx.story.create({
+							data: { title }
+						});
+						nextStoryId = createdStory.id;
+						await syncStorySentences(tx, createdStory.id, grammarMarkdown);
+					}
+				}
+
+				await tx.lesson.update({
+					where: { id: params.id },
+					data: {
+						title,
+						level,
+						lessonOrder,
+						type,
+						vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
+						grammarMarkdown,
+						storyId: nextStoryId
+					}
+				});
 			});
 		} catch (updateError) {
 			return fail(400, {
-				error: 'Could not save lesson changes. Check for duplicate lesson order or story assignment.'
+				error:
+					updateError instanceof Error
+						? updateError.message
+						: 'Could not save lesson changes. Check for duplicate lesson order or story assignment.'
 			});
 		}
 

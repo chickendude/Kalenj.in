@@ -1,42 +1,154 @@
 import { fail, redirect } from '@sveltejs/kit';
-import { CEFR_LEVELS, LESSON_TYPES, PUBLISH_STATUSES, VOCABULARY_LESSON_TYPES } from '$lib/course';
+import {
+	CEFR_LEVELS,
+	LESSON_TYPES,
+	VOCABULARY_LESSON_TYPES,
+	getInsertedLessonOrder,
+	getNextLessonOrder
+} from '$lib/course';
 import {
 	parseCefrLevelValue,
 	parseLessonTypeValue,
-	parsePublishStatusValue,
 	parseVocabularyLessonTypeValue,
-	readInteger,
 	readOptionalText,
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { parseStoryImportText } from '$lib/server/story-import';
+import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
-	const [lessons, stories] = await Promise.all([
-		prisma.lesson.findMany({
-			include: {
-				story: true,
-				_count: {
-					select: {
-						sections: true
+async function syncStorySentences(
+	tx: Prisma.TransactionClient,
+	storyId: string,
+	storyText: string | null
+): Promise<void> {
+	const sentences = storyText ? parseStoryImportText(storyText) : [];
+
+	await tx.storySentence.deleteMany({
+		where: { storyId }
+	});
+
+	if (sentences.length === 0) {
+		return;
+	}
+
+	await tx.storySentence.createMany({
+		data: sentences.map((sentence) => ({
+			storyId,
+			sentenceOrder: sentence.sentenceOrder,
+			speaker: sentence.speaker,
+			kalenjin: sentence.kalenjin,
+			english: sentence.english
+		}))
+	});
+}
+
+async function shiftLessonsForInsert(
+	tx: Prisma.TransactionClient,
+	level: (typeof CEFR_LEVELS)[number],
+	lessonOrder: number
+): Promise<void> {
+	const lessonsToShift = await tx.lesson.findMany({
+		where: {
+			level,
+			lessonOrder: {
+				gte: lessonOrder
+			}
+		},
+		orderBy: {
+			lessonOrder: 'desc'
+		},
+		select: {
+			id: true,
+			lessonOrder: true
+		}
+	});
+
+	for (const lesson of lessonsToShift) {
+		await tx.lesson.update({
+			where: { id: lesson.id },
+			data: { lessonOrder: lesson.lessonOrder + 1 }
+		});
+	}
+}
+
+async function createLessonRecord(
+	tx: Prisma.TransactionClient,
+	{
+		title,
+		level,
+		lessonOrder,
+		type,
+		vocabularyType,
+		grammarMarkdown
+	}: {
+		title: string;
+		level: (typeof CEFR_LEVELS)[number];
+		lessonOrder: number;
+		type: NonNullable<ReturnType<typeof parseLessonTypeValue>>;
+		vocabularyType: ReturnType<typeof parseVocabularyLessonTypeValue>;
+		grammarMarkdown: string | null;
+	}
+) {
+	const story =
+		type === 'STORY'
+			? await tx.story.create({
+					data: {
+						title
 					}
+				})
+			: null;
+
+	if (story) {
+		await syncStorySentences(tx, story.id, grammarMarkdown);
+	}
+
+	return tx.lesson.create({
+		data: {
+			title,
+			level,
+			lessonOrder,
+			type,
+			vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
+			grammarMarkdown,
+			storyId: story?.id ?? null
+		}
+	});
+}
+
+export const load: PageServerLoad = async ({ url }) => {
+	const selectedLevel =
+		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];
+
+	const lessons = await prisma.lesson.findMany({
+		include: {
+			story: true,
+			_count: {
+				select: {
+					sections: true
 				}
-			},
-			orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }]
-		}),
-		prisma.story.findMany({
-			orderBy: { title: 'asc' }
-		})
-	]);
+			}
+		},
+		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }]
+	});
 
 	return {
 		levels: CEFR_LEVELS,
+		selectedLevel,
+		levelSummaries: CEFR_LEVELS.map((level) => ({
+			level,
+			lessonCount: lessons.filter((lesson) => lesson.level === level).length
+		})),
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES,
-		publishStatuses: PUBLISH_STATUSES,
 		lessons,
-		stories
+		selectedLevelLessons: lessons.filter((lesson) => lesson.level === selectedLevel),
+		nextLessonOrder: getNextLessonOrder(
+			lessons
+				.filter((lesson) => lesson.level === selectedLevel)
+				.map((lesson) => lesson.lessonOrder)
+		)
 	};
 };
 
@@ -45,44 +157,19 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const level = parseCefrLevelValue(readText(formData, 'level'));
-		const lessonOrder = readInteger(formData, 'lessonOrder');
 		const type = parseLessonTypeValue(readText(formData, 'type'));
 		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
 		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
-		const notes = readOptionalText(formData, 'notes');
-		const status = parsePublishStatusValue(readText(formData, 'status'));
-		const storyId = readOptionalText(formData, 'storyId');
 
-		if (!title || !level || lessonOrder === null || !type || !status) {
+		if (!title || !level || !type) {
 			return fail(400, {
-				error: 'Level, title, lesson order, type, and status are required.',
+				error: 'Level, title, and type are required.',
 				values: {
 					title,
 					level: readText(formData, 'level'),
-					lessonOrder: readText(formData, 'lessonOrder'),
 					type: readText(formData, 'type'),
 					vocabularyType: readText(formData, 'vocabularyType'),
-					grammarMarkdown: grammarMarkdown ?? '',
-					notes: notes ?? '',
-					status: readText(formData, 'status'),
-					storyId: storyId ?? ''
-				}
-			});
-		}
-
-		if (type === 'STORY' && !storyId) {
-			return fail(400, {
-				error: 'Story lessons must be linked to a story.',
-				values: {
-					title,
-					level,
-					lessonOrder: String(lessonOrder),
-					type,
-					vocabularyType: readText(formData, 'vocabularyType'),
-					grammarMarkdown: grammarMarkdown ?? '',
-					notes: notes ?? '',
-					status,
-					storyId: storyId ?? ''
+					grammarMarkdown: grammarMarkdown ?? ''
 				}
 			});
 		}
@@ -93,48 +180,139 @@ export const actions: Actions = {
 				values: {
 					title,
 					level,
-					lessonOrder: String(lessonOrder),
 					type,
 					vocabularyType: readText(formData, 'vocabularyType'),
-					grammarMarkdown: grammarMarkdown ?? '',
-					notes: notes ?? '',
-					status,
-					storyId: storyId ?? ''
+					grammarMarkdown: grammarMarkdown ?? ''
 				}
 			});
 		}
 
+		const nextLessonOrder = getNextLessonOrder(
+			(
+				await prisma.lesson.findMany({
+					where: { level },
+					select: { lessonOrder: true }
+				})
+			).map((lesson) => lesson.lessonOrder)
+		);
+
+		let lessonId: string;
+
 		try {
-			const lesson = await prisma.lesson.create({
-				data: {
+			const lesson = await prisma.$transaction(async (tx) => {
+				return createLessonRecord(tx, {
 					title,
 					level,
-					lessonOrder,
+					lessonOrder: nextLessonOrder,
 					type,
-					vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
-					grammarMarkdown,
-					notes,
-					status,
-					storyId: type === 'STORY' ? storyId : null
-				}
+					vocabularyType,
+					grammarMarkdown
+				});
 			});
 
-			redirect(303, `/lessons/${lesson.id}`);
+			lessonId = lesson.id;
 		} catch (error) {
 			return fail(400, {
 				error: 'Could not create lesson. Check for duplicate lesson order or story assignment.',
 				values: {
 					title,
 					level,
-					lessonOrder: String(lessonOrder),
 					type,
 					vocabularyType: readText(formData, 'vocabularyType'),
-					grammarMarkdown: grammarMarkdown ?? '',
-					notes: notes ?? '',
-					status,
-					storyId: storyId ?? ''
+					grammarMarkdown: grammarMarkdown ?? ''
 				}
 			});
 		}
+
+		redirect(303, `/lessons/${lessonId}`);
+	},
+	createAdjacent: async ({ request }) => {
+		const formData = await request.formData();
+		const title = readText(formData, 'title');
+		const anchorLessonId = readText(formData, 'anchorLessonId');
+		const positionValue = readText(formData, 'position');
+		const type = parseLessonTypeValue(readText(formData, 'type'));
+		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
+		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
+
+		if (
+			!title ||
+			!anchorLessonId ||
+			(positionValue !== 'before' && positionValue !== 'after') ||
+			!type
+		) {
+			return fail(400, {
+				error: 'Lesson title, type, and placement are required.',
+				values: {
+					title,
+					anchorLessonId,
+					position: positionValue,
+					type: readText(formData, 'type'),
+					vocabularyType: readText(formData, 'vocabularyType'),
+					grammarMarkdown: grammarMarkdown ?? ''
+				}
+			});
+		}
+
+		if (type === 'VOCABULARY' && !vocabularyType) {
+			return fail(400, {
+				error: 'Vocabulary lessons must have a vocabulary type.',
+				values: {
+					title,
+					anchorLessonId,
+					position: positionValue,
+					type,
+					vocabularyType: readText(formData, 'vocabularyType'),
+					grammarMarkdown: grammarMarkdown ?? ''
+				}
+			});
+		}
+
+		let lessonId: string;
+
+		try {
+			const lesson = await prisma.$transaction(async (tx) => {
+				const anchorLesson = await tx.lesson.findUnique({
+					where: { id: anchorLessonId },
+					select: { id: true, level: true, lessonOrder: true }
+				});
+
+				if (!anchorLesson) {
+					throw new Error('Lesson not found.');
+				}
+
+				const lessonOrder = getInsertedLessonOrder(anchorLesson.lessonOrder, positionValue);
+
+				await shiftLessonsForInsert(tx, anchorLesson.level, lessonOrder);
+
+				return createLessonRecord(tx, {
+					title,
+					level: anchorLesson.level,
+					lessonOrder,
+					type,
+					vocabularyType,
+					grammarMarkdown
+				});
+			});
+
+			lessonId = lesson.id;
+		} catch (error) {
+			return fail(400, {
+				error:
+					error instanceof Error
+						? error.message
+						: 'Could not create lesson at that position.',
+				values: {
+					title,
+					anchorLessonId,
+					position: positionValue,
+					type: readText(formData, 'type'),
+					vocabularyType: readText(formData, 'vocabularyType'),
+					grammarMarkdown: grammarMarkdown ?? ''
+				}
+			});
+		}
+
+		redirect(303, `/lessons/${lessonId}`);
 	}
 };

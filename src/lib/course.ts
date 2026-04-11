@@ -7,6 +7,7 @@ export type CefrLevelValue = (typeof CEFR_LEVELS)[number];
 export type LessonTypeValue = (typeof LESSON_TYPES)[number];
 export type VocabularyLessonTypeValue = (typeof VOCABULARY_LESSON_TYPES)[number];
 export type PublishStatusValue = (typeof PUBLISH_STATUSES)[number];
+export type LessonInsertPosition = 'before' | 'after';
 
 export function isCefrLevel(value: string): value is CefrLevelValue {
 	return CEFR_LEVELS.includes(value as CefrLevelValue);
@@ -41,4 +42,19 @@ export function formatVocabularyLessonType(value: VocabularyLessonTypeValue): st
 
 export function formatPublishStatus(value: PublishStatusValue): string {
 	return value === 'PUBLISHED' ? 'Published' : 'Draft';
+}
+
+export function getNextLessonOrder(lessonOrders: number[]): number {
+	if (lessonOrders.length === 0) {
+		return 1;
+	}
+
+	return Math.max(...lessonOrders) + 1;
+}
+
+export function getInsertedLessonOrder(
+	anchorLessonOrder: number,
+	position: LessonInsertPosition
+): number {
+	return position === 'before' ? anchorLessonOrder : anchorLessonOrder + 1;
 }

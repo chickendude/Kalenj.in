@@ -1,11 +1,7 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
 	import type { ActionResult } from '@sveltejs/kit';
-	import {
-		formatLessonType,
-		formatPublishStatus,
-		formatVocabularyLessonType
-	} from '$lib/course';
+	import { formatLessonType, formatVocabularyLessonType } from '$lib/course';
 
 	let { data, form } = $props();
 	let cefrSaveState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
@@ -45,6 +41,16 @@
 				await applyAction(result);
 			};
 		};
+	}
+
+	function contentFieldLabel() {
+		return data.lesson.type === 'STORY' ? 'Story text' : 'Grammar markdown';
+	}
+
+	function contentFieldHint() {
+		return data.lesson.type === 'STORY'
+			? 'Use one line per sentence: Speaker: <tab> Kalenjin <tab> English.'
+			: null;
 	}
 </script>
 
@@ -114,33 +120,13 @@
 		</label>
 
 		<label>
-			Status *
-			<select name="status" value={data.lesson.status}>
-				{#each data.publishStatuses as status}
-					<option value={status}>{formatPublishStatus(status)}</option>
-				{/each}
-			</select>
+			{contentFieldLabel()}
+			<textarea name="grammarMarkdown" rows={data.lesson.type === 'STORY' ? 10 : 5}>{data.lesson.grammarMarkdown ?? ''}</textarea>
 		</label>
 
-		<label>
-			Story
-			<select name="storyId" value={data.lesson.storyId ?? ''}>
-				<option value="">Select...</option>
-				{#each data.stories as story}
-					<option value={story.id}>{story.title}</option>
-				{/each}
-			</select>
-		</label>
-
-		<label>
-			Grammar markdown
-			<textarea name="grammarMarkdown" rows="5">{data.lesson.grammarMarkdown ?? ''}</textarea>
-		</label>
-
-		<label>
-			Notes
-			<textarea name="notes" rows="4">{data.lesson.notes ?? ''}</textarea>
-		</label>
+		{#if contentFieldHint()}
+			<p class="field-caption">{contentFieldHint()}</p>
+		{/if}
 
 		<button type="submit">Save lesson</button>
 	</form>
@@ -394,6 +380,7 @@
 			<h2>Story lesson</h2>
 			{#if data.lesson.story}
 				<p>Linked story: {data.lesson.story.title}</p>
+				<p>{data.lesson.story.sentences.length} imported sentence(s).</p>
 				{#if data.lesson.story.description}
 					<p>{data.lesson.story.description}</p>
 				{/if}
@@ -413,6 +400,11 @@
 	.success {
 		color: #1a7f37;
 		font-weight: 600;
+	}
+
+	.field-caption {
+		color: #555;
+		margin: 0;
 	}
 
 	.editor-form {

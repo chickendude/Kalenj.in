@@ -127,6 +127,7 @@ model StorySentence {
   id            String   @id @default(cuid())
   storyId       String
   sentenceOrder Int
+  speaker       String?
   kalenjin      String
   english       String
   grammarNotes  String?

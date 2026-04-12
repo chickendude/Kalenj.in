@@ -54,15 +54,21 @@ model Word {
   id           String           @id @default(cuid())
   kalenjin     String
   translations String
+  kalenjinNormalized String
   partOfSpeech PartOfSpeech?
   notes        String?
+  pluralForm   String?
+  pluralFormNormalized String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sentences    WordSentence[]
   tokenLinks   ExampleSentenceToken[]
+  storyTokenLinks StorySentenceToken[]
   lessonWords  LessonWord[]
 
   @@index([kalenjin])
+  @@index([kalenjinNormalized])
+  @@index([pluralFormNormalized])
   @@index([translations])
 }
 
@@ -84,6 +90,7 @@ model ExampleSentenceToken {
   id                String          @id @default(cuid())
   exampleSentenceId String
   wordId            String?
+  inContextTranslation String?
   tokenOrder        Int
   wordIndex         Int             @default(0)
   segmentStart      Int             @default(0)
@@ -134,10 +141,34 @@ model StorySentence {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   story         Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  tokens        StorySentenceToken[]
 
   @@unique([storyId, sentenceOrder])
   @@index([storyId])
   @@index([kalenjin])
+}
+
+model StorySentenceToken {
+  id                  String        @id @default(cuid())
+  storySentenceId     String
+  wordId              String?
+  inContextTranslation String?
+  tokenOrder          Int
+  wordIndex           Int           @default(0)
+  segmentStart        Int           @default(0)
+  segmentEnd          Int           @default(0)
+  surfaceForm         String
+  normalizedForm      String
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  storySentence       StorySentence @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
+  word                Word?         @relation(fields: [wordId], references: [id], onDelete: SetNull)
+
+  @@unique([storySentenceId, tokenOrder])
+  @@index([storySentenceId])
+  @@index([wordId])
+  @@index([normalizedForm])
+  @@index([storySentenceId, wordIndex])
 }
 
 model CefrEnglishTarget {

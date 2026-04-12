@@ -58,3 +58,27 @@ export function getInsertedLessonOrder(
 ): number {
 	return position === 'before' ? anchorLessonOrder : anchorLessonOrder + 1;
 }
+
+export function splitLessonItemsIntoSections<T>(items: T[]): Array<{ sectionNumber: number; items: T[] }> {
+	if (items.length === 0) {
+		return [];
+	}
+
+	const targetSectionCount = items.length > 15 ? 3 : 2;
+	const sectionCount = Math.min(targetSectionCount, items.length);
+	const baseSize = Math.floor(items.length / sectionCount);
+	const remainder = items.length % sectionCount;
+	const sections: Array<{ sectionNumber: number; items: T[] }> = [];
+	let cursor = 0;
+
+	for (let index = 0; index < sectionCount; index += 1) {
+		const size = baseSize + (index < remainder ? 1 : 0);
+		sections.push({
+			sectionNumber: index + 1,
+			items: items.slice(cursor, cursor + size)
+		});
+		cursor += size;
+	}
+
+	return sections;
+}

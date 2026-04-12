@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
+import { normalizeLemma } from '$lib/server/normalize-lemma';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -69,6 +70,7 @@ export const actions: Actions = {
 			where: { id: params.id },
 			data: {
 				kalenjin,
+				kalenjinNormalized: normalizeLemma(kalenjin),
 				translations,
 				notes: notes || null,
 				partOfSpeech

@@ -1,7 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { CEFR_LEVELS, LESSON_TYPES, VOCABULARY_LESSON_TYPES } from '$lib/course';
+import { LESSON_TYPES, VOCABULARY_LESSON_TYPES } from '$lib/course';
 import {
-	parseCefrLevelValue,
 	parseLessonTypeValue,
 	parseVocabularyLessonTypeValue,
 	readInteger,
@@ -11,6 +10,8 @@ import {
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
 import { parseStoryImportText } from '$lib/server/story-import';
+import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
+import { normalizeLemma } from '$lib/server/normalize-lemma';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -29,15 +30,19 @@ async function syncStorySentences(
 		return;
 	}
 
-	await tx.storySentence.createMany({
-		data: sentences.map((sentence) => ({
-			storyId,
-			sentenceOrder: sentence.sentenceOrder,
-			speaker: sentence.speaker,
-			kalenjin: sentence.kalenjin,
-			english: sentence.english
-		}))
-	});
+	for (const sentence of sentences) {
+		const createdSentence = await tx.storySentence.create({
+			data: {
+				storyId,
+				sentenceOrder: sentence.sentenceOrder,
+				speaker: sentence.speaker,
+				kalenjin: sentence.kalenjin,
+				english: sentence.english
+			}
+		});
+
+		await syncStorySentenceTokens(tx, createdSentence.id, sentence.kalenjin);
+	}
 }
 
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
@@ -96,35 +101,175 @@ async function ensureWordSentenceLink(wordId: string, exampleSentenceId: string)
 	});
 }
 
-export const load: PageServerLoad = async ({ params }) => {
-	const [lesson, words, cefrTargets] = await Promise.all([
-		prisma.lesson.findUnique({
-			where: { id: params.id },
-			include: {
-				story: {
-					include: {
-						sentences: {
-							orderBy: { sentenceOrder: 'asc' }
-						}
+async function ensureDefaultLessonSection(
+	tx: Prisma.TransactionClient,
+	lessonId: string
+): Promise<{ id: string }> {
+	const existingSection = await tx.lessonSection.findFirst({
+		where: { lessonId },
+		orderBy: [{ sectionOrder: 'asc' }, { createdAt: 'asc' }],
+		select: { id: true }
+	});
+
+	if (existingSection) {
+		return existingSection;
+	}
+
+	return tx.lessonSection.create({
+		data: {
+			lessonId,
+			sectionOrder: 1
+		},
+		select: { id: true }
+	});
+}
+
+async function getNextLessonWordOrder(
+	tx: Prisma.TransactionClient,
+	lessonId: string
+): Promise<number> {
+	const lessonWords = await tx.lessonWord.findMany({
+		where: {
+			lessonSection: {
+				lessonId
+			}
+		},
+		select: {
+			itemOrder: true
+		}
+	});
+
+	return lessonWords.length === 0
+		? 1
+		: Math.max(...lessonWords.map((lessonWord) => lessonWord.itemOrder)) + 1;
+}
+
+async function ensureStorySentence(
+	storyId: string,
+	storySentenceId: string
+): Promise<void> {
+	const sentence = await prisma.storySentence.findUnique({
+		where: { id: storySentenceId },
+		select: { id: true, storyId: true }
+	});
+
+	if (!sentence || sentence.storyId !== storyId) {
+		error(404, 'Story sentence not found.');
+	}
+}
+
+async function ensureExampleSentenceForLessonWord(
+	lessonWordId: string,
+	tokenId: string
+): Promise<{ sentenceId: string }> {
+	const token = await prisma.exampleSentenceToken.findUnique({
+		where: { id: tokenId },
+		select: {
+			id: true,
+			exampleSentenceId: true,
+			exampleSentence: {
+				select: {
+					lessonWords: {
+						where: { id: lessonWordId },
+						select: { id: true }
 					}
-				},
-				sections: {
-					include: {
-						words: {
-							include: {
-								word: true,
-								sentence: true,
-								coveredCefrTargets: {
-									orderBy: [{ level: 'asc' }, { english: 'asc' }]
-								}
-							},
-							orderBy: { itemOrder: 'asc' }
-						}
-					},
-					orderBy: { sectionOrder: 'asc' }
 				}
 			}
-		}),
+		}
+	});
+
+	if (!token || token.exampleSentence.lessonWords.length === 0) {
+		error(404, 'Sentence token not found for this lesson word.');
+	}
+
+	return { sentenceId: token.exampleSentenceId };
+}
+
+async function getLessonDetail(lessonId: string) {
+	return prisma.lesson.findUnique({
+		where: { id: lessonId },
+		include: {
+			story: {
+				include: {
+					sentences: {
+						orderBy: { sentenceOrder: 'asc' },
+						include: {
+							tokens: {
+								orderBy: { tokenOrder: 'asc' },
+								include: { word: true }
+							}
+						}
+					}
+				}
+			},
+			sections: {
+				include: {
+					words: {
+						include: {
+							word: true,
+							sentence: {
+								include: {
+									tokens: {
+										orderBy: { tokenOrder: 'asc' },
+										include: { word: true }
+									}
+								}
+							},
+							coveredCefrTargets: {
+								orderBy: [{ level: 'asc' }, { english: 'asc' }]
+							}
+						},
+						orderBy: [{ itemOrder: 'asc' }, { createdAt: 'asc' }]
+					}
+				},
+				orderBy: { sectionOrder: 'asc' }
+			}
+		}
+	});
+}
+
+async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
+	const lesson = await prisma.lesson.findUnique({
+		where: { id: lessonId },
+		select: {
+			story: {
+				select: {
+					sentences: {
+						select: {
+							id: true,
+							kalenjin: true,
+							tokens: {
+								select: { id: true },
+								take: 1
+							}
+						}
+					}
+				}
+			}
+		}
+	});
+
+	const sentencesToBackfill =
+		lesson?.story?.sentences.filter(
+			(sentence) => sentence.kalenjin.trim().length > 0 && sentence.tokens.length === 0
+		) ?? [];
+
+	if (sentencesToBackfill.length === 0) {
+		return;
+	}
+
+	await prisma.$transaction(async (tx) => {
+		for (const sentence of sentencesToBackfill) {
+			await syncStorySentenceTokens(tx, sentence.id, sentence.kalenjin);
+		}
+	});
+}
+
+export const load: PageServerLoad = async ({ params }) => {
+	await backfillMissingStoryTokens(params.id);
+
+	const [lesson, words, cefrTargets] = await Promise.all([
+		getLessonDetail(params.id),
 		prisma.word.findMany({
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
 			take: 500
@@ -142,9 +287,16 @@ export const load: PageServerLoad = async ({ params }) => {
 		lesson,
 		words,
 		cefrTargets,
-		levels: CEFR_LEVELS,
 		lessonTypes: LESSON_TYPES,
-		vocabularyTypes: VOCABULARY_LESSON_TYPES
+		vocabularyTypes: VOCABULARY_LESSON_TYPES,
+		storyImportText:
+			lesson.story?.sentences
+				.map((sentence) =>
+					[sentence.speaker ? `${sentence.speaker}:` : null, sentence.kalenjin, sentence.english]
+						.filter((part) => part && part.length > 0)
+						.join('\t')
+				)
+				.join('\n') ?? ''
 	};
 };
 
@@ -152,14 +304,13 @@ export const actions: Actions = {
 	updateLesson: async ({ request, params }) => {
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
-		const level = parseCefrLevelValue(readText(formData, 'level'));
 		const lessonOrder = readInteger(formData, 'lessonOrder');
 		const type = parseLessonTypeValue(readText(formData, 'type'));
 		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
 		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
 
-		if (!title || !level || lessonOrder === null || !type) {
-			return fail(400, { error: 'Level, title, lesson order, and type are required.' });
+		if (!title || lessonOrder === null || !type) {
+			return fail(400, { error: 'Title, lesson order, and type are required.' });
 		}
 
 		if (type === 'VOCABULARY' && !vocabularyType) {
@@ -170,7 +321,7 @@ export const actions: Actions = {
 			await prisma.$transaction(async (tx) => {
 				const existingLesson = await tx.lesson.findUnique({
 					where: { id: params.id },
-					select: { storyId: true }
+					select: { storyId: true, level: true }
 				});
 
 				if (!existingLesson) {
@@ -200,7 +351,7 @@ export const actions: Actions = {
 					where: { id: params.id },
 					data: {
 						title,
-						level,
+						level: existingLesson.level,
 						lessonOrder,
 						type,
 						vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
@@ -296,9 +447,8 @@ export const actions: Actions = {
 	},
 	createWord: async ({ request }) => {
 		const formData = await request.formData();
-		const lessonSectionId = readText(formData, 'lessonSectionId');
+		const lessonId = readText(formData, 'lessonId');
 		const wordId = readText(formData, 'wordId');
-		const itemOrder = readInteger(formData, 'itemOrder');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceSource = readOptionalText(formData, 'sentenceSource');
@@ -307,15 +457,17 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonSectionId || !wordId || itemOrder === null || !sentenceKalenjin || !sentenceEnglish) {
+		if (!lessonId || !wordId || !sentenceKalenjin || !sentenceEnglish) {
 			return fail(400, {
 				error:
-					'Lesson section, word, item order, sentence text, and sentence translation are required.'
+					'Lesson, word, sentence text, and sentence translation are required.'
 			});
 		}
 
 		try {
 			const lessonWord = await prisma.$transaction(async (tx) => {
+				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
+				const itemOrder = await getNextLessonWordOrder(tx, lessonId);
 				const sentence = await tx.exampleSentence.create({
 					data: {
 						kalenjin: sentenceKalenjin,
@@ -324,9 +476,11 @@ export const actions: Actions = {
 					}
 				});
 
+				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+
 				const createdLessonWord = await tx.lessonWord.create({
 					data: {
-						lessonSectionId,
+						lessonSectionId: lessonSection.id,
 						wordId,
 						itemOrder,
 						sentenceId: sentence.id,
@@ -370,7 +524,14 @@ export const actions: Actions = {
 
 		const existingLessonWord = await prisma.lessonWord.findUnique({
 			where: { id },
-			select: { sentenceId: true }
+			select: {
+				sentenceId: true,
+				sentence: {
+					select: {
+						kalenjin: true
+					}
+				}
+			}
 		});
 
 		if (!existingLessonWord) {
@@ -387,6 +548,10 @@ export const actions: Actions = {
 						source: sentenceSource
 					}
 				});
+
+				if (existingLessonWord.sentence.kalenjin !== sentenceKalenjin) {
+					await syncExampleSentenceTokens(tx, existingLessonWord.sentenceId, sentenceKalenjin);
+				}
 
 				await tx.lessonWord.update({
 					where: { id },
@@ -445,5 +610,341 @@ export const actions: Actions = {
 		});
 
 		return { deleteWordSuccess: true };
+	},
+	updateStorySentence: async ({ request }) => {
+		const formData = await request.formData();
+		const id = readText(formData, 'id');
+		const speaker = readOptionalText(formData, 'speaker');
+		const kalenjin = readText(formData, 'kalenjin');
+		const english = readText(formData, 'english');
+		const grammarNotes = readOptionalText(formData, 'grammarNotes');
+
+		if (!id || !kalenjin || !english) {
+			return fail(400, { error: 'Sentence, text, and translation are required.' });
+		}
+
+		const existingSentence = await prisma.storySentence.findUnique({
+			where: { id },
+			select: { kalenjin: true }
+		});
+
+		if (!existingSentence) {
+			return fail(404, { error: 'Story sentence not found.' });
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				await tx.storySentence.update({
+					where: { id },
+					data: {
+						speaker,
+						kalenjin,
+						english,
+						grammarNotes
+					}
+				});
+
+				if (existingSentence.kalenjin !== kalenjin) {
+					await syncStorySentenceTokens(tx, id, kalenjin);
+				}
+			});
+		} catch (updateError) {
+			return fail(400, {
+				error:
+					updateError instanceof Error ? updateError.message : 'Could not update story sentence.'
+			});
+		}
+
+		return { updateStorySentenceSuccess: true };
+	},
+	updateStorySentenceToken: async ({ request, params }) => {
+		const formData = await request.formData();
+		const storySentenceId = readText(formData, 'storySentenceId');
+		const tokenId = readText(formData, 'tokenId');
+		const wordId = readOptionalText(formData, 'wordId');
+		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+
+		if (!storySentenceId || !tokenId) {
+			return fail(400, { error: 'Story sentence and token are required.' });
+		}
+
+		const story = await prisma.lesson.findUnique({
+			where: { id: params.id },
+			select: { storyId: true }
+		});
+
+		if (!story?.storyId) {
+			return fail(404, { error: 'Story lesson not found.' });
+		}
+
+		await ensureStorySentence(story.storyId, storySentenceId);
+
+		const updatedToken = await prisma.storySentenceToken.update({
+			where: { id: tokenId },
+			data: {
+				wordId,
+				inContextTranslation
+			},
+			include: {
+				word: {
+					select: {
+						id: true,
+						kalenjin: true,
+						translations: true,
+						notes: true
+					}
+				}
+			}
+		});
+
+		return {
+			updateStorySentenceTokenSuccess: true,
+			tokenUpdate: {
+				tokenId,
+				wordId: updatedToken.wordId,
+				inContextTranslation: updatedToken.inContextTranslation,
+				word: updatedToken.word
+			}
+		};
+	},
+	createStorySentenceWord: async ({ request, params }) => {
+		const formData = await request.formData();
+		const storySentenceId = readText(formData, 'storySentenceId');
+		const tokenId = readText(formData, 'tokenId');
+		const wordId = readOptionalText(formData, 'wordId');
+		const kalenjin = readText(formData, 'kalenjin');
+		const translations = readText(formData, 'translations');
+		const notes = readOptionalText(formData, 'notes');
+		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+
+		if (!storySentenceId || !tokenId || !kalenjin || !translations) {
+			return fail(400, {
+				error: 'Sentence token, lemma, and translations are required.'
+			});
+		}
+
+		const story = await prisma.lesson.findUnique({
+			where: { id: params.id },
+			select: { storyId: true }
+		});
+
+		if (!story?.storyId) {
+			return fail(404, { error: 'Story lesson not found.' });
+		}
+
+		await ensureStorySentence(story.storyId, storySentenceId);
+
+		try {
+			const word = await prisma.$transaction(async (tx) => {
+				const word = wordId
+					? await tx.word.update({
+							where: { id: wordId },
+							data: {
+								kalenjin,
+								kalenjinNormalized: normalizeLemma(kalenjin),
+								translations,
+								notes
+							},
+							select: {
+								id: true,
+								kalenjin: true,
+								translations: true,
+								notes: true
+							}
+						})
+					: await tx.word.create({
+							data: {
+								kalenjin,
+								kalenjinNormalized: normalizeLemma(kalenjin),
+								translations,
+								notes
+							},
+							select: {
+								id: true,
+								kalenjin: true,
+								translations: true,
+								notes: true
+							}
+						});
+
+				await tx.storySentenceToken.update({
+					where: { id: tokenId },
+					data: {
+						wordId: word.id,
+						inContextTranslation
+					}
+				});
+
+				return word;
+			});
+
+			return {
+				createStorySentenceWordSuccess: true,
+				tokenUpdate: {
+					tokenId,
+					wordId: word.id,
+					inContextTranslation,
+					word
+				}
+			};
+		} catch (createError) {
+			return fail(400, {
+				error:
+					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
+			});
+		}
+	},
+	updateExampleSentenceToken: async ({ request }) => {
+		const formData = await request.formData();
+		const lessonWordId = readText(formData, 'lessonWordId');
+		const tokenId = readText(formData, 'tokenId');
+		const wordId = readOptionalText(formData, 'wordId');
+		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+
+		if (!lessonWordId || !tokenId) {
+			return fail(400, { error: 'Lesson word and token are required.' });
+		}
+
+		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+
+		const updatedToken = await prisma.$transaction(async (tx) => {
+			const updatedToken = await tx.exampleSentenceToken.update({
+				where: { id: tokenId },
+				data: {
+					wordId,
+					inContextTranslation
+				},
+				include: {
+					word: {
+						select: {
+							id: true,
+							kalenjin: true,
+							translations: true,
+							notes: true
+						}
+					}
+				}
+			});
+
+			if (wordId) {
+				await tx.wordSentence.upsert({
+					where: {
+						wordId_exampleSentenceId: {
+							wordId,
+							exampleSentenceId: sentenceId
+						}
+					},
+					update: {},
+					create: {
+						wordId,
+						exampleSentenceId: sentenceId
+					}
+				});
+			}
+
+			return updatedToken;
+		});
+
+		return {
+			updateExampleSentenceTokenSuccess: true,
+			tokenUpdate: {
+				tokenId,
+				wordId: updatedToken.wordId,
+				inContextTranslation: updatedToken.inContextTranslation,
+				word: updatedToken.word
+			}
+		};
+	},
+	createExampleSentenceWord: async ({ request }) => {
+		const formData = await request.formData();
+		const lessonWordId = readText(formData, 'lessonWordId');
+		const tokenId = readText(formData, 'tokenId');
+		const wordId = readOptionalText(formData, 'wordId');
+		const kalenjin = readText(formData, 'kalenjin');
+		const translations = readText(formData, 'translations');
+		const notes = readOptionalText(formData, 'notes');
+		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+
+		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
+			return fail(400, {
+				error: 'Sentence token, lemma, and translations are required.'
+			});
+		}
+
+		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+
+		try {
+			const word = await prisma.$transaction(async (tx) => {
+				const word = wordId
+					? await tx.word.update({
+							where: { id: wordId },
+							data: {
+								kalenjin,
+								kalenjinNormalized: normalizeLemma(kalenjin),
+								translations,
+								notes
+							},
+							select: {
+								id: true,
+								kalenjin: true,
+								translations: true,
+								notes: true
+							}
+						})
+					: await tx.word.create({
+							data: {
+								kalenjin,
+								kalenjinNormalized: normalizeLemma(kalenjin),
+								translations,
+								notes
+							},
+							select: {
+								id: true,
+								kalenjin: true,
+								translations: true,
+								notes: true
+							}
+						});
+
+				await tx.exampleSentenceToken.update({
+					where: { id: tokenId },
+					data: {
+						wordId: word.id,
+						inContextTranslation
+					}
+				});
+
+				await tx.wordSentence.upsert({
+					where: {
+						wordId_exampleSentenceId: {
+							wordId: word.id,
+							exampleSentenceId: sentenceId
+						}
+					},
+					update: {},
+					create: {
+						wordId: word.id,
+						exampleSentenceId: sentenceId
+					}
+				});
+
+				return word;
+			});
+
+			return {
+				createExampleSentenceWordSuccess: true,
+				tokenUpdate: {
+					tokenId,
+					wordId: word.id,
+					inContextTranslation,
+					word
+				}
+			};
+		} catch (createError) {
+			return fail(400, {
+				error:
+					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
+			});
+		}
 	}
 };

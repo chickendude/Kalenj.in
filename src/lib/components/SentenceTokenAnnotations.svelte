@@ -297,7 +297,7 @@
 			window.setTimeout(() => {
 				updateForms[tokenId]?.requestSubmit();
 				autoSaveTimers.delete(tokenId);
-			}, 1000)
+			}, 500)
 		);
 	}
 
@@ -337,7 +337,7 @@
 						if (saveState[tokenId] === 'saved') {
 							saveState[tokenId] = 'idle';
 						}
-					}, 1500);
+					}, 600);
 					return;
 				}
 
@@ -368,7 +368,7 @@
 						if (createState[tokenId] === 'saved') {
 							createState[tokenId] = 'idle';
 						}
-					}, 1500);
+					}, 600);
 					return;
 				}
 
@@ -448,6 +448,10 @@
 
 							<input
 								bind:this={meaningInputs[token.id]}
+								class="meaning-input"
+								class:meaning-input--empty={!drafts[token.id]?.inContextTranslation?.trim()}
+								class:meaning-input--saving={saveState[token.id] === 'saving'}
+								class:meaning-input--saved={saveState[token.id] === 'saved'}
 								name="inContextTranslation"
 								value={drafts[token.id]?.inContextTranslation ?? ''}
 								size={Math.max(2, (drafts[token.id]?.inContextTranslation ?? '').length || 0)}
@@ -457,11 +461,7 @@
 								onkeydown={(event) => handleMeaningKeydown(event, token)}
 							/>
 
-							{#if saveState[token.id] === 'saving'}
-								<small class="status-text">Saving…</small>
-							{:else if saveState[token.id] === 'saved'}
-								<small class="status-text success-text">Saved.</small>
-							{:else if saveState[token.id] === 'error'}
+							{#if saveState[token.id] === 'error'}
 								<small class="status-text error-text">Could not save.</small>
 							{/if}
 						</form>
@@ -717,13 +717,32 @@
 	}
 
 	.translation-form input {
-		background: #fffdf8;
-		border: 1px solid #eadfca;
 		font-size: 0.8rem;
 		min-width: 25px;
 		padding: 0.2rem 0.3rem;
 		text-align: center;
 		width: auto;
+	}
+
+	.meaning-input {
+		background: transparent;
+		border: 0;
+		transition: background-color 340ms ease;
+	}
+
+	.meaning-input--empty {
+		background: #e5e7eb;
+		border-radius: 4px;
+	}
+
+	.meaning-input--saving {
+		background: #fef3c7;
+		border-radius: 4px;
+	}
+
+	.meaning-input--saved {
+		background: #dcfce7;
+		border-radius: 4px;
 	}
 
 	.modal-backdrop {

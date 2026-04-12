@@ -87,6 +87,7 @@
 	let localTokens = $state<SentenceToken[]>([]);
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
+	let focusedTokenId = $state<string | null>(null);
 	const autoSaveTimers = new Map<string, number>();
 
 	const groups = $derived(
@@ -135,17 +136,20 @@
 
 	$effect(() => {
 		if (!openTokenId) {
+			focusedTokenId = null;
 			searchResults = [];
 			searchLoading = false;
 			searchError = null;
 			return;
 		}
 
-		const focusTimeout = window.setTimeout(() => {
-			searchInput?.focus();
-			searchInput?.select();
-		}, 0);
-
+		const currentQuery = searchQuery.trim();
+		if (!currentQuery) {
+			searchResults = [];
+			searchLoading = false;
+			searchError = null;
+			return;
+		}
 		const controller = new AbortController();
 		const timeout = window.setTimeout(async () => {
 			searchLoading = true;
@@ -153,7 +157,7 @@
 
 			try {
 				const response = await fetch(
-					`${searchEndpoint}?q=${encodeURIComponent(searchQuery.trim())}`,
+					`${searchEndpoint}?q=${encodeURIComponent(currentQuery)}`,
 					{ signal: controller.signal }
 				);
 
@@ -179,9 +183,24 @@
 		}, 150);
 
 		return () => {
-			window.clearTimeout(focusTimeout);
 			controller.abort();
 			window.clearTimeout(timeout);
+		};
+	});
+
+	$effect(() => {
+		if (!openTokenId || focusedTokenId === openTokenId) {
+			return;
+		}
+
+		const focusTimeout = window.setTimeout(() => {
+			searchInput?.focus();
+			searchInput?.select();
+			focusedTokenId = openTokenId;
+		}, 0);
+
+		return () => {
+			window.clearTimeout(focusTimeout);
 		};
 	});
 
@@ -509,12 +528,10 @@
 				</label>
 
 				<div class="results-list">
-					{#if searchLoading}
-						<p class="status-text">Searching…</p>
-					{:else if searchError}
+					{#if searchError}
 						<p class="status-text error-text">{searchError}</p>
-					{:else if searchResults.length === 0}
-						<p class="status-text">No matches yet.</p>
+					{:else if !searchLoading && searchResults.length === 0}
+						<p class="status-text">No search results yet.</p>
 					{:else}
 						{#each searchResults as result}
 							<form
@@ -534,9 +551,10 @@
 									type="submit"
 									class="result-button"
 									class:selected-result={activeToken.wordId === result.id}
+									title={`${result.kalenjin} — ${result.translations}`}
 								>
-									<span>{result.kalenjin}</span>
-									<small>{result.translations}</small>
+									<span class="result-lemma">{result.kalenjin}</span>
+									<small class="result-translations">{result.translations}</small>
 								</button>
 							</form>
 						{/each}
@@ -774,10 +792,16 @@
 	}
 
 	.results-list {
-		display: grid;
+		display: flex;
 		gap: 0.35rem;
 		max-height: 240px;
-		overflow-y: auto;
+		overflow-x: auto;
+		overflow-y: hidden;
+	}
+
+	.results-list form {
+		flex: 0 0 auto;
+		margin: 0;
 	}
 
 	.result-button {
@@ -786,13 +810,28 @@
 		border: 1px solid #e2e2e2;
 		display: grid;
 		gap: 0.15rem;
+		grid-template-columns: 1fr;
+		min-width: 120px;
+		max-width: 145px;
 		padding: 0.5rem 0.6rem;
 		text-align: left;
 		width: 100%;
 	}
 
-	.result-button small {
+	.result-lemma {
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+
+	.result-translations {
 		color: #666;
+		display: block;
+		line-height: 1.2;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.selected-result {
@@ -803,8 +842,8 @@
 	.create-box {
 		border-top: 1px solid #eee;
 		display: grid;
-		gap: 0.5rem;
-		padding-top: 0.75rem;
+		gap: 0.35rem;
+		padding-top: 0.5rem;
 	}
 
 	.editor-header,

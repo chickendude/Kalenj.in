@@ -521,7 +521,7 @@
 					<input
 						bind:this={searchInput}
 						value={searchQuery}
-						placeholder="Search lemma or translation"
+						placeholder="Search lemma"
 						oninput={(event) =>
 							handleSearchInput(activeToken.id, (event.currentTarget as HTMLInputElement).value)}
 					/>

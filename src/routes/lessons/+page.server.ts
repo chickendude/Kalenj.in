@@ -14,35 +14,10 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
-import { parseStoryImportText } from '$lib/server/story-import';
+import { validateStoryImportText } from '$lib/story-import';
+import { syncStorySentences } from '$lib/server/story-sync';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
-
-async function syncStorySentences(
-	tx: Prisma.TransactionClient,
-	storyId: string,
-	storyText: string | null
-): Promise<void> {
-	const sentences = storyText ? parseStoryImportText(storyText) : [];
-
-	await tx.storySentence.deleteMany({
-		where: { storyId }
-	});
-
-	if (sentences.length === 0) {
-		return;
-	}
-
-	await tx.storySentence.createMany({
-		data: sentences.map((sentence) => ({
-			storyId,
-			sentenceOrder: sentence.sentenceOrder,
-			speaker: sentence.speaker,
-			kalenjin: sentence.kalenjin,
-			english: sentence.english
-		}))
-	});
-}
 
 async function shiftLessonsForInsert(
 	tx: Prisma.TransactionClient,
@@ -81,7 +56,8 @@ async function createLessonRecord(
 		lessonOrder,
 		type,
 		vocabularyType,
-		grammarMarkdown
+		grammarMarkdown,
+		storyImportText
 	}: {
 		title: string;
 		level: (typeof CEFR_LEVELS)[number];
@@ -89,6 +65,7 @@ async function createLessonRecord(
 		type: NonNullable<ReturnType<typeof parseLessonTypeValue>>;
 		vocabularyType: ReturnType<typeof parseVocabularyLessonTypeValue>;
 		grammarMarkdown: string | null;
+		storyImportText: string | null;
 	}
 ) {
 	const story =
@@ -100,8 +77,8 @@ async function createLessonRecord(
 				})
 			: null;
 
-	if (story) {
-		await syncStorySentences(tx, story.id, grammarMarkdown);
+	if (story && storyImportText) {
+		await syncStorySentences(tx, story.id, storyImportText);
 	}
 
 	return tx.lesson.create({
@@ -111,7 +88,7 @@ async function createLessonRecord(
 			lessonOrder,
 			type,
 			vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
-			grammarMarkdown,
+			grammarMarkdown: type === 'VOCABULARY' ? grammarMarkdown : null,
 			storyId: story?.id ?? null
 		}
 	});
@@ -160,6 +137,7 @@ export const actions: Actions = {
 		const type = parseLessonTypeValue(readText(formData, 'type'));
 		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
 		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
+		const storyImportText = readOptionalText(formData, 'storyImportText');
 
 		if (!title || !level || !type) {
 			return fail(400, {
@@ -187,6 +165,23 @@ export const actions: Actions = {
 			});
 		}
 
+		if (type === 'STORY' && storyImportText) {
+			const importError = validateStoryImportText(storyImportText);
+
+			if (importError) {
+				return fail(400, {
+					error: importError,
+					values: {
+						title,
+						level,
+						type,
+						vocabularyType: readText(formData, 'vocabularyType'),
+						grammarMarkdown: grammarMarkdown ?? ''
+					}
+				});
+			}
+		}
+
 		const nextLessonOrder = getNextLessonOrder(
 			(
 				await prisma.lesson.findMany({
@@ -206,7 +201,8 @@ export const actions: Actions = {
 					lessonOrder: nextLessonOrder,
 					type,
 					vocabularyType,
-					grammarMarkdown
+					grammarMarkdown,
+					storyImportText
 				});
 			});
 
@@ -234,6 +230,7 @@ export const actions: Actions = {
 		const type = parseLessonTypeValue(readText(formData, 'type'));
 		const vocabularyType = parseVocabularyLessonTypeValue(readText(formData, 'vocabularyType'));
 		const grammarMarkdown = readOptionalText(formData, 'grammarMarkdown');
+		const storyImportText = readOptionalText(formData, 'storyImportText');
 
 		if (
 			!title ||
@@ -268,6 +265,24 @@ export const actions: Actions = {
 			});
 		}
 
+		if (type === 'STORY' && storyImportText) {
+			const importError = validateStoryImportText(storyImportText);
+
+			if (importError) {
+				return fail(400, {
+					error: importError,
+					values: {
+						title,
+						anchorLessonId,
+						position: positionValue,
+						type,
+						vocabularyType: readText(formData, 'vocabularyType'),
+						grammarMarkdown: grammarMarkdown ?? ''
+					}
+				});
+			}
+		}
+
 		let lessonId: string;
 
 		try {
@@ -291,7 +306,8 @@ export const actions: Actions = {
 					lessonOrder,
 					type,
 					vocabularyType,
-					grammarMarkdown
+					grammarMarkdown,
+					storyImportText
 				});
 			});
 

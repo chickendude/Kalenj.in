@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { formatLessonType, formatVocabularyLessonType } from '$lib/course';
+	import { validateStoryImportText } from '$lib/story-import';
 
 	let {
 		title = $bindable(''),
 		type = $bindable<'VOCABULARY' | 'STORY'>('VOCABULARY'),
 		vocabularyType = $bindable<'' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION'>('VOCAB'),
 		grammarMarkdown = $bindable(''),
+		storyImportText = $bindable(''),
+		showStoryImport = true,
 		lessonTypes,
 		vocabularyTypes,
 		titlePlaceholder = 'Lesson title'
@@ -14,20 +17,16 @@
 		type?: 'VOCABULARY' | 'STORY';
 		vocabularyType?: '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
 		grammarMarkdown?: string;
+		storyImportText?: string;
+		showStoryImport?: boolean;
 		lessonTypes: readonly ('VOCABULARY' | 'STORY')[];
 		vocabularyTypes: readonly ('GRAMMAR' | 'VOCAB' | 'EXPRESSION')[];
 		titlePlaceholder?: string;
 	} = $props();
 
-	function contentFieldLabel(currentType: 'VOCABULARY' | 'STORY') {
-		return currentType === 'STORY' ? 'Story text' : 'Grammar markdown';
-	}
-
-	function contentFieldHint(currentType: 'VOCABULARY' | 'STORY') {
-		return currentType === 'STORY'
-			? 'Use one line per sentence: Speaker: <tab> Kalenjin <tab> English.'
-			: null;
-	}
+	const storyImportError = $derived(
+		storyImportText ? validateStoryImportText(storyImportText) : null
+	);
 </script>
 
 <label>
@@ -68,18 +67,35 @@
 	{/if}
 </div>
 
-<label>
-	{contentFieldLabel(type)}
-	<textarea
-		name="grammarMarkdown"
-		rows={type === 'STORY' ? 8 : 5}
-		bind:value={grammarMarkdown}
-		placeholder={contentFieldLabel(type)}
-	></textarea>
-</label>
-
-{#if contentFieldHint(type)}
-	<p class="field-caption">{contentFieldHint(type)}</p>
+{#if type === 'VOCABULARY'}
+	<label>
+		Grammar markdown
+		<textarea
+			name="grammarMarkdown"
+			rows="5"
+			bind:value={grammarMarkdown}
+			placeholder="Grammar markdown"
+		></textarea>
+	</label>
+{:else if showStoryImport}
+	<label>
+		Story text
+		<textarea
+			name="storyImportText"
+			rows="8"
+			bind:value={storyImportText}
+			placeholder="Paste story text here"
+		></textarea>
+	</label>
+	<div class="story-import-feedback">
+		{#if storyImportError}
+			<p class="story-import-error">{storyImportError}</p>
+		{:else if storyImportText}
+			<p class="story-import-hint">Format looks good.</p>
+		{:else}
+			<p class="story-import-hint">One line per sentence. Separate parts with tab or " / ": Kalenjin / English, or Speaker: / Kalenjin / English.</p>
+		{/if}
+	</div>
 {/if}
 
 <style>
@@ -151,6 +167,21 @@
 	.vocabulary-type-card {
 		justify-content: center;
 		min-width: 7.25rem;
+	}
+
+	.story-import-feedback {
+		min-height: 1.6rem;
+	}
+
+	.story-import-error {
+		color: #8c1c13;
+		margin: 0;
+		white-space: pre-line;
+	}
+
+	.story-import-hint {
+		color: #555;
+		margin: 0;
 	}
 
 	.field-caption {

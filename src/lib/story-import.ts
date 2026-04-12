@@ -21,11 +21,30 @@ function parseSpeakerPrefix(value: string): { speaker: string | null; remainder:
 	};
 }
 
-function parseStoryLine(line: string, sentenceOrder: number): ParsedStorySentence {
-	const parts = line
+function splitStoryLine(line: string): string[] {
+	const tabParts = line
 		.split('\t')
 		.map((part) => part.trim())
 		.filter((part) => part.length > 0);
+
+	if (tabParts.length >= 2) {
+		return tabParts;
+	}
+
+	const slashParts = line
+		.split(' / ')
+		.map((part) => part.trim())
+		.filter((part) => part.length > 0);
+
+	if (slashParts.length >= 2) {
+		return slashParts;
+	}
+
+	return tabParts;
+}
+
+function parseStoryLine(line: string, sentenceOrder: number): ParsedStorySentence {
+	const parts = splitStoryLine(line);
 
 	if (parts.length >= 3) {
 		const { speaker } = parseSpeakerPrefix(parts[0]);
@@ -62,7 +81,7 @@ function parseStoryLine(line: string, sentenceOrder: number): ParsedStorySentenc
 	}
 
 	throw new Error(
-		`Story line ${sentenceOrder} must use "Speaker: <tab> Kalenjin <tab> English" or "Kalenjin <tab> English".`
+		`Story line ${sentenceOrder}: use tab or " / " to separate parts (Kalenjin / English, or Speaker: / Kalenjin / English).`
 	);
 }
 
@@ -72,4 +91,27 @@ export function parseStoryImportText(value: string): ParsedStorySentence[] {
 		.map((line) => line.trim())
 		.filter((line) => line.length > 0)
 		.map((line, index) => parseStoryLine(line, index + 1));
+}
+
+export function validateStoryImportText(value: string): string | null {
+	const lines = value
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0);
+
+	if (lines.length === 0) {
+		return null;
+	}
+
+	const errors: string[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		try {
+			parseStoryLine(lines[i], i + 1);
+		} catch (error) {
+			errors.push(error instanceof Error ? error.message : `Line ${i + 1} is invalid.`);
+		}
+	}
+
+	return errors.length > 0 ? errors.join('\n') : null;
 }

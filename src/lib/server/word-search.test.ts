@@ -27,17 +27,17 @@ describe('sortWordSearchResults', () => {
 		expect(sortWordSearchResults(WORDS, 'mi').map((word) => word.id)).toEqual([
 			'4',
 			'2',
-			'3',
-			'1'
+			'1',
+			'3'
 		]);
 	});
 
-	it('prioritizes exact translation entries after lemma matches', () => {
+	it('only ranks based on kalenjin lemma matches', () => {
 		expect(sortWordSearchResults(WORDS, 'sour').map((word) => word.id)).toEqual([
-			'4',
-			'3',
 			'1',
-			'2'
+			'4',
+			'2',
+			'3'
 		]);
 	});
 });

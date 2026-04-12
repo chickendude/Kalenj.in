@@ -50,8 +50,7 @@
 		lessonTitle = data.lesson.title;
 		lessonType = data.lesson.type;
 		lessonVocabularyType = data.lesson.vocabularyType ?? 'VOCAB';
-		lessonGrammarMarkdown =
-			data.lesson.type === 'STORY' ? data.storyImportText : (data.lesson.grammarMarkdown ?? '');
+		lessonGrammarMarkdown = data.lesson.grammarMarkdown ?? '';
 	});
 
 	function isTargetSelected(
@@ -154,6 +153,7 @@
 					bind:type={lessonType}
 					bind:vocabularyType={lessonVocabularyType}
 					bind:grammarMarkdown={lessonGrammarMarkdown}
+					showStoryImport={false}
 					lessonTypes={data.lessonTypes}
 					vocabularyTypes={data.vocabularyTypes}
 					titlePlaceholder="Lesson title"

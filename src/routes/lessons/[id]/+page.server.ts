@@ -9,41 +9,10 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
-import { parseStoryImportText } from '$lib/server/story-import';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
-
-async function syncStorySentences(
-	tx: Prisma.TransactionClient,
-	storyId: string,
-	storyText: string | null
-): Promise<void> {
-	const sentences = storyText ? parseStoryImportText(storyText) : [];
-
-	await tx.storySentence.deleteMany({
-		where: { storyId }
-	});
-
-	if (sentences.length === 0) {
-		return;
-	}
-
-	for (const sentence of sentences) {
-		const createdSentence = await tx.storySentence.create({
-			data: {
-				storyId,
-				sentenceOrder: sentence.sentenceOrder,
-				speaker: sentence.speaker,
-				kalenjin: sentence.kalenjin,
-				english: sentence.english
-			}
-		});
-
-		await syncStorySentenceTokens(tx, createdSentence.id, sentence.kalenjin);
-	}
-}
 
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
@@ -288,15 +257,7 @@ export const load: PageServerLoad = async ({ params }) => {
 		words,
 		cefrTargets,
 		lessonTypes: LESSON_TYPES,
-		vocabularyTypes: VOCABULARY_LESSON_TYPES,
-		storyImportText:
-			lesson.story?.sentences
-				.map((sentence) =>
-					[sentence.speaker ? `${sentence.speaker}:` : null, sentence.kalenjin, sentence.english]
-						.filter((part) => part && part.length > 0)
-						.join('\t')
-				)
-				.join('\n') ?? ''
+		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};
 };
 
@@ -337,13 +298,11 @@ export const actions: Actions = {
 							where: { id: existingLesson.storyId },
 							data: { title }
 						});
-						await syncStorySentences(tx, existingLesson.storyId, grammarMarkdown);
 					} else {
 						const createdStory = await tx.story.create({
 							data: { title }
 						});
 						nextStoryId = createdStory.id;
-						await syncStorySentences(tx, createdStory.id, grammarMarkdown);
 					}
 				}
 
@@ -355,7 +314,7 @@ export const actions: Actions = {
 						lessonOrder,
 						type,
 						vocabularyType: type === 'VOCABULARY' ? vocabularyType : null,
-						grammarMarkdown,
+						grammarMarkdown: type === 'VOCABULARY' ? grammarMarkdown : null,
 						storyId: nextStoryId
 					}
 				});

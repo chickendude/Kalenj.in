@@ -16,7 +16,6 @@ function scoreWordMatch(word: SearchableWord, query: string): number {
 	}
 
 	const lemma = word.kalenjin.toLowerCase();
-	const translations = word.translations.toLowerCase();
 
 	if (lemma === normalizedQuery) {
 		return 0;
@@ -26,23 +25,11 @@ function scoreWordMatch(word: SearchableWord, query: string): number {
 		return 1;
 	}
 
-	if (translations.split(',').some((entry) => entry.trim() === normalizedQuery)) {
+	if (lemma.includes(normalizedQuery)) {
 		return 2;
 	}
 
-	if (translations.startsWith(normalizedQuery)) {
-		return 3;
-	}
-
-	if (lemma.includes(normalizedQuery)) {
-		return 4;
-	}
-
-	if (translations.includes(normalizedQuery)) {
-		return 5;
-	}
-
-	return 6;
+	return 3;
 }
 
 export function sortWordSearchResults<T extends SearchableWord>(words: T[], query: string): T[] {

@@ -8,12 +8,7 @@ export const GET: RequestHandler = async ({ url }) => {
 
 	const words = await prisma.word.findMany({
 		where: query
-			? {
-					OR: [
-						{ kalenjin: { contains: query, mode: 'insensitive' } },
-						{ translations: { contains: query, mode: 'insensitive' } }
-					]
-				}
+			? { kalenjin: { contains: query, mode: 'insensitive' } }
 			: undefined,
 		select: {
 			id: true,

@@ -18,12 +18,14 @@
 	let createType = $state<'VOCABULARY' | 'STORY'>('VOCABULARY');
 	let createVocabularyType = $state<'' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION'>('VOCAB');
 	let createGrammarMarkdown = $state('');
+	let createStoryImportText = $state('');
 	let adjacentLessonAnchorId = $state<string | null>(null);
 	let adjacentLessonPosition = $state<'before' | 'after'>('after');
 	let adjacentTitle = $state('');
 	let adjacentType = $state<'VOCABULARY' | 'STORY'>('VOCABULARY');
 	let adjacentVocabularyType = $state<'' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION'>('VOCAB');
 	let adjacentGrammarMarkdown = $state('');
+	let adjacentStoryImportText = $state('');
 	const formValues = $derived((form?.values ?? {}) as LessonFormValues);
 
 	$effect(() => {
@@ -41,6 +43,7 @@
 		createType = normalizeCreateType(formValues.type);
 		createVocabularyType = normalizeVocabularyType(formValues.vocabularyType) || 'VOCAB';
 		createGrammarMarkdown = formValues.grammarMarkdown ?? '';
+		createStoryImportText = '';
 	});
 
 	$effect(() => {
@@ -51,6 +54,7 @@
 			adjacentType = normalizeCreateType(formValues.type);
 			adjacentVocabularyType = normalizeVocabularyType(formValues.vocabularyType) || 'VOCAB';
 			adjacentGrammarMarkdown = formValues.grammarMarkdown ?? '';
+			adjacentStoryImportText = '';
 		}
 	});
 
@@ -81,6 +85,7 @@
 		adjacentType = 'VOCABULARY';
 		adjacentVocabularyType = 'VOCAB';
 		adjacentGrammarMarkdown = '';
+		adjacentStoryImportText = '';
 		showAddLessonForm = false;
 	}
 
@@ -136,6 +141,7 @@
 					bind:type={createType}
 					bind:vocabularyType={createVocabularyType}
 					bind:grammarMarkdown={createGrammarMarkdown}
+					bind:storyImportText={createStoryImportText}
 					lessonTypes={data.lessonTypes}
 					vocabularyTypes={data.vocabularyTypes}
 					titlePlaceholder="Lesson title"
@@ -196,6 +202,7 @@
 									bind:type={adjacentType}
 									bind:vocabularyType={adjacentVocabularyType}
 									bind:grammarMarkdown={adjacentGrammarMarkdown}
+									bind:storyImportText={adjacentStoryImportText}
 									lessonTypes={data.lessonTypes}
 									vocabularyTypes={data.vocabularyTypes}
 									titlePlaceholder={`Lesson ${adjacentLessonPosition === 'before' ? 'before' : 'after'} ${lesson.title}`}

@@ -11,8 +11,77 @@ import {
 import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
+
+function buildWordSelect() {
+	return {
+		id: true,
+		kalenjin: true,
+		translations: true,
+		notes: true,
+		spellings: {
+			orderBy: [{ spelling: 'asc' as const }],
+			select: {
+				id: true,
+				spelling: true,
+				spellingNormalized: true
+			}
+		}
+	};
+}
+
+async function createOrUpdateLinkedWord(
+	tx: Prisma.TransactionClient,
+	input: {
+		wordId?: string | null;
+		kalenjin: string;
+		translations: string;
+		notes?: string | null;
+		alternativeSpellings?: string | null;
+	}
+) {
+	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
+
+	if (input.wordId) {
+		return tx.word.update({
+			where: { id: input.wordId },
+			data: {
+				kalenjin: input.kalenjin,
+				kalenjinNormalized: normalizeLemma(input.kalenjin),
+				translations: input.translations,
+				notes: input.notes ?? null,
+				spellings: {
+					deleteMany: {},
+					createMany: spellings.length
+						? {
+								data: spellings
+							}
+						: undefined
+				}
+			},
+			select: buildWordSelect()
+		});
+	}
+
+	return tx.word.create({
+		data: {
+			kalenjin: input.kalenjin,
+			kalenjinNormalized: normalizeLemma(input.kalenjin),
+			translations: input.translations,
+			notes: input.notes ?? null,
+			spellings: spellings.length
+				? {
+						createMany: {
+							data: spellings
+						}
+					}
+				: undefined
+		},
+		select: buildWordSelect()
+	});
+}
 
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
@@ -165,7 +234,15 @@ async function getLessonDetail(lessonId: string) {
 						include: {
 							tokens: {
 								orderBy: { tokenOrder: 'asc' },
-								include: { word: true }
+								include: {
+									word: {
+										include: {
+											spellings: {
+												orderBy: [{ spelling: 'asc' }]
+											}
+										}
+									}
+								}
 							}
 						}
 					}
@@ -180,7 +257,15 @@ async function getLessonDetail(lessonId: string) {
 								include: {
 									tokens: {
 										orderBy: { tokenOrder: 'asc' },
-										include: { word: true }
+										include: {
+											word: {
+												include: {
+													spellings: {
+														orderBy: [{ spelling: 'asc' }]
+													}
+												}
+											}
+										}
 									}
 								}
 							},
@@ -646,12 +731,7 @@ export const actions: Actions = {
 			},
 			include: {
 				word: {
-					select: {
-						id: true,
-						kalenjin: true,
-						translations: true,
-						notes: true
-					}
+					select: buildWordSelect()
 				}
 			}
 		});
@@ -674,6 +754,7 @@ export const actions: Actions = {
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
 		const notes = readOptionalText(formData, 'notes');
+		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 
 		if (!storySentenceId || !tokenId || !kalenjin || !translations) {
@@ -695,36 +776,13 @@ export const actions: Actions = {
 
 		try {
 			const word = await prisma.$transaction(async (tx) => {
-				const word = wordId
-					? await tx.word.update({
-							where: { id: wordId },
-							data: {
-								kalenjin,
-								kalenjinNormalized: normalizeLemma(kalenjin),
-								translations,
-								notes
-							},
-							select: {
-								id: true,
-								kalenjin: true,
-								translations: true,
-								notes: true
-							}
-						})
-					: await tx.word.create({
-							data: {
-								kalenjin,
-								kalenjinNormalized: normalizeLemma(kalenjin),
-								translations,
-								notes
-							},
-							select: {
-								id: true,
-								kalenjin: true,
-								translations: true,
-								notes: true
-							}
-						});
+				const word = await createOrUpdateLinkedWord(tx, {
+					wordId,
+					kalenjin,
+					translations,
+					notes,
+					alternativeSpellings
+				});
 
 				await tx.storySentenceToken.update({
 					where: { id: tokenId },
@@ -775,12 +833,7 @@ export const actions: Actions = {
 				},
 				include: {
 					word: {
-						select: {
-							id: true,
-							kalenjin: true,
-							translations: true,
-							notes: true
-						}
+						select: buildWordSelect()
 					}
 				}
 			});
@@ -822,6 +875,7 @@ export const actions: Actions = {
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
 		const notes = readOptionalText(formData, 'notes');
+		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 
 		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
@@ -834,36 +888,13 @@ export const actions: Actions = {
 
 		try {
 			const word = await prisma.$transaction(async (tx) => {
-				const word = wordId
-					? await tx.word.update({
-							where: { id: wordId },
-							data: {
-								kalenjin,
-								kalenjinNormalized: normalizeLemma(kalenjin),
-								translations,
-								notes
-							},
-							select: {
-								id: true,
-								kalenjin: true,
-								translations: true,
-								notes: true
-							}
-						})
-					: await tx.word.create({
-							data: {
-								kalenjin,
-								kalenjinNormalized: normalizeLemma(kalenjin),
-								translations,
-								notes
-							},
-							select: {
-								id: true,
-								kalenjin: true,
-								translations: true,
-								notes: true
-							}
-						});
+				const word = await createOrUpdateLinkedWord(tx, {
+					wordId,
+					kalenjin,
+					translations,
+					notes,
+					alternativeSpellings
+				});
 
 				await tx.exampleSentenceToken.update({
 					where: { id: tokenId },

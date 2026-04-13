@@ -65,11 +65,25 @@ model Word {
   tokenLinks   ExampleSentenceToken[]
   storyTokenLinks StorySentenceToken[]
   lessonWords  LessonWord[]
+  spellings    WordSpelling[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
   @@index([translations])
+}
+
+model WordSpelling {
+  id                 String   @id @default(cuid())
+  wordId             String
+  spelling           String
+  spellingNormalized String
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  word               Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@unique([wordId, spellingNormalized])
+  @@index([spellingNormalized])
 }
 
 model ExampleSentence {

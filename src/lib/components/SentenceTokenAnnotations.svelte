@@ -20,6 +20,11 @@
 			kalenjin: string;
 			translations?: string | null;
 			notes?: string | null;
+			spellings?: Array<{
+				id?: string;
+				spelling: string;
+				spellingNormalized?: string;
+			}>;
 		} | null;
 	};
 
@@ -36,6 +41,7 @@
 		createLemma: string;
 		createTranslations: string;
 		createNotes: string;
+		createAlternativeSpellings: string;
 	};
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
@@ -49,6 +55,11 @@
 			kalenjin: string;
 			translations?: string | null;
 			notes?: string | null;
+			spellings?: Array<{
+				id?: string;
+				spelling: string;
+				spellingNormalized?: string;
+			}>;
 		} | null;
 	};
 
@@ -103,6 +114,14 @@
 		return value.replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 	}
 
+	function serializeSpellings(
+		spellings: Array<{
+			spelling: string;
+		}> | null | undefined
+	): string {
+		return spellings?.map((spelling) => spelling.spelling).join(', ') ?? '';
+	}
+
 	$effect(() => {
 		const incomingSignature = JSON.stringify(
 			tokens.map((token) => ({
@@ -129,7 +148,8 @@
 				selectedWordId: token.word?.id ?? '',
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
 				createTranslations: token.word?.translations ?? '',
-				createNotes: token.word?.notes ?? ''
+				createNotes: token.word?.notes ?? '',
+				createAlternativeSpellings: serializeSpellings(token.word?.spellings)
 			};
 		}
 	});
@@ -281,7 +301,8 @@
 			selectedWordId: '',
 			createLemma: normalizeSearchQuery(token.surfaceForm),
 			createTranslations: '',
-			createNotes: ''
+			createNotes: '',
+			createAlternativeSpellings: ''
 		};
 	}
 
@@ -420,7 +441,11 @@
 				),
 			createTranslations:
 				tokenUpdate.word?.translations ?? drafts[tokenUpdate.tokenId]?.createTranslations ?? '',
-			createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? ''
+			createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? '',
+			createAlternativeSpellings:
+				serializeSpellings(tokenUpdate.word?.spellings) ??
+				drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ??
+				''
 		};
 	}
 </script>
@@ -612,16 +637,33 @@
 							value={drafts[activeToken.id]?.inContextTranslation ?? ''}
 						/>
 
-						<label>
-							Lemma
-							<input
-								name="kalenjin"
-								required
-								value={drafts[activeToken.id]?.createLemma ?? activeToken.surfaceForm}
-								oninput={(event) =>
-									updateDraft(activeToken.id, 'createLemma', (event.currentTarget as HTMLInputElement).value)}
-							/>
-						</label>
+						<div class="lemma-row">
+							<label>
+								Lemma
+								<input
+									name="kalenjin"
+									required
+									value={drafts[activeToken.id]?.createLemma ?? activeToken.surfaceForm}
+									oninput={(event) =>
+										updateDraft(activeToken.id, 'createLemma', (event.currentTarget as HTMLInputElement).value)}
+								/>
+							</label>
+
+							<label>
+								Alternative spellings
+								<input
+									name="alternativeSpellings"
+									placeholder="alt1, alt2"
+									value={drafts[activeToken.id]?.createAlternativeSpellings ?? ''}
+									oninput={(event) =>
+										updateDraft(
+											activeToken.id,
+											'createAlternativeSpellings',
+											(event.currentTarget as HTMLInputElement).value
+										)}
+								/>
+							</label>
+						</div>
 
 						<label>
 							Translations
@@ -858,6 +900,12 @@
 	.create-form {
 		display: grid;
 		gap: 0.5rem;
+	}
+
+	.lemma-row {
+		display: grid;
+		gap: 0.5rem;
+		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 	}
 
 	.status-text {

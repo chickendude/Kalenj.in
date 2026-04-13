@@ -4,6 +4,9 @@
 
 	let { data, form } = $props();
 	const values = $derived(form?.values ?? data.word);
+	const alternativeSpellingsValue = $derived.by(() =>
+		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
+	);
 </script>
 
 <section>
@@ -30,6 +33,15 @@
 				value={values.translations ?? ''}
 				placeholder="comma-separated translations"
 			/>
+		</label>
+
+		<label>
+			Alternative spellings
+			<textarea
+				name="alternativeSpellings"
+				rows="3"
+				placeholder="One spelling per line"
+			>{alternativeSpellingsValue}</textarea>
 		</label>
 
 		<label>

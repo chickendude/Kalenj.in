@@ -2,42 +2,39 @@ import { describe, expect, it } from 'vitest';
 import { normalizeWordSearchQuery, sortWordSearchResults } from './word-search';
 
 const WORDS = [
-	{ id: '1', kalenjin: 'boiboenjin', translations: 'enjoy' },
-	{ id: '2', kalenjin: 'missing', translations: 'greet, good evening' },
-	{ id: '3', kalenjin: 'mursik', translations: 'sour milk' },
-	{ id: '4', kalenjin: 'mindilil', translations: 'sour' }
+	{
+		id: '1',
+		kalenjin: 'boiboenjin',
+		kalenjinNormalized: 'boiboenjin',
+		translations: 'enjoy',
+		partOfSpeech: null,
+		notes: null,
+		pluralForm: null,
+		pluralFormNormalized: null,
+		createdAt: new Date('2026-01-01T00:00:00.000Z'),
+		updatedAt: new Date('2026-01-01T00:00:00.000Z')
+	},
+	{
+		id: '2',
+		kalenjin: 'chamcham',
+		kalenjinNormalized: 'chamcham',
+		translations: 'taste',
+		partOfSpeech: null,
+		notes: null,
+		pluralForm: null,
+		pluralFormNormalized: null,
+		createdAt: new Date('2026-01-01T00:00:00.000Z'),
+		updatedAt: new Date('2026-01-01T00:00:00.000Z')
+	}
 ];
 
-describe('sortWordSearchResults', () => {
-	it('removes sentence punctuation but keeps apostrophes in search queries', () => {
+describe('word-search compatibility wrapper', () => {
+	it('normalizes punctuation the same way as the shared helper', () => {
 		expect(normalizeWordSearchQuery("koito?!")).toBe('koito');
 		expect(normalizeWordSearchQuery("k'alyet,")).toBe("k'alyet");
 	});
 
-	it('prioritizes exact lemma matches', () => {
-		expect(sortWordSearchResults(WORDS, 'mursik').map((word) => word.id)).toEqual([
-			'3',
-			'1',
-			'4',
-			'2'
-		]);
-	});
-
-	it('prioritizes prefix lemma matches before translation matches', () => {
-		expect(sortWordSearchResults(WORDS, 'mi').map((word) => word.id)).toEqual([
-			'4',
-			'2',
-			'1',
-			'3'
-		]);
-	});
-
-	it('only ranks based on kalenjin lemma matches', () => {
-		expect(sortWordSearchResults(WORDS, 'sour').map((word) => word.id)).toEqual([
-			'1',
-			'4',
-			'2',
-			'3'
-		]);
+	it('delegates ranking to the shared Kalenjin search helper', () => {
+		expect(sortWordSearchResults(WORDS, 'chomchom').map((word) => word.id)).toEqual(['2', '1']);
 	});
 });

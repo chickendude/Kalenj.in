@@ -29,6 +29,15 @@
 		</label>
 
 		<label>
+			Alternative spellings
+			<textarea
+				name="alternativeSpellings"
+				rows="3"
+				placeholder="One spelling per line"
+			>{form?.values?.alternativeSpellings ?? ''}</textarea>
+		</label>
+
+		<label>
 			Part of speech
 			<select name="partOfSpeech" value={form?.values?.partOfSpeech ?? ''}>
 				<option value="">Select...</option>

@@ -3,6 +3,7 @@ import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -13,6 +14,9 @@ export const load: PageServerLoad = async ({ params }) => {
 	const word = await prisma.word.findUnique({
 		where: { id: params.id },
 		include: {
+			spellings: {
+				orderBy: [{ spelling: 'asc' }]
+			},
 			sentences: {
 				include: {
 					exampleSentence: {
@@ -47,24 +51,26 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
+		const alternativeSpellings = readText(formData, 'alternativeSpellings');
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 
 		if (!kalenjin || !translations) {
 			return fail(400, {
 				error: 'Kalenjin and translations are required.',
-				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
+				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
 		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
 			return fail(400, {
 				error: 'Invalid part of speech value.',
-				values: { kalenjin, translations, notes, partOfSpeech: partOfSpeechRaw }
+				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
 			});
 		}
 
 		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
+		const spellings = prepareAlternativeSpellings(alternativeSpellings, kalenjin);
 
 		await prisma.word.update({
 			where: { id: params.id },
@@ -73,7 +79,15 @@ export const actions: Actions = {
 				kalenjinNormalized: normalizeLemma(kalenjin),
 				translations,
 				notes: notes || null,
-				partOfSpeech
+				partOfSpeech,
+				spellings: {
+					deleteMany: {},
+					createMany: spellings.length
+						? {
+								data: spellings
+							}
+						: undefined
+				}
 			}
 		});
 

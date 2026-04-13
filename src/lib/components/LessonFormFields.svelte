@@ -184,11 +184,6 @@
 		margin: 0;
 	}
 
-	.field-caption {
-		color: #555;
-		margin: 0;
-	}
-
 	@media (min-width: 700px) {
 		.choice-row {
 			align-items: start;

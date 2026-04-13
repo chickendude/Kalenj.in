@@ -27,6 +27,12 @@ type SearchForm = {
 	normalized: string;
 };
 
+/**
+ * Collapse Kalenjin "a" and "o" vowels into a single canonical form so that
+ * words like chamcham / chomchom, achame / ochome, and boiboi / baibai compare
+ * as equivalent. Both vowels are mapped to "a" — the choice is arbitrary as
+ * long as both sides of a comparison use the same mapping.
+ */
 function normalizeAoEquivalent(value: string): string {
 	return value.replace(/[ao]/g, 'a');
 }

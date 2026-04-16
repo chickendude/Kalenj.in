@@ -3,6 +3,7 @@
 	import type { ActionResult } from '@sveltejs/kit';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
+	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
 	import {
 		formatLessonType,
 		formatVocabularyLessonType,
@@ -17,10 +18,6 @@
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showLessonEdit = $state(false);
-	let showWordCoverage = $state(false);
-	let showAllCoverageWords = $state(false);
-	let showVocabCoverage = $state(false);
-	let showAllVocabWords = $state(false);
 	let showAddWordForm = $state(false);
 	let editingLessonWordId = $state<string | null>(null);
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
@@ -284,232 +281,120 @@
 	</section>
 
 	{#if data.storyWordCoverage}
-		{@const uninstructedCount = data.storyWordCoverage.filter((e) => !e.introduced).length}
-		{@const visibleEntries = showAllCoverageWords ? data.storyWordCoverage : data.storyWordCoverage.filter((e) => !e.introduced)}
-		<section class="summary-card">
-			<div class="card-header">
-				<div>
-					<strong>Word coverage</strong>
-					<p class="summary-line">
-						{#if uninstructedCount > 0}
-							{uninstructedCount} of {data.storyWordCoverage.length} word{data.storyWordCoverage.length === 1 ? '' : 's'} not yet introduced
-						{:else}
-							All {data.storyWordCoverage.length} word{data.storyWordCoverage.length === 1 ? '' : 's'} introduced
-						{/if}
-					</p>
-				</div>
-				{#if data.storyWordCoverage.length > 0}
-					<button type="button" class="secondary-button" onclick={() => (showWordCoverage = !showWordCoverage)}>
-						{showWordCoverage ? 'Hide' : 'Show'}
-					</button>
-				{/if}
-			</div>
-
-			{#if showWordCoverage}
-				<div class="coverage-filter">
-					<label class="coverage-filter-label">
-						<input type="checkbox" bind:checked={showAllCoverageWords} />
-						Show introduced words
-					</label>
-				</div>
-				<div class="coverage-list">
-					{#each visibleEntries as entry}
-						<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
-							<div class="coverage-word">
-								<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
-									{entry.word.kalenjin}
-								</a>
-								<span class="coverage-translations">{entry.word.translations}</span>
-							</div>
-							<div class="coverage-sentences">
-								{#each entry.sentences as sentence}
-									<span class="coverage-sentence">{sentence.kalenjin}</span>
-								{/each}
-							</div>
-							<div class="coverage-status">
-								{#if entry.introduced}
-									<span class="status-introduced">✓ Introduced</span>
-								{:else}
-									<span class="status-missing">Not yet introduced</span>
-								{/if}
-							</div>
-						</div>
-					{/each}
-					{#if visibleEntries.length === 0}
-						<p class="coverage-empty">All words introduced.</p>
-					{/if}
-				</div>
-			{/if}
-		</section>
+		<WordCoveragePanel title="Word coverage" entries={data.storyWordCoverage} />
 	{/if}
 
-		{#if data.lesson.type === 'STORY'}
-			<section class="content-card">
-				<div class="table-header story-grid">
-					<span>Speaker</span>
-					<span>Text</span>
-					<span>Translation</span>
-				</div>
+	{#if data.lesson.type === 'STORY'}
+		<section class="content-card">
+			<div class="table-header story-grid">
+				<span>Speaker</span>
+				<span>Text</span>
+				<span>Translation</span>
+			</div>
 
-				{#if !data.lesson.story || storySentences.length === 0}
-					<p>No story sentences yet.</p>
-				{:else}
-					{#each storySentences as sentence}
-						<div class="table-row story-grid">
-							<div>
-								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
-									<input
-										bind:this={inlineStoryInput}
-										class="inline-edit-input"
-										bind:value={inlineStoryValue}
-										onkeydown={handleInlineStoryKeydown}
-										onblur={saveInlineStoryEditOnBlur}
-									/>
-								{:else}
-									<button
-										type="button"
-										class="inline-edit-button"
-										onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
-									>
-										{sentence.speaker ?? '—'}
-									</button>
-								{/if}
-							</div>
-							<div class="story-text-cell">
-								<SentenceTokenAnnotations
-									entityId={sentence.id}
-									entityIdField="storySentenceId"
-									entityKind="story"
-									sentenceId={sentence.id}
-									sentenceText={sentence.kalenjin}
-									tokens={sentence.tokens}
-									dictionaryWords={data.words}
-									updateAction="?/updateStorySentenceToken"
-									createAction="?/createStorySentenceWord"
-									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+			{#if !data.lesson.story || storySentences.length === 0}
+				<p>No story sentences yet.</p>
+			{:else}
+				{#each storySentences as sentence}
+					<div class="table-row story-grid">
+						<div>
+							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
+								<input
+									bind:this={inlineStoryInput}
+									class="inline-edit-input"
+									bind:value={inlineStoryValue}
+									onkeydown={handleInlineStoryKeydown}
+									onblur={saveInlineStoryEditOnBlur}
 								/>
-							</div>
-							<div class="translation-cell">
-								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
+							{:else}
+								<button
+									type="button"
+									class="inline-edit-button"
+									onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
+								>
+									{sentence.speaker ?? '—'}
+								</button>
+							{/if}
+						</div>
+						<div class="story-text-cell">
+							<SentenceTokenAnnotations
+								entityId={sentence.id}
+								entityIdField="storySentenceId"
+								entityKind="story"
+								sentenceId={sentence.id}
+								sentenceText={sentence.kalenjin}
+								tokens={sentence.tokens}
+								dictionaryWords={data.words}
+								updateAction="?/updateStorySentenceToken"
+								createAction="?/createStorySentenceWord"
+								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+							/>
+						</div>
+						<div class="translation-cell">
+							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
+								<textarea
+									bind:this={inlineStoryInput}
+									class="inline-edit-input inline-edit-input--wide inline-translation-input"
+									bind:value={inlineStoryValue}
+									rows="2"
+									onkeydown={handleInlineStoryKeydown}
+									onblur={saveInlineStoryEditOnBlur}
+								></textarea>
+							{:else}
+								<button
+									type="button"
+									class="inline-edit-button inline-edit-button--wide"
+									onclick={() => beginInlineStoryEdit(sentence, 'english')}
+								>
+									{sentence.english}
+								</button>
+							{/if}
+
+							<div class="sentence-notes">
+								<small>Cultural / grammar notes</small>
+
+								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'grammarNotes'}
 									<textarea
 										bind:this={inlineStoryInput}
-										class="inline-edit-input inline-edit-input--wide inline-translation-input"
+										class="inline-edit-input inline-notes-input"
 										bind:value={inlineStoryValue}
-										rows="2"
-										onkeydown={handleInlineStoryKeydown}
-										onblur={saveInlineStoryEditOnBlur}
+										rows="3"
+										onkeydown={handleInlineStoryNotesKeydown}
 									></textarea>
+									<div class="inline-actions compact-actions">
+										<button type="button" onclick={() => void saveInlineStoryEdit()}>Save notes</button>
+										<button type="button" class="secondary-button" onclick={cancelInlineStoryEdit}>
+											Cancel
+										</button>
+									</div>
 								{:else}
 									<button
 										type="button"
-										class="inline-edit-button inline-edit-button--wide"
-										onclick={() => beginInlineStoryEdit(sentence, 'english')}
+										class="inline-edit-button inline-edit-button--wide notes-button"
+										class:notes-button--empty={!sentence.grammarNotes}
+										onclick={() => beginInlineStoryEdit(sentence, 'grammarNotes')}
 									>
-										{sentence.english}
+										{sentence.grammarNotes || 'Add notes'}
 									</button>
 								{/if}
-
-								<div class="sentence-notes">
-									<small>Cultural / grammar notes</small>
-
-									{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'grammarNotes'}
-										<textarea
-											bind:this={inlineStoryInput}
-											class="inline-edit-input inline-notes-input"
-											bind:value={inlineStoryValue}
-											rows="3"
-											onkeydown={handleInlineStoryNotesKeydown}
-										></textarea>
-										<div class="inline-actions compact-actions">
-											<button type="button" onclick={() => void saveInlineStoryEdit()}>Save notes</button>
-											<button type="button" class="secondary-button" onclick={cancelInlineStoryEdit}>
-												Cancel
-											</button>
-										</div>
-									{:else}
-										<button
-											type="button"
-											class="inline-edit-button inline-edit-button--wide notes-button"
-											class:notes-button--empty={!sentence.grammarNotes}
-											onclick={() => beginInlineStoryEdit(sentence, 'grammarNotes')}
-										>
-											{sentence.grammarNotes || 'Add notes'}
-										</button>
-									{/if}
-								</div>
 							</div>
 						</div>
-					{/each}
+					</div>
+				{/each}
 
-				{#if inlineStoryError}
-					<p class="error-text">{inlineStoryError}</p>
-				{/if}
+			{#if inlineStoryError}
+				<p class="error-text">{inlineStoryError}</p>
 			{/if}
+		{/if}
 		</section>
 	{:else}
 		{#if data.vocabWordCoverage}
-			{@const uninstructedCount = data.vocabWordCoverage.words.filter((e) => !e.introduced).length}
-			{@const visibleEntries = showAllVocabWords ? data.vocabWordCoverage.words : data.vocabWordCoverage.words.filter((e) => !e.introduced)}
-			<section class="summary-card">
-				<div class="card-header">
-					<div>
-						<strong>Next story coverage</strong>
-						<p class="summary-line">
-							<a href={`/lessons/${data.vocabWordCoverage.storyLesson.id}`} class="story-link">
-								{data.vocabWordCoverage.storyLesson.title}
-							</a>
-							·
-							{#if uninstructedCount > 0}
-								{uninstructedCount} of {data.vocabWordCoverage.words.length} word{data.vocabWordCoverage.words.length === 1 ? '' : 's'} not yet introduced
-							{:else}
-								All {data.vocabWordCoverage.words.length} word{data.vocabWordCoverage.words.length === 1 ? '' : 's'} introduced
-							{/if}
-						</p>
-					</div>
-					{#if data.vocabWordCoverage.words.length > 0}
-						<button type="button" class="secondary-button" onclick={() => (showVocabCoverage = !showVocabCoverage)}>
-							{showVocabCoverage ? 'Hide' : 'Show'}
-						</button>
-					{/if}
-				</div>
-
-				{#if showVocabCoverage}
-					<div class="coverage-filter">
-						<label class="coverage-filter-label">
-							<input type="checkbox" bind:checked={showAllVocabWords} />
-							Show introduced words
-						</label>
-					</div>
-					<div class="coverage-list">
-						{#each visibleEntries as entry}
-							<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
-								<div class="coverage-word">
-									<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
-										{entry.word.kalenjin}
-									</a>
-									<span class="coverage-translations">{entry.word.translations}</span>
-								</div>
-								<div class="coverage-sentences">
-									{#each entry.sentences as sentence}
-										<span class="coverage-sentence">{sentence.kalenjin}</span>
-									{/each}
-								</div>
-								<div class="coverage-status">
-									{#if entry.introduced}
-										<span class="status-introduced">✓ Introduced</span>
-									{:else}
-										<span class="status-missing">Not yet introduced</span>
-									{/if}
-								</div>
-							</div>
-						{/each}
-						{#if visibleEntries.length === 0}
-							<p class="coverage-empty">All words introduced.</p>
-						{/if}
-					</div>
-				{/if}
-			</section>
+			<WordCoveragePanel
+				title="Next story coverage"
+				entries={data.vocabWordCoverage.words}
+				storyLesson={data.vocabWordCoverage.storyLesson}
+			/>
 		{/if}
 
 		<section class="content-card">
@@ -966,97 +851,6 @@
 		.two-column-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
-	}
-
-	.coverage-filter {
-		margin-top: 0.75rem;
-	}
-
-	.coverage-filter-label {
-		align-items: center;
-		cursor: pointer;
-		display: flex;
-		font-size: 0.9rem;
-		gap: 0.4rem;
-	}
-
-	.coverage-empty {
-		color: #555;
-		font-size: 0.9rem;
-		margin: 0.5rem 0 0;
-	}
-
-	.story-link {
-		color: inherit;
-	}
-
-	.coverage-list {
-		border-top: 1px solid #eee;
-		display: grid;
-		gap: 0;
-		margin-top: 0.75rem;
-	}
-
-	.coverage-row {
-		align-items: start;
-		border-top: 1px solid #eee;
-		display: grid;
-		gap: 0.75rem;
-		grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) auto;
-		padding: 0.6rem 0;
-	}
-
-	.coverage-row:first-child {
-		border-top: 0;
-	}
-
-	.coverage-row--introduced {
-		opacity: 0.45;
-	}
-
-	.coverage-word {
-		display: flex;
-		flex-direction: column;
-		gap: 0.15rem;
-	}
-
-	.coverage-word-link {
-		color: inherit;
-		font-weight: 600;
-		text-decoration: none;
-	}
-
-	.coverage-word-link:hover {
-		text-decoration: underline;
-	}
-
-	.coverage-translations {
-		color: #555;
-		font-size: 0.9rem;
-	}
-
-	.coverage-sentences {
-		display: flex;
-		flex-direction: column;
-		font-size: 0.9rem;
-		gap: 0.25rem;
-	}
-
-	.coverage-sentence {
-		color: #444;
-	}
-
-	.coverage-status {
-		font-size: 0.85rem;
-		white-space: nowrap;
-	}
-
-	.status-introduced {
-		color: #1a7f37;
-	}
-
-	.status-missing {
-		color: #92400e;
 	}
 
 	@media (max-width: 800px) {

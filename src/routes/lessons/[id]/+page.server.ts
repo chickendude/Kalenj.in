@@ -345,6 +345,8 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	});
 }
 
+// orderComparator: 'lt' for story pages (introduced *before* the story),
+//                  'lte' for vocab pages (introduced *up to and including* this lesson).
 async function buildWordCoverageEntries(
 	storyId: string,
 	level: CefrLevel,

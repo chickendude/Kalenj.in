@@ -167,7 +167,6 @@ async function getUninstructedWordsByLessonId(
 
 	return result;
 }
-
 export const load: PageServerLoad = async ({ url }) => {
 	const selectedLevel =
 		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];

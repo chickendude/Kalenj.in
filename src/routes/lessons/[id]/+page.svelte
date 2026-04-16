@@ -362,6 +362,7 @@
 										<button
 											type="button"
 											class="inline-edit-button inline-edit-button--wide notes-button"
+											class:notes-button--empty={!sentence.grammarNotes}
 											onclick={() => beginInlineStoryEdit(sentence, 'grammarNotes')}
 										>
 											{sentence.grammarNotes || 'Add notes'}
@@ -712,6 +713,10 @@
 	.notes-button {
 		color: #444;
 		white-space: pre-wrap;
+	}
+
+	.notes-button--empty {
+		color: #9a9a9a;
 	}
 
 	.inline-notes-input {

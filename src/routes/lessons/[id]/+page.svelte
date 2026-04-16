@@ -324,13 +324,14 @@
 							</div>
 							<div class="translation-cell">
 								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
-									<input
+									<textarea
 										bind:this={inlineStoryInput}
-										class="inline-edit-input inline-edit-input--wide"
+										class="inline-edit-input inline-edit-input--wide inline-translation-input"
 										bind:value={inlineStoryValue}
+										rows="2"
 										onkeydown={handleInlineStoryKeydown}
 										onblur={cancelInlineStoryEdit}
-									/>
+									></textarea>
 								{:else}
 									<button
 										type="button"
@@ -722,6 +723,12 @@
 	.inline-notes-input {
 		min-height: 4.5rem;
 		resize: vertical;
+	}
+
+	.inline-translation-input {
+		min-height: 3.25rem;
+		resize: vertical;
+		white-space: pre-wrap;
 	}
 
 	.compact-actions {

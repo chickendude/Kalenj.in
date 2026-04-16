@@ -4,7 +4,7 @@ import type { RequestHandler } from './$types';
 
 type Payload = {
 	sentenceId?: string;
-	field?: 'speaker' | 'english';
+	field?: 'speaker' | 'english' | 'grammarNotes';
 	value?: string;
 };
 
@@ -18,7 +18,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const field = payload.field;
 	const value = clean(payload.value);
 
-	if (!sentenceId || (field !== 'speaker' && field !== 'english')) {
+	if (!sentenceId || (field !== 'speaker' && field !== 'english' && field !== 'grammarNotes')) {
 		return json({ error: 'Sentence and field are required.' }, { status: 400 });
 	}
 
@@ -46,11 +46,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 
 	const updatedSentence = await prisma.storySentence.update({
 		where: { id: sentenceId },
-		data: field === 'speaker' ? { speaker: value || null } : { english: value },
+		data:
+			field === 'speaker'
+				? { speaker: value || null }
+				: field === 'grammarNotes'
+					? { grammarNotes: value || null }
+					: { english: value },
 		select: {
 			id: true,
 			speaker: true,
-			english: true
+			english: true,
+			grammarNotes: true
 		}
 	});
 

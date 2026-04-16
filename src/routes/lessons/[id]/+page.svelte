@@ -14,16 +14,16 @@
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
 	type StorySentence = NonNullable<typeof data.lesson.story>['sentences'][number];
+	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showLessonEdit = $state(false);
 	let showAddWordForm = $state(false);
-	let editingStorySentenceId = $state<string | null>(null);
 	let editingLessonWordId = $state<string | null>(null);
-	let inlineStoryEdit = $state<{ sentenceId: string; field: 'speaker' | 'english' } | null>(null);
+	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
 	let inlineStoryValue = $state('');
 	let inlineStoryError = $state<string | null>(null);
 	let storySentences = $state<StorySentence[]>([]);
-	let inlineStoryInput = $state<HTMLInputElement | null>(null);
+	let inlineStoryInput = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
@@ -108,9 +108,14 @@
 		};
 	}
 
-	function beginInlineStoryEdit(sentence: (typeof storySentences)[number], field: 'speaker' | 'english') {
+	function beginInlineStoryEdit(sentence: (typeof storySentences)[number], field: InlineStoryField) {
 		inlineStoryEdit = { sentenceId: sentence.id, field };
-		inlineStoryValue = field === 'speaker' ? sentence.speaker ?? '' : sentence.english;
+		inlineStoryValue =
+			field === 'speaker'
+				? sentence.speaker ?? ''
+				: field === 'grammarNotes'
+					? sentence.grammarNotes ?? ''
+					: sentence.english;
 		inlineStoryError = null;
 	}
 
@@ -144,6 +149,7 @@
 					id: string;
 					speaker: string | null;
 					english: string;
+					grammarNotes: string | null;
 				};
 			};
 
@@ -156,7 +162,8 @@
 					? {
 							...sentence,
 							speaker: result.sentence.speaker,
-							english: result.sentence.english
+							english: result.sentence.english,
+							grammarNotes: result.sentence.grammarNotes
 						}
 					: sentence
 			);
@@ -169,6 +176,16 @@
 
 	function handleInlineStoryKeydown(event: KeyboardEvent) {
 		if (event.key === 'Enter') {
+			event.preventDefault();
+			void saveInlineStoryEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineStoryEdit();
+		}
+	}
+
+	function handleInlineStoryNotesKeydown(event: KeyboardEvent) {
+		if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
 			event.preventDefault();
 			void saveInlineStoryEdit();
 		} else if (event.key === 'Escape') {
@@ -258,118 +275,102 @@
 		{/if}
 	</section>
 
-	{#if data.lesson.type === 'STORY'}
-		<section class="content-card">
-			<div class="table-header story-grid">
-				<span>Speaker</span>
-				<span>Text</span>
-				<span>Translation</span>
-				<span></span>
-			</div>
+		{#if data.lesson.type === 'STORY'}
+			<section class="content-card">
+				<div class="table-header story-grid">
+					<span>Speaker</span>
+					<span>Text</span>
+					<span>Translation</span>
+				</div>
 
-			{#if !data.lesson.story || storySentences.length === 0}
-				<p>No story sentences yet.</p>
-			{:else}
-				{#each storySentences as sentence}
-					<div class="table-row story-grid">
-						<div>
-							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
-								<input
-									bind:this={inlineStoryInput}
-									class="inline-edit-input"
-									bind:value={inlineStoryValue}
-									onkeydown={handleInlineStoryKeydown}
-									onblur={cancelInlineStoryEdit}
+				{#if !data.lesson.story || storySentences.length === 0}
+					<p>No story sentences yet.</p>
+				{:else}
+					{#each storySentences as sentence}
+						<div class="table-row story-grid">
+							<div>
+								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
+									<input
+										bind:this={inlineStoryInput}
+										class="inline-edit-input"
+										bind:value={inlineStoryValue}
+										onkeydown={handleInlineStoryKeydown}
+										onblur={cancelInlineStoryEdit}
+									/>
+								{:else}
+									<button
+										type="button"
+										class="inline-edit-button"
+										onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
+									>
+										{sentence.speaker ?? '—'}
+									</button>
+								{/if}
+							</div>
+							<div class="story-text-cell">
+								<SentenceTokenAnnotations
+									entityId={sentence.id}
+									entityIdField="storySentenceId"
+									entityKind="story"
+									sentenceId={sentence.id}
+									sentenceText={sentence.kalenjin}
+									tokens={sentence.tokens}
+									dictionaryWords={data.words}
+									updateAction="?/updateStorySentenceToken"
+									createAction="?/createStorySentenceWord"
+									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
 								/>
-							{:else}
-								<button
-									type="button"
-									class="inline-edit-button"
-									onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
-								>
-									{sentence.speaker ?? '—'}
-								</button>
-							{/if}
-						</div>
-						<div class="story-text-cell">
-							<SentenceTokenAnnotations
-								entityId={sentence.id}
-								entityIdField="storySentenceId"
-								entityKind="story"
-								sentenceId={sentence.id}
-								sentenceText={sentence.kalenjin}
-								tokens={sentence.tokens}
-								dictionaryWords={data.words}
-								updateAction="?/updateStorySentenceToken"
-								createAction="?/createStorySentenceWord"
-								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
-							/>
-						</div>
-						<div>
-							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
-								<input
-									bind:this={inlineStoryInput}
-									class="inline-edit-input inline-edit-input--wide"
-									bind:value={inlineStoryValue}
-									onkeydown={handleInlineStoryKeydown}
-									onblur={cancelInlineStoryEdit}
-								/>
-							{:else}
-								<button
-									type="button"
-									class="inline-edit-button inline-edit-button--wide"
-									onclick={() => beginInlineStoryEdit(sentence, 'english')}
-								>
-									{sentence.english}
-								</button>
-							{/if}
-						</div>
-						<div class="row-action">
-							<button
-								type="button"
-								class="secondary-button"
-								onclick={() =>
-									(editingStorySentenceId =
-										editingStorySentenceId === sentence.id ? null : sentence.id)}
-							>
-								{editingStorySentenceId === sentence.id ? 'Close' : 'Edit'}
-							</button>
-						</div>
-					</div>
+							</div>
+							<div class="translation-cell">
+								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
+									<input
+										bind:this={inlineStoryInput}
+										class="inline-edit-input inline-edit-input--wide"
+										bind:value={inlineStoryValue}
+										onkeydown={handleInlineStoryKeydown}
+										onblur={cancelInlineStoryEdit}
+									/>
+								{:else}
+									<button
+										type="button"
+										class="inline-edit-button inline-edit-button--wide"
+										onclick={() => beginInlineStoryEdit(sentence, 'english')}
+									>
+										{sentence.english}
+									</button>
+								{/if}
 
-					{#if editingStorySentenceId === sentence.id}
-						<div class="expanded-panel">
-							<form method="POST" action="?/updateStorySentence" class="editor-form compact-form">
-								<input type="hidden" name="id" value={sentence.id} />
+								<div class="sentence-notes">
+									<small>Cultural / grammar notes</small>
 
-								<div class="three-column-grid">
-									<label>
-										Speaker
-										<input name="speaker" value={sentence.speaker ?? ''} />
-									</label>
-
-									<label class="wide-field">
-										Text
-										<textarea name="kalenjin" rows="3" required>{sentence.kalenjin}</textarea>
-									</label>
-
-									<label class="wide-field">
-										Translation
-										<textarea name="english" rows="3" required>{sentence.english}</textarea>
-									</label>
+									{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'grammarNotes'}
+										<textarea
+											bind:this={inlineStoryInput}
+											class="inline-edit-input inline-notes-input"
+											bind:value={inlineStoryValue}
+											rows="3"
+											onkeydown={handleInlineStoryNotesKeydown}
+										></textarea>
+										<div class="inline-actions compact-actions">
+											<button type="button" onclick={() => void saveInlineStoryEdit()}>Save notes</button>
+											<button type="button" class="secondary-button" onclick={cancelInlineStoryEdit}>
+												Cancel
+											</button>
+										</div>
+									{:else}
+										<button
+											type="button"
+											class="inline-edit-button inline-edit-button--wide notes-button"
+											onclick={() => beginInlineStoryEdit(sentence, 'grammarNotes')}
+										>
+											{sentence.grammarNotes || 'Add notes'}
+										</button>
+									{/if}
 								</div>
-
-								<label>
-									Grammar / cultural notes
-									<textarea name="grammarNotes" rows="3">{sentence.grammarNotes ?? ''}</textarea>
-								</label>
-
-								<button type="submit">Save sentence</button>
-							</form>
+							</div>
 						</div>
-					{/if}
-				{/each}
+					{/each}
 
 				{#if inlineStoryError}
 					<p class="error-text">{inlineStoryError}</p>
@@ -683,11 +684,43 @@
 	}
 
 	.story-grid {
-		grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr) auto;
+		grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr);
 	}
 
 	.story-text-cell {
 		min-width: 0;
+	}
+
+	.translation-cell {
+		display: grid;
+		gap: 0.45rem;
+		min-width: 0;
+	}
+
+	.sentence-notes {
+		border-top: 1px solid #eee;
+		display: grid;
+		gap: 0.3rem;
+		padding-top: 0.45rem;
+	}
+
+	.sentence-notes small {
+		color: #666;
+		font-weight: 600;
+	}
+
+	.notes-button {
+		color: #444;
+		white-space: pre-wrap;
+	}
+
+	.inline-notes-input {
+		min-height: 4.5rem;
+		resize: vertical;
+	}
+
+	.compact-actions {
+		gap: 0.45rem;
 	}
 
 	.vocab-grid {
@@ -760,14 +793,9 @@
 		min-width: 16rem;
 	}
 
-	.two-column-grid,
-	.three-column-grid {
+	.two-column-grid {
 		display: grid;
 		gap: 0.75rem;
-	}
-
-	.wide-field {
-		grid-column: span 2;
 	}
 
 	.section-divider {
@@ -793,10 +821,6 @@
 	@media (min-width: 900px) {
 		.two-column-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
-
-		.three-column-grid {
-			grid-template-columns: 180px minmax(0, 1fr) minmax(0, 1fr);
 		}
 	}
 

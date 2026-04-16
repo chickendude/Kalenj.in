@@ -81,7 +81,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		}
 	});
 
-	const createdTokens = await prisma.$transaction(async (tx) => {
+	const { sentenceText, splitTokens } = await prisma.$transaction(async (tx) => {
 		for (const update of temporaryTokenOrderUpdates(sentenceTokens)) {
 			await tx.exampleSentenceToken.update({
 				where: { id: update.id },
@@ -90,14 +90,17 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		}
 
 		const output: Array<Awaited<ReturnType<typeof tx.exampleSentenceToken.create>>> = [];
+		const sentenceSurfaces: string[] = [];
 		let nextOrder = 0;
 
 		for (const existingToken of sentenceTokens) {
 			if (existingToken.id !== token.id) {
-				await tx.exampleSentenceToken.update({
+				const updated = await tx.exampleSentenceToken.update({
 					where: { id: existingToken.id },
-					data: { tokenOrder: nextOrder }
+					data: { tokenOrder: nextOrder },
+					select: { surfaceForm: true }
 				});
+				sentenceSurfaces.push(updated.surfaceForm);
 				nextOrder += 1;
 				continue;
 			}
@@ -115,6 +118,7 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						include: { word: true }
 					});
 					output.push(updated);
+					sentenceSurfaces.push(updated.surfaceForm);
 				} else {
 					const created = await tx.exampleSentenceToken.create({
 						data: {
@@ -126,28 +130,26 @@ export const POST: RequestHandler = async ({ params, request }) => {
 						include: { word: true }
 					});
 					output.push(created);
+					sentenceSurfaces.push(created.surfaceForm);
 				}
 				nextOrder += 1;
 			}
 		}
 
-		return output;
-	});
-
-	const allTokens = await prisma.exampleSentenceToken.findMany({
-		where: { exampleSentenceId: token.exampleSentenceId },
-		orderBy: { tokenOrder: 'asc' },
-		select: { surfaceForm: true }
+		return {
+			sentenceText: sentenceSurfaces.join(' '),
+			splitTokens: output
+		};
 	});
 
 	await prisma.exampleSentence.update({
 		where: { id: token.exampleSentenceId },
-		data: { kalenjin: allTokens.map((sentenceToken) => sentenceToken.surfaceForm).join(' ') }
+		data: { kalenjin: sentenceText }
 	});
 
 	return json({
 		success: 'Token split.',
 		tokenId: token.id,
-		tokens: createdTokens
+		tokens: splitTokens
 	});
 };

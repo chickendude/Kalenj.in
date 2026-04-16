@@ -11,6 +11,7 @@ import {
 	planSplitTokenGroup,
 	planUpdateTokenGroupSurface
 } from '$lib/server/token-group-edit';
+import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
 
 type SentenceKind = 'story' | 'example';
@@ -22,7 +23,7 @@ type EditableToken = OrderedToken & {
 type SplitRow = {
 	id: string | null;
 	surfaceForm: string;
-	normalizedForm: string | null;
+	normalizedForm: string;
 	inContextTranslation: string | null;
 };
 
@@ -275,7 +276,7 @@ async function applySplit(
 					{
 						id: token.id,
 						surfaceForm: token.surfaceForm,
-						normalizedForm: null,
+						normalizedForm: normalizeToken(token.surfaceForm),
 						inContextTranslation: token.inContextTranslation
 					}
 				]
@@ -292,7 +293,7 @@ async function applySplit(
 					data: {
 						tokenOrder: row.tokenOrder,
 						surfaceForm: row.surfaceForm,
-						...(row.normalizedForm ? { normalizedForm: row.normalizedForm } : {}),
+						normalizedForm: row.normalizedForm,
 						inContextTranslation: row.inContextTranslation
 					}
 				});
@@ -302,7 +303,7 @@ async function applySplit(
 						storySentenceId: sentenceId,
 						tokenOrder: row.tokenOrder,
 						surfaceForm: row.surfaceForm,
-						normalizedForm: row.normalizedForm ?? row.surfaceForm,
+						normalizedForm: row.normalizedForm,
 						inContextTranslation: row.inContextTranslation
 					}
 				});
@@ -318,7 +319,7 @@ async function applySplit(
 				data: {
 					tokenOrder: row.tokenOrder,
 					surfaceForm: row.surfaceForm,
-					...(row.normalizedForm ? { normalizedForm: row.normalizedForm } : {}),
+					normalizedForm: row.normalizedForm,
 					inContextTranslation: row.inContextTranslation
 				}
 			});
@@ -328,7 +329,7 @@ async function applySplit(
 					exampleSentenceId: sentenceId,
 					tokenOrder: row.tokenOrder,
 					surfaceForm: row.surfaceForm,
-					normalizedForm: row.normalizedForm ?? row.surfaceForm,
+					normalizedForm: row.normalizedForm,
 					inContextTranslation: row.inContextTranslation
 				}
 			});

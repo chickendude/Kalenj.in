@@ -17,6 +17,7 @@
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showLessonEdit = $state(false);
+	let showWordCoverage = $state(false);
 	let showAddWordForm = $state(false);
 	let editingLessonWordId = $state<string | null>(null);
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
@@ -278,6 +279,56 @@
 			</form>
 		{/if}
 	</section>
+
+	{#if data.storyWordCoverage}
+		{@const uninstructedCount = data.storyWordCoverage.filter((e) => !e.introduced).length}
+		<section class="summary-card">
+			<div class="card-header">
+				<div>
+					<strong>Word coverage</strong>
+					<p class="summary-line">
+						{#if uninstructedCount > 0}
+							{uninstructedCount} of {data.storyWordCoverage.length} word{data.storyWordCoverage.length === 1 ? '' : 's'} not yet introduced
+						{:else}
+							All {data.storyWordCoverage.length} word{data.storyWordCoverage.length === 1 ? '' : 's'} introduced
+						{/if}
+					</p>
+				</div>
+				{#if data.storyWordCoverage.length > 0}
+					<button type="button" class="secondary-button" onclick={() => (showWordCoverage = !showWordCoverage)}>
+						{showWordCoverage ? 'Hide' : 'Show'}
+					</button>
+				{/if}
+			</div>
+
+			{#if showWordCoverage}
+				<div class="coverage-list">
+					{#each data.storyWordCoverage as entry}
+						<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
+							<div class="coverage-word">
+								<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
+									{entry.word.kalenjin}
+								</a>
+								<span class="coverage-translations">{entry.word.translations}</span>
+							</div>
+							<div class="coverage-sentences">
+								{#each entry.sentences as sentence}
+									<span class="coverage-sentence">{sentence.kalenjin}</span>
+								{/each}
+							</div>
+							<div class="coverage-status">
+								{#if entry.introduced}
+									<span class="status-introduced">✓ Introduced</span>
+								{:else}
+									<span class="status-missing">Not yet introduced</span>
+								{/if}
+							</div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+		</section>
+	{/if}
 
 		{#if data.lesson.type === 'STORY'}
 			<section class="content-card">
@@ -838,6 +889,75 @@
 		.two-column-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+
+	.coverage-list {
+		border-top: 1px solid #eee;
+		display: grid;
+		gap: 0;
+		margin-top: 0.75rem;
+	}
+
+	.coverage-row {
+		align-items: start;
+		border-top: 1px solid #eee;
+		display: grid;
+		gap: 0.75rem;
+		grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) auto;
+		padding: 0.6rem 0;
+	}
+
+	.coverage-row:first-child {
+		border-top: 0;
+	}
+
+	.coverage-row--introduced {
+		opacity: 0.45;
+	}
+
+	.coverage-word {
+		display: flex;
+		flex-direction: column;
+		gap: 0.15rem;
+	}
+
+	.coverage-word-link {
+		color: inherit;
+		font-weight: 600;
+		text-decoration: none;
+	}
+
+	.coverage-word-link:hover {
+		text-decoration: underline;
+	}
+
+	.coverage-translations {
+		color: #555;
+		font-size: 0.9rem;
+	}
+
+	.coverage-sentences {
+		display: flex;
+		flex-direction: column;
+		font-size: 0.9rem;
+		gap: 0.25rem;
+	}
+
+	.coverage-sentence {
+		color: #444;
+	}
+
+	.coverage-status {
+		font-size: 0.85rem;
+		white-space: nowrap;
+	}
+
+	.status-introduced {
+		color: #1a7f37;
+	}
+
+	.status-missing {
+		color: #92400e;
 	}
 
 	@media (max-width: 800px) {

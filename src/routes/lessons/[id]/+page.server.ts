@@ -12,7 +12,7 @@ import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
-import type { Prisma } from '@prisma/client';
+import type { CefrLevel, Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
 function buildWordSelect() {
@@ -345,6 +345,75 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	});
 }
 
+async function getStoryWordCoverage(lesson: {
+	type: string;
+	level: CefrLevel;
+	lessonOrder: number;
+	storyId: string | null;
+}) {
+	if (lesson.type !== 'STORY' || !lesson.storyId) {
+		return null;
+	}
+
+	const [tokens, vocabLessonWords] = await Promise.all([
+		prisma.storySentenceToken.findMany({
+			where: {
+				wordId: { not: null },
+				storySentence: { storyId: lesson.storyId }
+			},
+			select: {
+				wordId: true,
+				word: { select: { id: true, kalenjin: true, translations: true } },
+				storySentence: { select: { id: true, kalenjin: true, sentenceOrder: true } }
+			},
+			orderBy: [{ storySentence: { sentenceOrder: 'asc' } }, { tokenOrder: 'asc' }]
+		}),
+		prisma.lessonWord.findMany({
+			where: {
+				lessonSection: {
+					lesson: {
+						level: lesson.level,
+						type: 'VOCABULARY',
+						lessonOrder: { lt: lesson.lessonOrder }
+					}
+				}
+			},
+			select: { wordId: true }
+		})
+	]);
+
+	const introducedWordIds = new Set(vocabLessonWords.map((lw) => lw.wordId));
+
+	const wordMap = new Map<string, {
+		word: { id: string; kalenjin: string; translations: string };
+		introduced: boolean;
+		sentences: Map<string, { id: string; kalenjin: string; sentenceOrder: number }>;
+	}>();
+
+	for (const token of tokens) {
+		if (!token.wordId || !token.word) continue;
+		if (!wordMap.has(token.wordId)) {
+			wordMap.set(token.wordId, {
+				word: token.word,
+				introduced: introducedWordIds.has(token.wordId),
+				sentences: new Map()
+			});
+		}
+		wordMap.get(token.wordId)!.sentences.set(token.storySentence.id, token.storySentence);
+	}
+
+	return [...wordMap.values()]
+		.map((entry) => ({
+			word: entry.word,
+			introduced: entry.introduced,
+			sentences: [...entry.sentences.values()].sort((a, b) => a.sentenceOrder - b.sentenceOrder)
+		}))
+		.sort((a, b) => {
+			if (a.introduced !== b.introduced) return a.introduced ? 1 : -1;
+			return a.word.kalenjin.localeCompare(b.word.kalenjin);
+		});
+}
+
 export const load: PageServerLoad = async ({ params }) => {
 	await backfillMissingStoryTokens(params.id);
 
@@ -363,10 +432,13 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, 'Lesson not found');
 	}
 
+	const storyWordCoverage = await getStoryWordCoverage(lesson);
+
 	return {
 		lesson,
 		words,
 		cefrTargets,
+		storyWordCoverage,
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};

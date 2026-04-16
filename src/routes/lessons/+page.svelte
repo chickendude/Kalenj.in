@@ -14,6 +14,17 @@
 		position?: string;
 	};
 	let showAddLessonForm = $state(false);
+	let expandedUninstructed = $state(new Set<string>());
+
+	function toggleUninstructed(lessonId: string) {
+		const next = new Set(expandedUninstructed);
+		if (next.has(lessonId)) {
+			next.delete(lessonId);
+		} else {
+			next.add(lessonId);
+		}
+		expandedUninstructed = next;
+	}
 	let createTitle = $state('');
 	let createType = $state<'VOCABULARY' | 'STORY'>('VOCABULARY');
 	let createVocabularyType = $state<'' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION'>('VOCAB');
@@ -175,6 +186,39 @@
 							</span>
 							<span>{lesson._count.sections} section(s)</span>
 						</div>
+
+						{#if lesson.type === 'STORY' && lesson.id in data.uninstructedWordsByLessonId}
+							{@const uninstructed = data.uninstructedWordsByLessonId[lesson.id]}
+							{#if uninstructed.length > 0}
+								<div class="uninstructed-summary">
+									<button
+										type="button"
+										class="uninstructed-toggle"
+										aria-expanded={expandedUninstructed.has(lesson.id)}
+										onclick={() => toggleUninstructed(lesson.id)}
+									>
+										{uninstructed.length} word{uninstructed.length === 1 ? '' : 's'} not yet introduced
+										<span class="toggle-caret">{expandedUninstructed.has(lesson.id) ? '▲' : '▼'}</span>
+									</button>
+
+									{#if expandedUninstructed.has(lesson.id)}
+										<ul class="uninstructed-list">
+											{#each uninstructed as word}
+												<li>
+													<a href={`/dictionary/${word.id}`} class="uninstructed-word">
+														<span class="word-kalenjin">{word.kalenjin}</span>
+														<span class="word-translations">{word.translations}</span>
+													</a>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							{:else}
+								<p class="all-introduced">All story words introduced</p>
+							{/if}
+						{/if}
+
 						<div class="inline-lesson-actions">
 							<button
 								type="button"
@@ -285,14 +329,13 @@
 	}
 
 	.lesson-path li {
-		border: 1px solid #e2e2e2;
 		list-style: none;
-		padding: 1rem;
+		padding: 0.1rem 0;
 	}
 
 	.lesson-path li.story-lesson {
-		border-color: #c08457;
 		background: #fffaf5;
+		padding-left: 0.5rem;
 	}
 
 	.lesson-link {
@@ -312,6 +355,68 @@
 		flex-wrap: wrap;
 		gap: 0.75rem;
 		margin-top: 0.35rem;
+	}
+
+	.uninstructed-summary {
+		margin-top: 0.5rem;
+	}
+
+	.uninstructed-toggle {
+		background: none;
+		border: none;
+		color: #92400e;
+		cursor: pointer;
+		font: inherit;
+		font-size: 0.875rem;
+		padding: 0;
+	}
+
+	.uninstructed-toggle:hover {
+		text-decoration: underline;
+	}
+
+	.toggle-caret {
+		font-size: 0.7rem;
+		margin-left: 0.3rem;
+	}
+
+	.uninstructed-list {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem;
+		list-style: none;
+		margin: 0.4rem 0 0;
+		padding: 0;
+	}
+
+	.uninstructed-word {
+		background: #fff7ed;
+		border: 1px solid #fed7aa;
+		border-radius: 3px;
+		color: inherit;
+		display: flex;
+		font-size: 0.85rem;
+		gap: 0.3rem;
+		padding: 0.2rem 0.45rem;
+		text-decoration: none;
+	}
+
+	.uninstructed-word:hover {
+		border-color: #c08457;
+	}
+
+	.word-kalenjin {
+		font-weight: 600;
+	}
+
+	.word-translations {
+		color: #555;
+	}
+
+	.all-introduced {
+		color: #1a7f37;
+		font-size: 0.875rem;
+		margin: 0.5rem 0 0;
 	}
 
 	.inline-lesson-actions {

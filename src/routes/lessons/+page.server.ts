@@ -94,6 +94,80 @@ async function createLessonRecord(
 	});
 }
 
+async function getUninstructedWordsByLessonId(
+	level: (typeof CEFR_LEVELS)[number],
+	lessons: Array<{ id: string; level: string; lessonOrder: number; type: string; storyId: string | null }>
+): Promise<Map<string, Array<{ id: string; kalenjin: string; translations: string }>>> {
+	const levelLessons = lessons.filter((l) => l.level === level);
+	const storyLessons = levelLessons.filter((l) => l.type === 'STORY' && l.storyId);
+	const vocabLessons = levelLessons.filter((l) => l.type === 'VOCABULARY');
+
+	if (storyLessons.length === 0) {
+		return new Map();
+	}
+
+	const storyIds = storyLessons.map((l) => l.storyId!);
+
+	const [tokenRows, lessonWordRows] = await Promise.all([
+		prisma.storySentenceToken.findMany({
+			where: {
+				wordId: { not: null },
+				storySentence: { storyId: { in: storyIds } }
+			},
+			select: {
+				wordId: true,
+				storySentence: { select: { storyId: true } },
+				word: { select: { id: true, kalenjin: true, translations: true } }
+			}
+		}),
+		vocabLessons.length > 0
+			? prisma.lessonWord.findMany({
+					where: { lessonSection: { lessonId: { in: vocabLessons.map((l) => l.id) } } },
+					select: { wordId: true, lessonSection: { select: { lessonId: true } } }
+				})
+			: Promise.resolve([])
+	]);
+
+	// storyId -> Map<wordId, word>
+	const wordsByStoryId = new Map<string, Map<string, { id: string; kalenjin: string; translations: string }>>();
+	for (const token of tokenRows) {
+		if (!token.wordId || !token.word) continue;
+		const storyId = token.storySentence.storyId;
+		if (!wordsByStoryId.has(storyId)) wordsByStoryId.set(storyId, new Map());
+		wordsByStoryId.get(storyId)!.set(token.wordId, token.word);
+	}
+
+	// lessonId -> Set<wordId>
+	const vocabWordIdsByLessonId = new Map<string, Set<string>>();
+	for (const lw of lessonWordRows) {
+		const lessonId = lw.lessonSection.lessonId;
+		if (!vocabWordIdsByLessonId.has(lessonId)) vocabWordIdsByLessonId.set(lessonId, new Set());
+		vocabWordIdsByLessonId.get(lessonId)!.add(lw.wordId);
+	}
+
+	const result = new Map<string, Array<{ id: string; kalenjin: string; translations: string }>>();
+
+	for (const storyLesson of storyLessons) {
+		const introducedBefore = new Set<string>();
+		for (const vocabLesson of vocabLessons) {
+			if (vocabLesson.lessonOrder < storyLesson.lessonOrder) {
+				for (const wordId of vocabWordIdsByLessonId.get(vocabLesson.id) ?? []) {
+					introducedBefore.add(wordId);
+				}
+			}
+		}
+
+		const storyWords = [...(wordsByStoryId.get(storyLesson.storyId!) ?? new Map()).values()];
+		const uninstructed = storyWords
+			.filter((w) => !introducedBefore.has(w.id))
+			.sort((a, b) => a.kalenjin.localeCompare(b.kalenjin));
+
+		result.set(storyLesson.id, uninstructed);
+	}
+
+	return result;
+}
+
 export const load: PageServerLoad = async ({ url }) => {
 	const selectedLevel =
 		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];
@@ -110,6 +184,8 @@ export const load: PageServerLoad = async ({ url }) => {
 		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }]
 	});
 
+	const uninstructedWordsMap = await getUninstructedWordsByLessonId(selectedLevel, lessons);
+
 	return {
 		levels: CEFR_LEVELS,
 		selectedLevel,
@@ -125,7 +201,8 @@ export const load: PageServerLoad = async ({ url }) => {
 			lessons
 				.filter((lesson) => lesson.level === selectedLevel)
 				.map((lesson) => lesson.lessonOrder)
-		)
+		),
+		uninstructedWordsByLessonId: Object.fromEntries(uninstructedWordsMap)
 	};
 };
 

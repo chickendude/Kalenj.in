@@ -196,7 +196,7 @@ async function ensureStorySentence(
 	}
 }
 
-async function getStorySentenceGroupTokenIds(storySentenceId: string, tokenId: string): Promise<string[]> {
+async function ensureStorySentenceToken(storySentenceId: string, tokenId: string): Promise<string> {
 	const token = await prisma.storySentenceToken.findUnique({
 		where: { id: tokenId },
 		select: { storySentenceId: true }
@@ -206,7 +206,7 @@ async function getStorySentenceGroupTokenIds(storySentenceId: string, tokenId: s
 		error(404, 'Sentence token not found for this story sentence.');
 	}
 
-	return [tokenId];
+	return tokenId;
 }
 
 async function ensureExampleSentenceForLessonWord(
@@ -236,7 +236,7 @@ async function ensureExampleSentenceForLessonWord(
 	return { sentenceId: token.exampleSentenceId };
 }
 
-async function getExampleSentenceGroupTokenIds(exampleSentenceId: string, tokenId: string): Promise<string[]> {
+async function ensureExampleSentenceToken(exampleSentenceId: string, tokenId: string): Promise<string> {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
 		select: { exampleSentenceId: true }
@@ -246,7 +246,7 @@ async function getExampleSentenceGroupTokenIds(exampleSentenceId: string, tokenI
 		error(404, 'Sentence token not found for this lesson word.');
 	}
 
-	return [tokenId];
+	return tokenId;
 }
 
 async function getLessonDetail(lessonId: string) {
@@ -747,40 +747,35 @@ export const actions: Actions = {
 			return fail(404, { error: 'Story lesson not found.' });
 		}
 
-		await ensureStorySentence(story.storyId, storySentenceId);
+			await ensureStorySentence(story.storyId, storySentenceId);
 
-		const groupTokenIds = await getStorySentenceGroupTokenIds(storySentenceId, tokenId);
+			const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
 
-		const updatedTokens = await prisma.$transaction(async (tx) => {
-			await tx.storySentenceToken.updateMany({
-				where: { id: { in: groupTokenIds } },
-				data: {
-					wordId,
-					inContextTranslation
-				}
-			});
-
-			return tx.storySentenceToken.findMany({
-				where: { id: { in: groupTokenIds } },
-				orderBy: { tokenOrder: 'asc' },
-				include: {
-					word: {
-						select: buildWordSelect()
+			const updatedToken = await prisma.$transaction(async (tx) => {
+				return tx.storySentenceToken.update({
+					where: { id: checkedTokenId },
+					data: {
+						wordId,
+						inContextTranslation
+					},
+					include: {
+						word: {
+							select: buildWordSelect()
 					}
 				}
 			});
 		});
 
-		return {
-			updateStorySentenceTokenSuccess: true,
-			tokenUpdates: updatedTokens.map((updatedToken) => ({
-				tokenId: updatedToken.id,
-				wordId: updatedToken.wordId,
-				inContextTranslation: updatedToken.inContextTranslation,
-				word: updatedToken.word
-			}))
-		};
-	},
+			return {
+				updateStorySentenceTokenSuccess: true,
+				tokenUpdates: [{
+					tokenId: updatedToken.id,
+					wordId: updatedToken.wordId,
+					inContextTranslation: updatedToken.inContextTranslation,
+					word: updatedToken.word
+				}]
+			};
+		},
 	createStorySentenceWord: async ({ request, params }) => {
 		const formData = await request.formData();
 		const storySentenceId = readText(formData, 'storySentenceId');
@@ -805,42 +800,42 @@ export const actions: Actions = {
 
 		if (!story?.storyId) {
 			return fail(404, { error: 'Story lesson not found.' });
-		}
+			}
 
-		await ensureStorySentence(story.storyId, storySentenceId);
-		const groupTokenIds = await getStorySentenceGroupTokenIds(storySentenceId, tokenId);
+			await ensureStorySentence(story.storyId, storySentenceId);
+			const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
 
-		try {
-			const word = await prisma.$transaction(async (tx) => {
+			try {
+				const word = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
 					translations,
 					notes,
-					alternativeSpellings
-				});
+						alternativeSpellings
+					});
 
-				await tx.storySentenceToken.updateMany({
-					where: { id: { in: groupTokenIds } },
-					data: {
-						wordId: word.id,
-						inContextTranslation
+					await tx.storySentenceToken.update({
+						where: { id: checkedTokenId },
+						data: {
+							wordId: word.id,
+							inContextTranslation
 					}
 				});
 
 				return word;
 			});
 
-			return {
-				createStorySentenceWordSuccess: true,
-				tokenUpdates: groupTokenIds.map((groupTokenId) => ({
-					tokenId: groupTokenId,
-					wordId: word.id,
-					inContextTranslation,
-					word
-				}))
-			};
-		} catch (createError) {
+				return {
+					createStorySentenceWordSuccess: true,
+					tokenUpdates: [{
+						tokenId: checkedTokenId,
+						wordId: word.id,
+						inContextTranslation,
+						word
+					}]
+				};
+			} catch (createError) {
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
@@ -858,19 +853,24 @@ export const actions: Actions = {
 			return fail(400, { error: 'Lesson word and token are required.' });
 		}
 
-		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
-		const groupTokenIds = await getExampleSentenceGroupTokenIds(sentenceId, tokenId);
+			const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+			const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
 
-		const updatedToken = await prisma.$transaction(async (tx) => {
-			await tx.exampleSentenceToken.updateMany({
-				where: { id: { in: groupTokenIds } },
-				data: {
-					wordId,
-					inContextTranslation
-				}
-			});
+			const updatedToken = await prisma.$transaction(async (tx) => {
+				const updatedToken = await tx.exampleSentenceToken.update({
+					where: { id: checkedTokenId },
+					data: {
+						wordId,
+						inContextTranslation
+					},
+					include: {
+						word: {
+							select: buildWordSelect()
+						}
+					}
+				});
 
-			if (wordId) {
+				if (wordId) {
 				await tx.wordSentence.upsert({
 					where: {
 						wordId_exampleSentenceId: {
@@ -882,31 +882,23 @@ export const actions: Actions = {
 					create: {
 						wordId,
 						exampleSentenceId: sentenceId
-					}
-				});
-			}
-
-			return tx.exampleSentenceToken.findMany({
-				where: { id: { in: groupTokenIds } },
-				orderBy: { tokenOrder: 'asc' },
-				include: {
-					word: {
-						select: buildWordSelect()
-					}
+						}
+					});
 				}
-			});
-		});
 
-		return {
-			updateExampleSentenceTokenSuccess: true,
-			tokenUpdates: updatedToken.map((groupToken) => ({
-				tokenId: groupToken.id,
-				wordId: groupToken.wordId,
-				inContextTranslation: groupToken.inContextTranslation,
-				word: groupToken.word
-			}))
-		};
-	},
+				return updatedToken;
+			});
+
+			return {
+				updateExampleSentenceTokenSuccess: true,
+				tokenUpdates: [{
+					tokenId: updatedToken.id,
+					wordId: updatedToken.wordId,
+					inContextTranslation: updatedToken.inContextTranslation,
+					word: updatedToken.word
+				}]
+			};
+		},
 	createExampleSentenceWord: async ({ request }) => {
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
@@ -924,24 +916,24 @@ export const actions: Actions = {
 			});
 		}
 
-		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
-		const groupTokenIds = await getExampleSentenceGroupTokenIds(sentenceId, tokenId);
+			const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+			const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
 
-		try {
-			const word = await prisma.$transaction(async (tx) => {
+			try {
+				const word = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
 					translations,
 					notes,
-					alternativeSpellings
-				});
+						alternativeSpellings
+					});
 
-				await tx.exampleSentenceToken.updateMany({
-					where: { id: { in: groupTokenIds } },
-					data: {
-						wordId: word.id,
-						inContextTranslation
+					await tx.exampleSentenceToken.update({
+						where: { id: checkedTokenId },
+						data: {
+							wordId: word.id,
+							inContextTranslation
 					}
 				});
 
@@ -962,16 +954,16 @@ export const actions: Actions = {
 				return word;
 			});
 
-			return {
-				createExampleSentenceWordSuccess: true,
-				tokenUpdates: groupTokenIds.map((groupTokenId) => ({
-					tokenId: groupTokenId,
-					wordId: word.id,
-					inContextTranslation,
-					word
-				}))
-			};
-		} catch (createError) {
+				return {
+					createExampleSentenceWordSuccess: true,
+					tokenUpdates: [{
+						tokenId: checkedTokenId,
+						wordId: word.id,
+						inContextTranslation,
+						word
+					}]
+				};
+			} catch (createError) {
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'

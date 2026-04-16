@@ -1,5 +1,11 @@
 import { error, json } from '@sveltejs/kit';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
+import {
+	assignSequentialTokenOrders,
+	temporaryTokenOrderUpdates,
+	type OrderedToken
+} from '$lib/server/token-order';
 import {
 	planMergeTokenGroups,
 	planSplitTokenGroup,
@@ -7,22 +13,35 @@ import {
 } from '$lib/server/token-group-edit';
 import type { RequestHandler } from './$types';
 
+type SentenceKind = 'story' | 'example';
+type EditableToken = OrderedToken & {
+	surfaceForm: string;
+	wordId: string | null;
+	inContextTranslation: string | null;
+};
+type SplitRow = {
+	id: string | null;
+	surfaceForm: string;
+	normalizedForm: string | null;
+	inContextTranslation: string | null;
+};
+
 type Payload =
 	| {
-			kind?: 'story' | 'example';
+			kind?: SentenceKind;
 			action?: 'merge';
 			sentenceId?: string;
 			sourceTokenId?: string;
 			targetTokenId?: string;
 	  }
 	| {
-			kind?: 'story' | 'example';
+			kind?: SentenceKind;
 			action?: 'split';
 			sentenceId?: string;
 			tokenId?: string;
 	  }
 	| {
-			kind?: 'story' | 'example';
+			kind?: SentenceKind;
 			action?: 'surface';
 			sentenceId?: string;
 			tokenId?: string;
@@ -43,33 +62,38 @@ const WORD_SELECT = {
 		}
 	}
 };
-const TEMP_ORDER_SHIFT = 10_000;
 
 function clean(value: unknown): string {
 	return String(value ?? '').trim();
 }
 
-async function ensureStorySentence(lessonId: string, sentenceId: string) {
-	const lesson = await prisma.lesson.findUnique({
-		where: { id: lessonId },
-		select: { storyId: true }
-	});
-
-	if (!lesson?.storyId) {
-		error(404, 'Story lesson not found.');
-	}
-
-	const sentence = await prisma.storySentence.findUnique({
-		where: { id: sentenceId },
-		select: { id: true, storyId: true }
-	});
-
-	if (!sentence || sentence.storyId !== lesson.storyId) {
-		error(404, 'Story sentence not found.');
-	}
+function buildSentenceText(tokens: Array<{ surfaceForm: string }>): string {
+	return tokens.map((token) => token.surfaceForm).join(' ');
 }
 
-async function ensureExampleSentence(lessonId: string, sentenceId: string) {
+async function ensureSentence(lessonId: string, kind: SentenceKind, sentenceId: string) {
+	if (kind === 'story') {
+		const lesson = await prisma.lesson.findUnique({
+			where: { id: lessonId },
+			select: { storyId: true }
+		});
+
+		if (!lesson?.storyId) {
+			error(404, 'Story lesson not found.');
+		}
+
+		const sentence = await prisma.storySentence.findUnique({
+			where: { id: sentenceId },
+			select: { id: true, storyId: true }
+		});
+
+		if (!sentence || sentence.storyId !== lesson.storyId) {
+			error(404, 'Story sentence not found.');
+		}
+
+		return;
+	}
+
 	const lessonWord = await prisma.lessonWord.findFirst({
 		where: {
 			sentenceId,
@@ -85,32 +109,259 @@ async function ensureExampleSentence(lessonId: string, sentenceId: string) {
 	}
 }
 
-async function loadStoryTokens(sentenceId: string) {
-	return prisma.storySentenceToken.findMany({
-		where: { storySentenceId: sentenceId },
-		orderBy: { tokenOrder: 'asc' },
-		include: {
-			word: {
-				select: WORD_SELECT
-			}
-		}
-	});
-}
+async function loadEditableTokens(kind: SentenceKind, sentenceId: string): Promise<EditableToken[]> {
+	const select = {
+		id: true,
+		tokenOrder: true,
+		surfaceForm: true,
+		wordId: true,
+		inContextTranslation: true
+	};
 
-async function loadExampleTokens(sentenceId: string) {
+	if (kind === 'story') {
+		return prisma.storySentenceToken.findMany({
+			where: { storySentenceId: sentenceId },
+			orderBy: { tokenOrder: 'asc' },
+			select
+		});
+	}
+
 	return prisma.exampleSentenceToken.findMany({
 		where: { exampleSentenceId: sentenceId },
 		orderBy: { tokenOrder: 'asc' },
-		include: {
-			word: {
-				select: WORD_SELECT
-			}
-		}
+		select
 	});
 }
 
-function buildSentenceText(tokens: Array<{ surfaceForm: string }>): string {
-	return tokens.map((token) => token.surfaceForm).join(' ');
+async function loadTokensWithWords(kind: SentenceKind, sentenceId: string) {
+	const include = {
+		word: {
+			select: WORD_SELECT
+		}
+	};
+
+	if (kind === 'story') {
+		return prisma.storySentenceToken.findMany({
+			where: { storySentenceId: sentenceId },
+			orderBy: { tokenOrder: 'asc' },
+			include
+		});
+	}
+
+	return prisma.exampleSentenceToken.findMany({
+		where: { exampleSentenceId: sentenceId },
+		orderBy: { tokenOrder: 'asc' },
+		include
+	});
+}
+
+async function updateSentenceText(kind: SentenceKind, sentenceId: string, sentenceText: string) {
+	if (kind === 'story') {
+		await prisma.storySentence.update({
+			where: { id: sentenceId },
+			data: { kalenjin: sentenceText }
+		});
+		return;
+	}
+
+	await prisma.exampleSentence.update({
+		where: { id: sentenceId },
+		data: { kalenjin: sentenceText }
+	});
+}
+
+async function setTemporaryOrders(
+	tx: Prisma.TransactionClient,
+	kind: SentenceKind,
+	tokens: OrderedToken[]
+) {
+	for (const update of temporaryTokenOrderUpdates(tokens)) {
+		if (kind === 'story') {
+			await tx.storySentenceToken.update({
+				where: { id: update.id },
+				data: { tokenOrder: update.tokenOrder }
+			});
+		} else {
+			await tx.exampleSentenceToken.update({
+				where: { id: update.id },
+				data: { tokenOrder: update.tokenOrder }
+			});
+		}
+	}
+}
+
+async function applyMerge(
+	tx: Prisma.TransactionClient,
+	kind: SentenceKind,
+	tokens: EditableToken[],
+	sourceTokenId: string,
+	targetTokenId: string
+) {
+	const merge = planMergeTokenGroups(tokens, sourceTokenId, targetTokenId);
+	const finalTokens = assignSequentialTokenOrders(
+		tokens
+			.filter((token) => token.id !== merge.removeTokenId)
+			.map((token) =>
+				token.id === merge.keepTokenId
+					? {
+							...token,
+							surfaceForm: merge.surfaceForm,
+							wordId: merge.wordId,
+							inContextTranslation: merge.inContextTranslation
+						}
+					: token
+			)
+	);
+
+	await setTemporaryOrders(tx, kind, tokens);
+
+	if (kind === 'story') {
+		await tx.storySentenceToken.delete({ where: { id: merge.removeTokenId } });
+		for (const token of finalTokens) {
+			await tx.storySentenceToken.update({
+				where: { id: token.id },
+				data: {
+					tokenOrder: token.tokenOrder,
+					...(token.id === merge.keepTokenId
+						? {
+								surfaceForm: merge.surfaceForm,
+								normalizedForm: merge.normalizedForm,
+								wordId: merge.wordId,
+								inContextTranslation: merge.inContextTranslation
+							}
+						: {})
+				}
+			});
+		}
+		return;
+	}
+
+	await tx.exampleSentenceToken.delete({ where: { id: merge.removeTokenId } });
+	for (const token of finalTokens) {
+		await tx.exampleSentenceToken.update({
+			where: { id: token.id },
+			data: {
+				tokenOrder: token.tokenOrder,
+				...(token.id === merge.keepTokenId
+					? {
+							surfaceForm: merge.surfaceForm,
+							normalizedForm: merge.normalizedForm,
+							wordId: merge.wordId,
+							inContextTranslation: merge.inContextTranslation
+						}
+					: {})
+			}
+		});
+	}
+}
+
+async function applySplit(
+	tx: Prisma.TransactionClient,
+	kind: SentenceKind,
+	sentenceId: string,
+	tokens: EditableToken[],
+	tokenId: string
+) {
+	const split = planSplitTokenGroup(tokens, tokenId);
+	const splitRows: SplitRow[] = tokens.flatMap((token): SplitRow[] =>
+		token.id === split.tokenId
+			? split.parts.map((part, index): SplitRow => ({
+					id: index === 0 ? token.id : null,
+					surfaceForm: part.surfaceForm,
+					normalizedForm: part.normalizedForm,
+					inContextTranslation: part.inContextTranslation
+				}))
+			: [
+					{
+						id: token.id,
+						surfaceForm: token.surfaceForm,
+						normalizedForm: null,
+						inContextTranslation: token.inContextTranslation
+					}
+				]
+	);
+	const finalRows = assignSequentialTokenOrders(splitRows);
+
+	await setTemporaryOrders(tx, kind, tokens);
+
+	if (kind === 'story') {
+		for (const row of finalRows) {
+			if (row.id) {
+				await tx.storySentenceToken.update({
+					where: { id: row.id },
+					data: {
+						tokenOrder: row.tokenOrder,
+						surfaceForm: row.surfaceForm,
+						...(row.normalizedForm ? { normalizedForm: row.normalizedForm } : {}),
+						inContextTranslation: row.inContextTranslation
+					}
+				});
+			} else {
+				await tx.storySentenceToken.create({
+					data: {
+						storySentenceId: sentenceId,
+						tokenOrder: row.tokenOrder,
+						surfaceForm: row.surfaceForm,
+						normalizedForm: row.normalizedForm ?? row.surfaceForm,
+						inContextTranslation: row.inContextTranslation
+					}
+				});
+			}
+		}
+		return;
+	}
+
+	for (const row of finalRows) {
+		if (row.id) {
+			await tx.exampleSentenceToken.update({
+				where: { id: row.id },
+				data: {
+					tokenOrder: row.tokenOrder,
+					surfaceForm: row.surfaceForm,
+					...(row.normalizedForm ? { normalizedForm: row.normalizedForm } : {}),
+					inContextTranslation: row.inContextTranslation
+				}
+			});
+		} else {
+			await tx.exampleSentenceToken.create({
+				data: {
+					exampleSentenceId: sentenceId,
+					tokenOrder: row.tokenOrder,
+					surfaceForm: row.surfaceForm,
+					normalizedForm: row.normalizedForm ?? row.surfaceForm,
+					inContextTranslation: row.inContextTranslation
+				}
+			});
+		}
+	}
+}
+
+async function applySurface(
+	kind: SentenceKind,
+	tokens: EditableToken[],
+	tokenId: string,
+	surfaceForm: string
+) {
+	const update = planUpdateTokenGroupSurface(tokens, tokenId, surfaceForm);
+
+	if (kind === 'story') {
+		await prisma.storySentenceToken.update({
+			where: { id: update.id },
+			data: {
+				surfaceForm: update.surfaceForm,
+				normalizedForm: update.normalizedForm
+			}
+		});
+		return;
+	}
+
+	await prisma.exampleSentenceToken.update({
+		where: { id: update.id },
+		data: {
+			surfaceForm: update.surfaceForm,
+			normalizedForm: update.normalizedForm
+		}
+	});
 }
 
 export const POST: RequestHandler = async ({ params, request }) => {
@@ -123,208 +374,26 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		return json({ error: 'Sentence is required.' }, { status: 400 });
 	}
 
-	if (kind === 'story') {
-		await ensureStorySentence(params.id, sentenceId);
-		const tokens = await prisma.storySentenceToken.findMany({
-			where: { storySentenceId: sentenceId },
-			orderBy: { tokenOrder: 'asc' },
-			select: {
-				id: true,
-				tokenOrder: true,
-				surfaceForm: true,
-				wordId: true,
-				inContextTranslation: true
-			}
-		});
-
-		try {
-			if (action === 'merge') {
-				const sourceTokenId = clean(payload.sourceTokenId);
-				const targetTokenId = clean(payload.targetTokenId);
-				const merge = planMergeTokenGroups(tokens, sourceTokenId, targetTokenId);
-
-				await prisma.$transaction(async (tx) => {
-					await tx.storySentenceToken.update({
-						where: { id: merge.keepTokenId },
-						data: {
-							surfaceForm: merge.surfaceForm,
-							normalizedForm: merge.normalizedForm,
-							wordId: merge.wordId,
-							inContextTranslation: merge.inContextTranslation
-						}
-					});
-					await tx.storySentenceToken.delete({ where: { id: merge.removeTokenId } });
-					await tx.storySentenceToken.updateMany({
-						where: {
-							storySentenceId: sentenceId,
-							tokenOrder: { gt: merge.removedTokenOrder }
-						},
-						data: { tokenOrder: { decrement: 1 } }
-					});
-				});
-			} else if (action === 'split') {
-				const tokenId = clean(payload.tokenId);
-				const split = planSplitTokenGroup(tokens, tokenId);
-				const firstPart = split.parts[0];
-				const extraParts = split.parts.slice(1);
-
-				await prisma.$transaction(async (tx) => {
-					await tx.storySentenceToken.updateMany({
-						where: {
-							storySentenceId: sentenceId,
-							tokenOrder: { gt: split.tokenOrder }
-						},
-						data: { tokenOrder: { increment: TEMP_ORDER_SHIFT } }
-					});
-					await tx.storySentenceToken.updateMany({
-						where: {
-							storySentenceId: sentenceId,
-							tokenOrder: { gte: split.tokenOrder + TEMP_ORDER_SHIFT + 1 }
-						},
-						data: { tokenOrder: { decrement: TEMP_ORDER_SHIFT - extraParts.length } }
-					});
-					await tx.storySentenceToken.update({
-						where: { id: split.tokenId },
-						data: {
-							surfaceForm: firstPart.surfaceForm,
-							normalizedForm: firstPart.normalizedForm,
-							inContextTranslation: firstPart.inContextTranslation
-						}
-					});
-					await tx.storySentenceToken.createMany({
-						data: extraParts.map((part, index) => ({
-							storySentenceId: sentenceId,
-							tokenOrder: split.tokenOrder + index + 1,
-							surfaceForm: part.surfaceForm,
-							normalizedForm: part.normalizedForm,
-							inContextTranslation: part.inContextTranslation
-						}))
-					});
-				});
-			} else if (action === 'surface') {
-				const tokenId = clean(payload.tokenId);
-				const surfaceForm = clean(payload.surfaceForm);
-				const update = planUpdateTokenGroupSurface(tokens, tokenId, surfaceForm);
-
-				await prisma.storySentenceToken.update({
-					where: { id: update.id },
-					data: {
-						surfaceForm: update.surfaceForm,
-						normalizedForm: update.normalizedForm
-					}
-				});
-			} else {
-				return json({ error: 'Action is required.' }, { status: 400 });
-			}
-		} catch (editError) {
-			return json(
-				{
-					error: editError instanceof Error ? editError.message : 'Could not update sentence words.'
-				},
-				{ status: 400 }
-			);
-		}
-
-		const nextTokens = await loadStoryTokens(sentenceId);
-		await prisma.storySentence.update({
-			where: { id: sentenceId },
-			data: { kalenjin: buildSentenceText(nextTokens) }
-		});
-
-		return json({
-			tokens: nextTokens
-		});
-	}
-
-	await ensureExampleSentence(params.id, sentenceId);
-	const tokens = await prisma.exampleSentenceToken.findMany({
-		where: { exampleSentenceId: sentenceId },
-		orderBy: { tokenOrder: 'asc' },
-		select: {
-			id: true,
-			tokenOrder: true,
-			surfaceForm: true,
-			wordId: true,
-			inContextTranslation: true
-		}
-	});
+	await ensureSentence(params.id, kind, sentenceId);
+	const tokens = await loadEditableTokens(kind, sentenceId);
 
 	try {
 		if (action === 'merge') {
 			const sourceTokenId = clean(payload.sourceTokenId);
 			const targetTokenId = clean(payload.targetTokenId);
-			const merge = planMergeTokenGroups(tokens, sourceTokenId, targetTokenId);
 
-			await prisma.$transaction(async (tx) => {
-				await tx.exampleSentenceToken.update({
-					where: { id: merge.keepTokenId },
-					data: {
-						surfaceForm: merge.surfaceForm,
-						normalizedForm: merge.normalizedForm,
-						wordId: merge.wordId,
-						inContextTranslation: merge.inContextTranslation
-					}
-				});
-				await tx.exampleSentenceToken.delete({ where: { id: merge.removeTokenId } });
-				await tx.exampleSentenceToken.updateMany({
-					where: {
-						exampleSentenceId: sentenceId,
-						tokenOrder: { gt: merge.removedTokenOrder }
-					},
-					data: { tokenOrder: { decrement: 1 } }
-				});
-			});
+			await prisma.$transaction((tx) =>
+				applyMerge(tx, kind, tokens, sourceTokenId, targetTokenId)
+			);
 		} else if (action === 'split') {
 			const tokenId = clean(payload.tokenId);
-			const split = planSplitTokenGroup(tokens, tokenId);
-			const firstPart = split.parts[0];
-			const extraParts = split.parts.slice(1);
 
-			await prisma.$transaction(async (tx) => {
-				await tx.exampleSentenceToken.updateMany({
-					where: {
-						exampleSentenceId: sentenceId,
-						tokenOrder: { gt: split.tokenOrder }
-					},
-					data: { tokenOrder: { increment: TEMP_ORDER_SHIFT } }
-				});
-				await tx.exampleSentenceToken.updateMany({
-					where: {
-						exampleSentenceId: sentenceId,
-						tokenOrder: { gte: split.tokenOrder + TEMP_ORDER_SHIFT + 1 }
-					},
-					data: { tokenOrder: { decrement: TEMP_ORDER_SHIFT - extraParts.length } }
-				});
-				await tx.exampleSentenceToken.update({
-					where: { id: split.tokenId },
-					data: {
-						surfaceForm: firstPart.surfaceForm,
-						normalizedForm: firstPart.normalizedForm,
-						inContextTranslation: firstPart.inContextTranslation
-					}
-				});
-				await tx.exampleSentenceToken.createMany({
-					data: extraParts.map((part, index) => ({
-						exampleSentenceId: sentenceId,
-						tokenOrder: split.tokenOrder + index + 1,
-						surfaceForm: part.surfaceForm,
-						normalizedForm: part.normalizedForm,
-						inContextTranslation: part.inContextTranslation
-					}))
-				});
-			});
+			await prisma.$transaction((tx) => applySplit(tx, kind, sentenceId, tokens, tokenId));
 		} else if (action === 'surface') {
 			const tokenId = clean(payload.tokenId);
 			const surfaceForm = clean(payload.surfaceForm);
-			const update = planUpdateTokenGroupSurface(tokens, tokenId, surfaceForm);
 
-			await prisma.exampleSentenceToken.update({
-				where: { id: update.id },
-				data: {
-					surfaceForm: update.surfaceForm,
-					normalizedForm: update.normalizedForm
-				}
-			});
+			await applySurface(kind, tokens, tokenId, surfaceForm);
 		} else {
 			return json({ error: 'Action is required.' }, { status: 400 });
 		}
@@ -337,11 +406,8 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		);
 	}
 
-	const nextTokens = await loadExampleTokens(sentenceId);
-	await prisma.exampleSentence.update({
-		where: { id: sentenceId },
-		data: { kalenjin: buildSentenceText(nextTokens) }
-	});
+	const nextTokens = await loadTokensWithWords(kind, sentenceId);
+	await updateSentenceText(kind, sentenceId, buildSentenceText(nextTokens));
 
 	return json({
 		tokens: nextTokens

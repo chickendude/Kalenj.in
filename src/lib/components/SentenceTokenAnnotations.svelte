@@ -502,11 +502,15 @@
 			return;
 		}
 
+		if (!window.confirm(`Split "${activeToken.surfaceForm}" into separate words?`)) {
+			return;
+		}
+
 		try {
-				const nextTokens = await requestGroupAction({
-					action: 'split',
-					tokenId: activeToken.id
-				});
+			const nextTokens = await requestGroupAction({
+				action: 'split',
+				tokenId: activeToken.id
+			});
 			closePicker();
 			editingSurfaceTokenId = null;
 			surfaceDraft = '';

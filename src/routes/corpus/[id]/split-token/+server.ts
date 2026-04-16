@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
+import { temporaryTokenOrderUpdates } from '$lib/server/token-order';
 import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
 
@@ -7,7 +8,6 @@ type SplitPayload = {
 	tokenId?: string;
 	splitPoints?: number[];
 };
-const TEMP_ORDER_SHIFT = 10_000;
 
 function clean(value: unknown): string {
 	return String(value ?? '').trim();
@@ -72,55 +72,77 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		}))
 		.filter((segment) => segment.surfaceForm.length > 0);
 
-	const shiftBy = segments.length - 1;
+	const sentenceTokens = await prisma.exampleSentenceToken.findMany({
+		where: { exampleSentenceId: token.exampleSentenceId },
+		orderBy: { tokenOrder: 'asc' },
+		select: {
+			id: true,
+			tokenOrder: true
+		}
+	});
+
 	const createdTokens = await prisma.$transaction(async (tx) => {
-		await tx.exampleSentenceToken.updateMany({
-			where: {
-				exampleSentenceId: token.exampleSentenceId,
-				tokenOrder: { gt: token.tokenOrder }
-			},
-			data: { tokenOrder: { increment: TEMP_ORDER_SHIFT } }
-		});
-		await tx.exampleSentenceToken.updateMany({
-			where: {
-				exampleSentenceId: token.exampleSentenceId,
-				tokenOrder: { gte: token.tokenOrder + TEMP_ORDER_SHIFT + 1 }
-			},
-			data: { tokenOrder: { decrement: TEMP_ORDER_SHIFT - shiftBy } }
-		});
+		for (const update of temporaryTokenOrderUpdates(sentenceTokens)) {
+			await tx.exampleSentenceToken.update({
+				where: { id: update.id },
+				data: { tokenOrder: update.tokenOrder }
+			});
+		}
 
 		const output: Array<Awaited<ReturnType<typeof tx.exampleSentenceToken.create>>> = [];
-		const firstSegment = segments[0];
-		const updated = await tx.exampleSentenceToken.update({
-			where: { id: token.id },
-			data: {
-				surfaceForm: firstSegment.surfaceForm,
-				normalizedForm: normalizeToken(firstSegment.surfaceForm)
-			},
-			include: { word: true }
-		});
-		output.push(updated);
+		let nextOrder = 0;
 
-		for (let index = 1; index < segments.length; index += 1) {
-			const segment = segments[index];
-			const created = await tx.exampleSentenceToken.create({
-				data: {
-					exampleSentenceId: token.exampleSentenceId,
-					tokenOrder: token.tokenOrder + index,
-					surfaceForm: segment.surfaceForm,
-					normalizedForm: normalizeToken(segment.surfaceForm)
-				},
-				include: { word: true }
-			});
-			output.push(created);
+		for (const existingToken of sentenceTokens) {
+			if (existingToken.id !== token.id) {
+				await tx.exampleSentenceToken.update({
+					where: { id: existingToken.id },
+					data: { tokenOrder: nextOrder }
+				});
+				nextOrder += 1;
+				continue;
+			}
+
+			for (let index = 0; index < segments.length; index += 1) {
+				const segment = segments[index];
+				if (index === 0) {
+					const updated = await tx.exampleSentenceToken.update({
+						where: { id: token.id },
+						data: {
+							tokenOrder: nextOrder,
+							surfaceForm: segment.surfaceForm,
+							normalizedForm: normalizeToken(segment.surfaceForm)
+						},
+						include: { word: true }
+					});
+					output.push(updated);
+				} else {
+					const created = await tx.exampleSentenceToken.create({
+						data: {
+							exampleSentenceId: token.exampleSentenceId,
+							tokenOrder: nextOrder,
+							surfaceForm: segment.surfaceForm,
+							normalizedForm: normalizeToken(segment.surfaceForm)
+						},
+						include: { word: true }
+					});
+					output.push(created);
+				}
+				nextOrder += 1;
+			}
 		}
 
 		return output;
 	});
 
+	const allTokens = await prisma.exampleSentenceToken.findMany({
+		where: { exampleSentenceId: token.exampleSentenceId },
+		orderBy: { tokenOrder: 'asc' },
+		select: { surfaceForm: true }
+	});
+
 	await prisma.exampleSentence.update({
 		where: { id: token.exampleSentenceId },
-		data: { kalenjin: createdTokens.map((createdToken) => createdToken.surfaceForm).join(' ') }
+		data: { kalenjin: allTokens.map((sentenceToken) => sentenceToken.surfaceForm).join(' ') }
 	});
 
 	return json({

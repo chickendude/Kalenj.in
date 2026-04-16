@@ -193,6 +193,10 @@
 			cancelInlineStoryEdit();
 		}
 	}
+
+	function saveInlineStoryEditOnBlur() {
+		void saveInlineStoryEdit();
+	}
 </script>
 
 <section class="lesson-page">
@@ -295,7 +299,7 @@
 										class="inline-edit-input"
 										bind:value={inlineStoryValue}
 										onkeydown={handleInlineStoryKeydown}
-										onblur={cancelInlineStoryEdit}
+										onblur={saveInlineStoryEditOnBlur}
 									/>
 								{:else}
 									<button
@@ -330,7 +334,7 @@
 										bind:value={inlineStoryValue}
 										rows="2"
 										onkeydown={handleInlineStoryKeydown}
-										onblur={cancelInlineStoryEdit}
+										onblur={saveInlineStoryEditOnBlur}
 									></textarea>
 								{:else}
 									<button

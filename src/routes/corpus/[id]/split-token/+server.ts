@@ -7,6 +7,7 @@ type SplitPayload = {
 	tokenId?: string;
 	splitPoints?: number[];
 };
+const TEMP_ORDER_SHIFT = 10_000;
 
 function clean(value: unknown): string {
 	return String(value ?? '').trim();
@@ -19,8 +20,7 @@ async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 			id: true,
 			exampleSentenceId: true,
 			tokenOrder: true,
-			surfaceForm: true,
-			wordIndex: true
+			surfaceForm: true
 		}
 	});
 
@@ -68,8 +68,6 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const segments = boundaries
 		.slice(0, -1)
 		.map((start, index) => ({
-			segmentStart: start,
-			segmentEnd: boundaries[index + 1],
 			surfaceForm: surface.slice(start, boundaries[index + 1])
 		}))
 		.filter((segment) => segment.surfaceForm.length > 0);
@@ -81,21 +79,34 @@ export const POST: RequestHandler = async ({ params, request }) => {
 				exampleSentenceId: token.exampleSentenceId,
 				tokenOrder: { gt: token.tokenOrder }
 			},
-			data: { tokenOrder: { increment: shiftBy } }
+			data: { tokenOrder: { increment: TEMP_ORDER_SHIFT } }
+		});
+		await tx.exampleSentenceToken.updateMany({
+			where: {
+				exampleSentenceId: token.exampleSentenceId,
+				tokenOrder: { gte: token.tokenOrder + TEMP_ORDER_SHIFT + 1 }
+			},
+			data: { tokenOrder: { decrement: TEMP_ORDER_SHIFT - shiftBy } }
 		});
 
-		await tx.exampleSentenceToken.delete({ where: { id: token.id } });
-
 		const output: Array<Awaited<ReturnType<typeof tx.exampleSentenceToken.create>>> = [];
-		for (let index = 0; index < segments.length; index += 1) {
+		const firstSegment = segments[0];
+		const updated = await tx.exampleSentenceToken.update({
+			where: { id: token.id },
+			data: {
+				surfaceForm: firstSegment.surfaceForm,
+				normalizedForm: normalizeToken(firstSegment.surfaceForm)
+			},
+			include: { word: true }
+		});
+		output.push(updated);
+
+		for (let index = 1; index < segments.length; index += 1) {
 			const segment = segments[index];
 			const created = await tx.exampleSentenceToken.create({
 				data: {
 					exampleSentenceId: token.exampleSentenceId,
 					tokenOrder: token.tokenOrder + index,
-					wordIndex: token.wordIndex,
-					segmentStart: segment.segmentStart,
-					segmentEnd: segment.segmentEnd,
 					surfaceForm: segment.surfaceForm,
 					normalizedForm: normalizeToken(segment.surfaceForm)
 				},
@@ -105,6 +116,11 @@ export const POST: RequestHandler = async ({ params, request }) => {
 		}
 
 		return output;
+	});
+
+	await prisma.exampleSentence.update({
+		where: { id: token.exampleSentenceId },
+		data: { kalenjin: createdTokens.map((createdToken) => createdToken.surfaceForm).join(' ') }
 	});
 
 	return json({

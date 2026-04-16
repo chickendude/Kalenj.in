@@ -13,11 +13,17 @@
 
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
+	type StorySentence = NonNullable<typeof data.lesson.story>['sentences'][number];
 
 	let showLessonEdit = $state(false);
 	let showAddWordForm = $state(false);
 	let editingStorySentenceId = $state<string | null>(null);
 	let editingLessonWordId = $state<string | null>(null);
+	let inlineStoryEdit = $state<{ sentenceId: string; field: 'speaker' | 'english' } | null>(null);
+	let inlineStoryValue = $state('');
+	let inlineStoryError = $state<string | null>(null);
+	let storySentences = $state<StorySentence[]>([]);
+	let inlineStoryInput = $state<HTMLInputElement | null>(null);
 
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
@@ -51,6 +57,20 @@
 		lessonType = data.lesson.type;
 		lessonVocabularyType = data.lesson.vocabularyType ?? 'VOCAB';
 		lessonGrammarMarkdown = data.lesson.grammarMarkdown ?? '';
+		storySentences = data.lesson.story?.sentences.map((sentence) => ({ ...sentence })) ?? [];
+	});
+
+	$effect(() => {
+		if (!inlineStoryEdit) {
+			return;
+		}
+
+		const timeout = window.setTimeout(() => {
+			inlineStoryInput?.focus();
+			inlineStoryInput?.select();
+		}, 0);
+
+		return () => window.clearTimeout(timeout);
 	});
 
 	function isTargetSelected(
@@ -86,6 +106,75 @@
 				await applyAction(result);
 			};
 		};
+	}
+
+	function beginInlineStoryEdit(sentence: (typeof storySentences)[number], field: 'speaker' | 'english') {
+		inlineStoryEdit = { sentenceId: sentence.id, field };
+		inlineStoryValue = field === 'speaker' ? sentence.speaker ?? '' : sentence.english;
+		inlineStoryError = null;
+	}
+
+	function cancelInlineStoryEdit() {
+		inlineStoryEdit = null;
+		inlineStoryValue = '';
+		inlineStoryError = null;
+	}
+
+	async function saveInlineStoryEdit() {
+		if (!inlineStoryEdit) {
+			return;
+		}
+
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/story-sentence-inline`, {
+				method: 'POST',
+				headers: {
+					'content-type': 'application/json'
+				},
+				body: JSON.stringify({
+					sentenceId: inlineStoryEdit.sentenceId,
+					field: inlineStoryEdit.field,
+					value: inlineStoryValue
+				})
+			});
+
+			const result = (await response.json()) as {
+				error?: string;
+				sentence?: {
+					id: string;
+					speaker: string | null;
+					english: string;
+				};
+			};
+
+			if (!response.ok || !result.sentence) {
+				throw new Error(result.error ?? 'Could not save story field.');
+			}
+
+			storySentences = storySentences.map((sentence) =>
+				sentence.id === result.sentence?.id
+					? {
+							...sentence,
+							speaker: result.sentence.speaker,
+							english: result.sentence.english
+						}
+					: sentence
+			);
+			cancelInlineStoryEdit();
+		} catch (saveError) {
+			inlineStoryError =
+				saveError instanceof Error ? saveError.message : 'Could not save story field.';
+		}
+	}
+
+	function handleInlineStoryKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void saveInlineStoryEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineStoryEdit();
+		}
 	}
 </script>
 
@@ -178,16 +267,35 @@
 				<span></span>
 			</div>
 
-			{#if !data.lesson.story || data.lesson.story.sentences.length === 0}
+			{#if !data.lesson.story || storySentences.length === 0}
 				<p>No story sentences yet.</p>
 			{:else}
-				{#each data.lesson.story.sentences as sentence}
+				{#each storySentences as sentence}
 					<div class="table-row story-grid">
-						<div>{sentence.speaker ?? '—'}</div>
+						<div>
+							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
+								<input
+									bind:this={inlineStoryInput}
+									class="inline-edit-input"
+									bind:value={inlineStoryValue}
+									onkeydown={handleInlineStoryKeydown}
+									onblur={cancelInlineStoryEdit}
+								/>
+							{:else}
+								<button
+									type="button"
+									class="inline-edit-button"
+									onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
+								>
+									{sentence.speaker ?? '—'}
+								</button>
+							{/if}
+						</div>
 						<div class="story-text-cell">
 							<SentenceTokenAnnotations
 								entityId={sentence.id}
 								entityIdField="storySentenceId"
+								entityKind="story"
 								sentenceId={sentence.id}
 								sentenceText={sentence.kalenjin}
 								tokens={sentence.tokens}
@@ -195,9 +303,28 @@
 								updateAction="?/updateStorySentenceToken"
 								createAction="?/createStorySentenceWord"
 								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
 							/>
 						</div>
-						<div>{sentence.english}</div>
+						<div>
+							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
+								<input
+									bind:this={inlineStoryInput}
+									class="inline-edit-input inline-edit-input--wide"
+									bind:value={inlineStoryValue}
+									onkeydown={handleInlineStoryKeydown}
+									onblur={cancelInlineStoryEdit}
+								/>
+							{:else}
+								<button
+									type="button"
+									class="inline-edit-button inline-edit-button--wide"
+									onclick={() => beginInlineStoryEdit(sentence, 'english')}
+								>
+									{sentence.english}
+								</button>
+							{/if}
+						</div>
 						<div class="row-action">
 							<button
 								type="button"
@@ -243,6 +370,10 @@
 						</div>
 					{/if}
 				{/each}
+
+				{#if inlineStoryError}
+					<p class="error-text">{inlineStoryError}</p>
+				{/if}
 			{/if}
 		</section>
 	{:else}
@@ -454,6 +585,7 @@
 								<SentenceTokenAnnotations
 									entityId={lessonWord.id}
 									entityIdField="lessonWordId"
+									entityKind="example"
 									sentenceId={lessonWord.sentence.id}
 									sentenceText={lessonWord.sentence.kalenjin}
 									tokens={lessonWord.sentence.tokens}
@@ -461,6 +593,7 @@
 									updateAction="?/updateExampleSentenceToken"
 									createAction="?/createExampleSentenceWord"
 									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
 								/>
 							</div>
 						{/if}
@@ -602,6 +735,29 @@
 	.secondary-button {
 		background: #fff;
 		border: 1px solid #d0d0d0;
+	}
+
+	.inline-edit-button {
+		background: transparent;
+		border: 0;
+		cursor: text;
+		font: inherit;
+		padding: 0;
+		text-align: left;
+	}
+
+	.inline-edit-button--wide {
+		width: 100%;
+	}
+
+	.inline-edit-input {
+		font: inherit;
+		padding: 0.2rem 0.3rem;
+		width: 100%;
+	}
+
+	.inline-edit-input--wide {
+		min-width: 16rem;
 	}
 
 	.two-column-grid,

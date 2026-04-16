@@ -20,7 +20,7 @@
 	}>();
 
 	let activeTooltipKey = $state<string | null>(null);
-	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, sentenceText, tokens }));
+	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, tokens }));
 
 	function tokenPopup(token: PreviewToken): { kalenjin: string; english: string | null } {
 		if (!token.word) {

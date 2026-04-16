@@ -44,10 +44,18 @@
 		createAlternativeSpellings: string;
 	};
 
+	type MergePrompt = {
+		sourceTokenId: string;
+		targetTokenId: string;
+		sourceSurface: string;
+		targetSurface: string;
+	};
+
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 	type TokenUpdatePayload = {
 		tokenId: string;
+		surfaceForm?: string;
 		wordId: string | null;
 		inContextTranslation?: string | null;
 		word?: {
@@ -66,16 +74,19 @@
 	let {
 		entityId,
 		entityIdField,
+		entityKind,
 		sentenceId,
 		sentenceText,
 		tokens,
 		dictionaryWords,
 		updateAction,
 		createAction,
-		searchEndpoint
+		searchEndpoint,
+		tokenGroupEndpoint
 	}: {
 		entityId: string;
 		entityIdField: string;
+		entityKind: 'story' | 'example';
 		sentenceId: string;
 		sentenceText: string;
 		tokens: SentenceToken[];
@@ -83,6 +94,7 @@
 		updateAction: string;
 		createAction: string;
 		searchEndpoint: string;
+		tokenGroupEndpoint: string;
 	} = $props();
 
 	let openTokenId = $state<string | null>(null);
@@ -99,16 +111,23 @@
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let focusedTokenId = $state<string | null>(null);
+	let draggedTokenId = $state<string | null>(null);
+	let pendingMerge = $state<MergePrompt | null>(null);
+	let mergeConfirmButton = $state<HTMLButtonElement | null>(null);
+	let editingSurfaceTokenId = $state<string | null>(null);
+	let surfaceDraft = $state('');
+	let surfaceEditInput = $state<HTMLInputElement | null>(null);
+	let groupActionError = $state<string | null>(null);
 	const autoSaveTimers = new Map<string, number>();
 
-	const groups = $derived(
-		groupSentenceTokens({
-			sentenceId,
-			sentenceText,
-			tokens: localTokens
-		})
-	);
+		const groups = $derived(
+			groupSentenceTokens({
+				sentenceId,
+				tokens: localTokens
+			})
+		);
 	const activeToken = $derived(localTokens.find((token) => token.id === openTokenId) ?? null);
+	const activeGroup = $derived(groups.find((group) => group.tokens[0]?.id === openTokenId) ?? null);
 
 	function normalizeSearchQuery(value: string): string {
 		return value.replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -125,12 +144,14 @@
 	$effect(() => {
 		const incomingSignature = JSON.stringify(
 			tokens.map((token) => ({
-				id: token.id,
-				wordId: token.wordId,
+					id: token.id,
+					surfaceForm: token.surfaceForm,
+					wordId: token.wordId,
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
 				wordTranslations: token.word?.translations ?? null,
-				wordNotes: token.word?.notes ?? null
+				wordNotes: token.word?.notes ?? null,
+				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? []
 			}))
 		);
 
@@ -225,13 +246,43 @@
 	});
 
 	$effect(() => {
-		if (!openTokenId) {
+		if (!pendingMerge) {
+			return;
+		}
+
+		const timeout = window.setTimeout(() => {
+			mergeConfirmButton?.focus();
+		}, 0);
+
+		return () => window.clearTimeout(timeout);
+	});
+
+	$effect(() => {
+		if (!editingSurfaceTokenId) {
+			return;
+		}
+
+		const timeout = window.setTimeout(() => {
+			surfaceEditInput?.focus();
+			surfaceEditInput?.select();
+		}, 0);
+
+		return () => window.clearTimeout(timeout);
+	});
+
+	$effect(() => {
+		if (!openTokenId && !pendingMerge) {
 			return;
 		}
 
 		function handleWindowKeydown(event: KeyboardEvent) {
 			if (event.key === 'Escape') {
 				event.preventDefault();
+				if (pendingMerge) {
+					pendingMerge = null;
+					return;
+				}
+
 				closePicker();
 			}
 		}
@@ -245,6 +296,7 @@
 		searchQuery = normalizeSearchQuery(token.word?.kalenjin ?? token.surfaceForm);
 		searchResults = [];
 		searchError = null;
+		groupActionError = null;
 	}
 
 	function focusMeaningInput(tokenId: string | null) {
@@ -260,6 +312,7 @@
 
 	function closePicker(tokenId: string | null = openTokenId) {
 		openTokenId = null;
+		groupActionError = null;
 		focusMeaningInput(tokenId);
 	}
 
@@ -274,6 +327,9 @@
 		if (event.key === 'Enter') {
 			event.preventDefault();
 			openPicker(token);
+		} else if (event.key === 'ArrowUp') {
+			event.preventDefault();
+			startSurfaceEdit(token.id);
 		}
 	}
 
@@ -306,6 +362,13 @@
 		};
 	}
 
+	function replaceTokens(nextTokens: SentenceToken[]) {
+		localTokens = nextTokens.map((token) => ({
+			...token,
+			word: token.word ? { ...token.word } : token.word
+		}));
+	}
+
 	function handleSearchInput(tokenId: string, value: string) {
 		const normalizedValue = normalizeSearchQuery(value);
 		searchQuery = normalizedValue;
@@ -319,12 +382,14 @@
 
 	function queueTranslationAutosave(tokenId: string, value: string) {
 		updateDraft(tokenId, 'inContextTranslation', value);
-		applyTokenUpdate({
+		applyTokenUpdates([
+			{
 			tokenId,
 			wordId: localTokens.find((token) => token.id === tokenId)?.wordId ?? null,
 			inContextTranslation: value,
 			word: localTokens.find((token) => token.id === tokenId)?.word ?? null
-		});
+			}
+		]);
 		saveState[tokenId] = 'idle';
 
 		const existingTimeout = autoSaveTimers.get(tokenId);
@@ -339,6 +404,151 @@
 				autoSaveTimers.delete(tokenId);
 			}, 500)
 		);
+	}
+
+	async function requestGroupAction(payload: Record<string, unknown>) {
+		const response = await fetch(tokenGroupEndpoint, {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json'
+			},
+			body: JSON.stringify({
+				kind: entityKind,
+				sentenceId,
+				...payload
+			})
+		});
+
+		const result = (await response.json()) as {
+			error?: string;
+			tokens?: SentenceToken[];
+		};
+
+		if (!response.ok || !result.tokens) {
+			throw new Error(result.error ?? 'Could not update sentence words.');
+		}
+
+		replaceTokens(result.tokens);
+		groupActionError = null;
+		return result.tokens;
+	}
+
+	function handleDragStart(tokenId: string) {
+		draggedTokenId = tokenId;
+	}
+
+	function handleDragEnd() {
+		draggedTokenId = null;
+	}
+
+	function handleDragOver(event: DragEvent, tokenId: string) {
+		if (!draggedTokenId || draggedTokenId === tokenId) {
+			return;
+		}
+
+		event.preventDefault();
+	}
+
+	function handleDrop(event: DragEvent, targetTokenId: string, targetSurface: string) {
+		event.preventDefault();
+		if (!draggedTokenId || draggedTokenId === targetTokenId) {
+			draggedTokenId = null;
+			return;
+		}
+
+		const sourceGroup = groups.find((group) => group.tokens[0]?.id === draggedTokenId);
+		if (!sourceGroup) {
+			draggedTokenId = null;
+			return;
+		}
+
+		pendingMerge = {
+			sourceTokenId: draggedTokenId,
+			targetTokenId,
+			sourceSurface: sourceGroup.fullSurface,
+			targetSurface
+		};
+		draggedTokenId = null;
+	}
+
+	async function confirmMerge() {
+		if (!pendingMerge) {
+			return;
+		}
+
+		const mergePrompt = pendingMerge;
+
+		try {
+			const updatedTokens = await requestGroupAction({
+				action: 'merge',
+				sourceTokenId: mergePrompt.sourceTokenId,
+				targetTokenId: mergePrompt.targetTokenId
+			});
+			const nextTokenId = updatedTokens.find((token) => token.id === mergePrompt.sourceTokenId)?.id
+				?? updatedTokens.find((token) => token.id === mergePrompt.targetTokenId)?.id
+				?? null;
+			pendingMerge = null;
+			if (openTokenId && nextTokenId) {
+				openTokenId = nextTokenId;
+			}
+		} catch (mergeError) {
+			groupActionError =
+				mergeError instanceof Error ? mergeError.message : 'Could not combine those words.';
+		}
+	}
+
+	async function splitActiveGroup() {
+		if (!activeGroup || !activeToken) {
+			return;
+		}
+
+		try {
+				const nextTokens = await requestGroupAction({
+					action: 'split',
+					tokenId: activeToken.id
+				});
+			closePicker();
+			editingSurfaceTokenId = null;
+			surfaceDraft = '';
+			if (nextTokens.length > 0) {
+				focusMeaningInput(nextTokens[0].id);
+			}
+		} catch (splitError) {
+			groupActionError =
+				splitError instanceof Error ? splitError.message : 'Could not split this word.';
+		}
+	}
+
+	function startSurfaceEdit(tokenId: string) {
+		const group = groups.find((entry) => entry.tokens[0]?.id === tokenId);
+		if (!group) {
+			return;
+		}
+
+		editingSurfaceTokenId = tokenId;
+		surfaceDraft = group.fullSurface;
+		groupActionError = null;
+	}
+
+	function cancelSurfaceEdit() {
+		editingSurfaceTokenId = null;
+		surfaceDraft = '';
+		groupActionError = null;
+	}
+
+	async function saveSurfaceEdit(tokenId: string) {
+		try {
+			await requestGroupAction({
+				action: 'surface',
+				tokenId,
+				surfaceForm: surfaceDraft
+			});
+			editingSurfaceTokenId = null;
+			surfaceDraft = '';
+		} catch (surfaceError) {
+			groupActionError =
+				surfaceError instanceof Error ? surfaceError.message : 'Could not update this word.';
+		}
 	}
 
 	function enhanceUpdateForm(
@@ -358,9 +568,9 @@
 				update: EnhancedUpdate;
 			}) => {
 				if (result.type === 'success') {
-					const tokenUpdate = (result.data as { tokenUpdate?: TokenUpdatePayload } | undefined)?.tokenUpdate;
-					if (tokenUpdate) {
-						applyTokenUpdate(tokenUpdate);
+					const tokenUpdates = (result.data as { tokenUpdates?: TokenUpdatePayload[] } | undefined)?.tokenUpdates;
+					if (tokenUpdates?.length) {
+						applyTokenUpdates(tokenUpdates);
 					}
 
 					if (invalidateOnSuccess) {
@@ -398,9 +608,9 @@
 				update: EnhancedUpdate;
 			}) => {
 				if (result.type === 'success') {
-					const tokenUpdate = (result.data as { tokenUpdate?: TokenUpdatePayload } | undefined)?.tokenUpdate;
-					if (tokenUpdate) {
-						applyTokenUpdate(tokenUpdate);
+					const tokenUpdates = (result.data as { tokenUpdates?: TokenUpdatePayload[] } | undefined)?.tokenUpdates;
+					if (tokenUpdates?.length) {
+						applyTokenUpdates(tokenUpdates);
 					}
 					createState[tokenId] = 'saved';
 					closePicker();
@@ -417,36 +627,39 @@
 		};
 	}
 
-	function applyTokenUpdate(tokenUpdate: TokenUpdatePayload) {
-		localTokens = localTokens.map((token) =>
-			token.id === tokenUpdate.tokenId
-				? {
-						...token,
-						wordId: tokenUpdate.wordId,
-						inContextTranslation: tokenUpdate.inContextTranslation ?? null,
-						word: tokenUpdate.word ?? null
-					}
-				: token
-		);
+	function applyTokenUpdates(tokenUpdates: TokenUpdatePayload[]) {
+		for (const tokenUpdate of tokenUpdates) {
+			localTokens = localTokens.map((token) =>
+				token.id === tokenUpdate.tokenId
+					? {
+							...token,
+							surfaceForm: tokenUpdate.surfaceForm ?? token.surfaceForm,
+							wordId: tokenUpdate.wordId,
+							inContextTranslation: tokenUpdate.inContextTranslation ?? null,
+							word: tokenUpdate.word ?? null
+						}
+					: token
+			);
 
-		drafts[tokenUpdate.tokenId] = {
-			...drafts[tokenUpdate.tokenId],
-			inContextTranslation: tokenUpdate.inContextTranslation ?? '',
-			selectedWordId: tokenUpdate.word?.id ?? '',
-			createLemma:
-				tokenUpdate.word?.kalenjin ??
-				drafts[tokenUpdate.tokenId]?.createLemma ??
-				normalizeSearchQuery(
-					localTokens.find((token) => token.id === tokenUpdate.tokenId)?.surfaceForm ?? ''
-				),
-			createTranslations:
-				tokenUpdate.word?.translations ?? drafts[tokenUpdate.tokenId]?.createTranslations ?? '',
-			createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? '',
-			createAlternativeSpellings:
-				serializeSpellings(tokenUpdate.word?.spellings) ??
-				drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ??
-				''
-		};
+			drafts[tokenUpdate.tokenId] = {
+				...drafts[tokenUpdate.tokenId],
+				inContextTranslation: tokenUpdate.inContextTranslation ?? '',
+				selectedWordId: tokenUpdate.word?.id ?? '',
+				createLemma:
+					tokenUpdate.word?.kalenjin ??
+					drafts[tokenUpdate.tokenId]?.createLemma ??
+					normalizeSearchQuery(
+						localTokens.find((token) => token.id === tokenUpdate.tokenId)?.surfaceForm ?? ''
+					),
+				createTranslations:
+					tokenUpdate.word?.translations ?? drafts[tokenUpdate.tokenId]?.createTranslations ?? '',
+				createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? '',
+				createAlternativeSpellings:
+					tokenUpdate.word?.spellings
+						? serializeSpellings(tokenUpdate.word.spellings)
+						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? ''
+			};
+		}
 	}
 </script>
 
@@ -455,67 +668,89 @@
 		<p class="empty-text">{sentenceText}</p>
 	{:else}
 		{#each groups as group (group.key)}
+			{@const primaryToken = group.tokens[0]}
+			{@const sharedWord = primaryToken.word}
+			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
 			<div class="token-group">
-				{#each group.tokens as token, partIndex}
-					<div class="token-card">
-						{#if group.tokens.length > 1}
-							<small class="part-label">Part {partIndex + 1}</small>
+				<div class="token-card">
+					<div class:unlinked-lemma={!sharedWord} class="lemma-label">
+						{#if sharedWord}
+							{sharedWord.kalenjin}
+						{:else}
+							<span class="unlinked-marker" aria-hidden="true"></span>
 						{/if}
+					</div>
 
-						<div class:unlinked-lemma={!token.word} class="lemma-label">
-							{#if token.word}
-								{token.word.kalenjin}
-							{:else}
-								<span class="unlinked-marker" aria-hidden="true"></span>
-							{/if}
-						</div>
-
+					{#if editingSurfaceTokenId === primaryToken.id}
+						<input
+							bind:this={surfaceEditInput}
+							class="token-edit-input"
+							value={surfaceDraft}
+							oninput={(event) => (surfaceDraft = (event.currentTarget as HTMLInputElement).value)}
+							onkeydown={(event) => {
+								if (event.key === 'Enter') {
+									event.preventDefault();
+									void saveSurfaceEdit(primaryToken.id);
+								} else if (event.key === 'Escape') {
+									event.preventDefault();
+									cancelSurfaceEdit();
+								}
+							}}
+							onblur={() => cancelSurfaceEdit()}
+						/>
+					{:else}
 						<button
 							type="button"
 							class="token-button"
+							class:token-button--dragging={draggedTokenId === primaryToken.id}
+							draggable="true"
 							tabindex="-1"
-							onclick={() => openPicker(token)}
+							onclick={() => openPicker(primaryToken)}
+							ondragstart={() => handleDragStart(primaryToken.id)}
+							ondragend={handleDragEnd}
+							ondragover={(event) => handleDragOver(event, primaryToken.id)}
+							ondrop={(event) => handleDrop(event, primaryToken.id, group.fullSurface)}
 						>
-							{token.surfaceForm}
+							{group.fullSurface}
 						</button>
+					{/if}
 
-						<form
-							method="POST"
-							action={updateAction}
-							class="translation-form"
-							bind:this={updateForms[token.id]}
-							use:enhance={enhanceUpdateForm(token.id)}
-						>
-							<input type="hidden" name={entityIdField} value={entityId} />
-							<input type="hidden" name="tokenId" value={token.id} />
-							<input type="hidden" name="wordId" value={token.wordId ?? ''} />
+					<form
+						method="POST"
+						action={updateAction}
+						class="translation-form"
+						bind:this={updateForms[primaryToken.id]}
+						use:enhance={enhanceUpdateForm(primaryToken.id)}
+					>
+						<input type="hidden" name={entityIdField} value={entityId} />
+						<input type="hidden" name="tokenId" value={primaryToken.id} />
+						<input type="hidden" name="wordId" value={sharedWord?.id ?? ''} />
 
-							<input
-								bind:this={meaningInputs[token.id]}
-								class="meaning-input"
-								class:meaning-input--empty={!drafts[token.id]?.inContextTranslation?.trim()}
-								class:meaning-input--saving={saveState[token.id] === 'saving'}
-								class:meaning-input--saved={saveState[token.id] === 'saved'}
-								name="inContextTranslation"
-								value={drafts[token.id]?.inContextTranslation ?? ''}
-								size={Math.max(2, (drafts[token.id]?.inContextTranslation ?? '').length || 0)}
-								placeholder="Meaning"
-								oninput={(event) =>
-									queueTranslationAutosave(token.id, (event.currentTarget as HTMLInputElement).value)}
-								onkeydown={(event) => handleMeaningKeydown(event, token)}
-							/>
+						<input
+							bind:this={meaningInputs[primaryToken.id]}
+							class="meaning-input"
+							class:meaning-input--empty={!meaningValue.trim()}
+							class:meaning-input--saving={saveState[primaryToken.id] === 'saving'}
+							class:meaning-input--saved={saveState[primaryToken.id] === 'saved'}
+							name="inContextTranslation"
+							value={meaningValue}
+							size={Math.max(2, meaningValue.length || 0)}
+							placeholder="Meaning"
+							oninput={(event) =>
+								queueTranslationAutosave(primaryToken.id, (event.currentTarget as HTMLInputElement).value)}
+							onkeydown={(event) => handleMeaningKeydown(event, primaryToken)}
+						/>
 
-							{#if saveState[token.id] === 'error'}
-								<small class="status-text error-text">Could not save.</small>
-							{/if}
-						</form>
-					</div>
-				{/each}
+						{#if saveState[primaryToken.id] === 'error'}
+							<small class="status-text error-text">Could not save.</small>
+						{/if}
+					</form>
+				</div>
 			</div>
 		{/each}
 	{/if}
 
-	{#if activeToken}
+	{#if activeToken && activeGroup}
 		<div
 			class="modal-backdrop"
 			role="button"
@@ -536,10 +771,14 @@
 				<div class="picker-header">
 					<div>
 						<strong>Link root lemma</strong>
-						<p class="status-text">Word: "{activeToken.surfaceForm}"</p>
+						<p class="status-text">Word: "{activeGroup.fullSurface}"</p>
 					</div>
 					<button type="button" class="secondary-button" onclick={() => closePicker()}>Close</button>
 				</div>
+
+				{#if groupActionError}
+					<p class="status-text error-text">{groupActionError}</p>
+				{/if}
 
 				<label>
 					Search
@@ -618,6 +857,12 @@
 									onclick={() => resetEditorToCreate(activeToken)}
 								>
 									New lemma
+								</button>
+							{/if}
+
+							{#if activeToken.surfaceForm.trim().includes(' ')}
+								<button type="button" class="secondary-button" onclick={() => void splitActiveGroup()}>
+									Split words
 								</button>
 							{/if}
 						</div>
@@ -702,6 +947,23 @@
 			</div>
 		</div>
 	{/if}
+
+	{#if pendingMerge}
+		<div class="modal-backdrop" role="presentation">
+			<div class="picker-modal merge-modal" role="dialog" aria-modal="true" aria-label="Confirm word merge">
+				<strong>Combine words?</strong>
+				<p class="status-text">
+					Combine "{pendingMerge.sourceSurface}" and "{pendingMerge.targetSurface}" into one word group?
+				</p>
+				<div class="inline-actions">
+					<button bind:this={mergeConfirmButton} type="button" onclick={() => void confirmMerge()}>
+						Combine words
+					</button>
+					<button type="button" class="secondary-button" onclick={() => (pendingMerge = null)}>Cancel</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -732,10 +994,6 @@
 		min-width: 0;
 		padding: 0;
 		width: auto;
-	}
-
-	.part-label {
-		color: #666;
 	}
 
 	.lemma-label {
@@ -769,6 +1027,18 @@
 		padding: 0.1rem 0.2rem;
 		text-align: center;
 		white-space: nowrap;
+	}
+
+	.token-button--dragging {
+		opacity: 0.55;
+	}
+
+	.token-edit-input {
+		border: 1px solid #d0d7de;
+		font: inherit;
+		font-weight: 600;
+		padding: 0.15rem 0.25rem;
+		text-align: center;
 	}
 
 	.translation-form {
@@ -824,6 +1094,10 @@
 		gap: 0.75rem;
 		padding: 0.75rem;
 		width: min(480px, calc(100vw - 2rem));
+	}
+
+	.merge-modal {
+		width: min(360px, calc(100vw - 2rem));
 	}
 
 	.picker-header {

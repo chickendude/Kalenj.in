@@ -20,9 +20,6 @@ export async function syncExampleSentenceTokens(
 		data: tokenData.map((token) => ({
 			exampleSentenceId,
 			tokenOrder: token.tokenOrder,
-			wordIndex: token.wordIndex,
-			segmentStart: token.segmentStart,
-			segmentEnd: token.segmentEnd,
 			surfaceForm: token.surfaceForm,
 			normalizedForm: token.normalizedForm
 		}))
@@ -48,9 +45,6 @@ export async function syncStorySentenceTokens(
 		data: tokenData.map((token) => ({
 			storySentenceId,
 			tokenOrder: token.tokenOrder,
-			wordIndex: token.wordIndex,
-			segmentStart: token.segmentStart,
-			segmentEnd: token.segmentEnd,
 			surfaceForm: token.surfaceForm,
 			normalizedForm: token.normalizedForm
 		}))

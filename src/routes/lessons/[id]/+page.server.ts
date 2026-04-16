@@ -196,6 +196,19 @@ async function ensureStorySentence(
 	}
 }
 
+async function getStorySentenceGroupTokenIds(storySentenceId: string, tokenId: string): Promise<string[]> {
+	const token = await prisma.storySentenceToken.findUnique({
+		where: { id: tokenId },
+		select: { storySentenceId: true }
+	});
+
+	if (!token || token.storySentenceId !== storySentenceId) {
+		error(404, 'Sentence token not found for this story sentence.');
+	}
+
+	return [tokenId];
+}
+
 async function ensureExampleSentenceForLessonWord(
 	lessonWordId: string,
 	tokenId: string
@@ -221,6 +234,19 @@ async function ensureExampleSentenceForLessonWord(
 	}
 
 	return { sentenceId: token.exampleSentenceId };
+}
+
+async function getExampleSentenceGroupTokenIds(exampleSentenceId: string, tokenId: string): Promise<string[]> {
+	const token = await prisma.exampleSentenceToken.findUnique({
+		where: { id: tokenId },
+		select: { exampleSentenceId: true }
+	});
+
+	if (!token || token.exampleSentenceId !== exampleSentenceId) {
+		error(404, 'Sentence token not found for this lesson word.');
+	}
+
+	return [tokenId];
 }
 
 async function getLessonDetail(lessonId: string) {
@@ -723,27 +749,36 @@ export const actions: Actions = {
 
 		await ensureStorySentence(story.storyId, storySentenceId);
 
-		const updatedToken = await prisma.storySentenceToken.update({
-			where: { id: tokenId },
-			data: {
-				wordId,
-				inContextTranslation
-			},
-			include: {
-				word: {
-					select: buildWordSelect()
+		const groupTokenIds = await getStorySentenceGroupTokenIds(storySentenceId, tokenId);
+
+		const updatedTokens = await prisma.$transaction(async (tx) => {
+			await tx.storySentenceToken.updateMany({
+				where: { id: { in: groupTokenIds } },
+				data: {
+					wordId,
+					inContextTranslation
 				}
-			}
+			});
+
+			return tx.storySentenceToken.findMany({
+				where: { id: { in: groupTokenIds } },
+				orderBy: { tokenOrder: 'asc' },
+				include: {
+					word: {
+						select: buildWordSelect()
+					}
+				}
+			});
 		});
 
 		return {
 			updateStorySentenceTokenSuccess: true,
-			tokenUpdate: {
-				tokenId,
+			tokenUpdates: updatedTokens.map((updatedToken) => ({
+				tokenId: updatedToken.id,
 				wordId: updatedToken.wordId,
 				inContextTranslation: updatedToken.inContextTranslation,
 				word: updatedToken.word
-			}
+			}))
 		};
 	},
 	createStorySentenceWord: async ({ request, params }) => {
@@ -773,6 +808,7 @@ export const actions: Actions = {
 		}
 
 		await ensureStorySentence(story.storyId, storySentenceId);
+		const groupTokenIds = await getStorySentenceGroupTokenIds(storySentenceId, tokenId);
 
 		try {
 			const word = await prisma.$transaction(async (tx) => {
@@ -784,8 +820,8 @@ export const actions: Actions = {
 					alternativeSpellings
 				});
 
-				await tx.storySentenceToken.update({
-					where: { id: tokenId },
+				await tx.storySentenceToken.updateMany({
+					where: { id: { in: groupTokenIds } },
 					data: {
 						wordId: word.id,
 						inContextTranslation
@@ -797,12 +833,12 @@ export const actions: Actions = {
 
 			return {
 				createStorySentenceWordSuccess: true,
-				tokenUpdate: {
-					tokenId,
+				tokenUpdates: groupTokenIds.map((groupTokenId) => ({
+					tokenId: groupTokenId,
 					wordId: word.id,
 					inContextTranslation,
 					word
-				}
+				}))
 			};
 		} catch (createError) {
 			return fail(400, {
@@ -823,18 +859,14 @@ export const actions: Actions = {
 		}
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+		const groupTokenIds = await getExampleSentenceGroupTokenIds(sentenceId, tokenId);
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
-			const updatedToken = await tx.exampleSentenceToken.update({
-				where: { id: tokenId },
+			await tx.exampleSentenceToken.updateMany({
+				where: { id: { in: groupTokenIds } },
 				data: {
 					wordId,
 					inContextTranslation
-				},
-				include: {
-					word: {
-						select: buildWordSelect()
-					}
 				}
 			});
 
@@ -854,17 +886,25 @@ export const actions: Actions = {
 				});
 			}
 
-			return updatedToken;
+			return tx.exampleSentenceToken.findMany({
+				where: { id: { in: groupTokenIds } },
+				orderBy: { tokenOrder: 'asc' },
+				include: {
+					word: {
+						select: buildWordSelect()
+					}
+				}
+			});
 		});
 
 		return {
 			updateExampleSentenceTokenSuccess: true,
-			tokenUpdate: {
-				tokenId,
-				wordId: updatedToken.wordId,
-				inContextTranslation: updatedToken.inContextTranslation,
-				word: updatedToken.word
-			}
+			tokenUpdates: updatedToken.map((groupToken) => ({
+				tokenId: groupToken.id,
+				wordId: groupToken.wordId,
+				inContextTranslation: groupToken.inContextTranslation,
+				word: groupToken.word
+			}))
 		};
 	},
 	createExampleSentenceWord: async ({ request }) => {
@@ -885,6 +925,7 @@ export const actions: Actions = {
 		}
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
+		const groupTokenIds = await getExampleSentenceGroupTokenIds(sentenceId, tokenId);
 
 		try {
 			const word = await prisma.$transaction(async (tx) => {
@@ -896,8 +937,8 @@ export const actions: Actions = {
 					alternativeSpellings
 				});
 
-				await tx.exampleSentenceToken.update({
-					where: { id: tokenId },
+				await tx.exampleSentenceToken.updateMany({
+					where: { id: { in: groupTokenIds } },
 					data: {
 						wordId: word.id,
 						inContextTranslation
@@ -923,12 +964,12 @@ export const actions: Actions = {
 
 			return {
 				createExampleSentenceWordSuccess: true,
-				tokenUpdate: {
-					tokenId,
+				tokenUpdates: groupTokenIds.map((groupTokenId) => ({
+					tokenId: groupTokenId,
 					wordId: word.id,
 					inContextTranslation,
 					word
-				}
+				}))
 			};
 		} catch (createError) {
 			return fail(400, {

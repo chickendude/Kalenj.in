@@ -40,7 +40,6 @@
 	let previousSentenceId: string | null = null;
 	const groups = $derived(
 		groupSentenceTokens<SentenceToken>({
-			sentenceText: data.sentence.kalenjin,
 			tokens: displayedSentenceTokens
 		})
 	);
@@ -62,16 +61,6 @@
 			localSuccess = null;
 		}
 	});
-
-	function ensureLocalSnapshotsReady(): void {
-		if (localSnapshotSentenceId === data.sentence.id) {
-			return;
-		}
-
-		localSnapshotSentenceId = data.sentence.id;
-		sentenceTokens = [...data.sentence.tokens];
-		dictionaryWords = [...data.words];
-	}
 
 	function ensureDraft(tokenId: string, defaultLemma: string): void {
 		if (!drafts[tokenId]) {
@@ -98,7 +87,6 @@
 	}
 
 	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
-		ensureLocalSnapshotsReady();
 		ensureDraft(tokenId, defaultLemma);
 		const draft = drafts[tokenId];
 
@@ -157,7 +145,6 @@
 	}
 
 	async function applySplit(tokenId: string, splitPoints: number[]): Promise<void> {
-		ensureLocalSnapshotsReady();
 		localError = null;
 		localSuccess = null;
 		splittingByTokenId[tokenId] = true;
@@ -192,19 +179,19 @@
 				return;
 			}
 
-				const index = sentenceTokens.findIndex((item) => item.id === tokenId);
-				if (index >= 0) {
-					sentenceTokens.splice(index, 1, ...newTokens);
-				}
-
-				localSuccess = payload?.success ?? 'Token split.';
-			} catch (err) {
-				console.error(err);
-				localError = 'Network error while splitting token.';
-			} finally {
-				splittingByTokenId[tokenId] = false;
+			const index = sentenceTokens.findIndex((item) => item.id === tokenId);
+			if (index >= 0) {
+				sentenceTokens.splice(index, 1, ...newTokens);
 			}
+
+			localSuccess = payload?.success ?? 'Token split.';
+		} catch (err) {
+			console.error(err);
+			localError = 'Network error while splitting token.';
+		} finally {
+			splittingByTokenId[tokenId] = false;
 		}
+	}
 </script>
 
 <section>

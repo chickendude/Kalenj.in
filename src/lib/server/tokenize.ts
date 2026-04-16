@@ -1,16 +1,14 @@
+import { stripEdgePunctuation } from '$lib/server/punctuation';
+
 export type TokenizedWord = {
+	// Ordered editable word unit in the sentence. Phrases can be stored as one value with spaces.
 	tokenOrder: number;
-	wordIndex: number;
-	segmentStart: number;
-	segmentEnd: number;
 	surfaceForm: string;
 	normalizedForm: string;
 };
 
-const STRIP_EDGE_PUNCTUATION = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-
 export function normalizeToken(value: string): string {
-	return value.replace(STRIP_EDGE_PUNCTUATION, '').toLowerCase();
+	return stripEdgePunctuation(value).toLowerCase();
 }
 
 export function tokenizeSentence(sentence: string): TokenizedWord[] {
@@ -21,15 +19,8 @@ export function tokenizeSentence(sentence: string): TokenizedWord[] {
 
 	return trimmedSentence
 		.split(/\s+/)
-		.map((surfaceForm, wordIndex) => ({
-			wordIndex,
-			surfaceForm
-		}))
-		.map(({ wordIndex, surfaceForm }, tokenOrder) => ({
+		.map((surfaceForm, tokenOrder) => ({
 			tokenOrder,
-			wordIndex,
-			segmentStart: 0,
-			segmentEnd: surfaceForm.length,
 			surfaceForm,
 			normalizedForm: normalizeToken(surfaceForm)
 		}))

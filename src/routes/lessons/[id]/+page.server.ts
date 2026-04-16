@@ -345,21 +345,17 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	});
 }
 
-async function getStoryWordCoverage(lesson: {
-	type: string;
-	level: CefrLevel;
-	lessonOrder: number;
-	storyId: string | null;
-}) {
-	if (lesson.type !== 'STORY' || !lesson.storyId) {
-		return null;
-	}
-
+async function buildWordCoverageEntries(
+	storyId: string,
+	level: CefrLevel,
+	introducedUpToOrder: number,
+	orderComparator: 'lt' | 'lte'
+) {
 	const [tokens, vocabLessonWords] = await Promise.all([
 		prisma.storySentenceToken.findMany({
 			where: {
 				wordId: { not: null },
-				storySentence: { storyId: lesson.storyId }
+				storySentence: { storyId }
 			},
 			select: {
 				wordId: true,
@@ -372,9 +368,9 @@ async function getStoryWordCoverage(lesson: {
 			where: {
 				lessonSection: {
 					lesson: {
-						level: lesson.level,
+						level,
 						type: 'VOCABULARY',
-						lessonOrder: { lt: lesson.lessonOrder }
+						lessonOrder: { [orderComparator]: introducedUpToOrder }
 					}
 				}
 			},
@@ -414,6 +410,59 @@ async function getStoryWordCoverage(lesson: {
 		});
 }
 
+async function getStoryWordCoverage(lesson: {
+	type: string;
+	level: CefrLevel;
+	lessonOrder: number;
+	storyId: string | null;
+}) {
+	if (lesson.type !== 'STORY' || !lesson.storyId) {
+		return null;
+	}
+
+	return buildWordCoverageEntries(lesson.storyId, lesson.level, lesson.lessonOrder, 'lt');
+}
+
+async function getVocabWordCoverage(lesson: {
+	type: string;
+	level: CefrLevel;
+	lessonOrder: number;
+}) {
+	if (lesson.type !== 'VOCABULARY') {
+		return null;
+	}
+
+	const nextStoryLesson = await prisma.lesson.findFirst({
+		where: {
+			level: lesson.level,
+			type: 'STORY',
+			lessonOrder: { gt: lesson.lessonOrder }
+		},
+		orderBy: { lessonOrder: 'asc' },
+		select: { id: true, title: true, lessonOrder: true, storyId: true }
+	});
+
+	if (!nextStoryLesson?.storyId) {
+		return null;
+	}
+
+	const words = await buildWordCoverageEntries(
+		nextStoryLesson.storyId,
+		lesson.level,
+		lesson.lessonOrder,
+		'lte'
+	);
+
+	return {
+		storyLesson: {
+			id: nextStoryLesson.id,
+			title: nextStoryLesson.title,
+			lessonOrder: nextStoryLesson.lessonOrder
+		},
+		words
+	};
+}
+
 export const load: PageServerLoad = async ({ params }) => {
 	await backfillMissingStoryTokens(params.id);
 
@@ -432,13 +481,17 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, 'Lesson not found');
 	}
 
-	const storyWordCoverage = await getStoryWordCoverage(lesson);
+	const [storyWordCoverage, vocabWordCoverage] = await Promise.all([
+		getStoryWordCoverage(lesson),
+		getVocabWordCoverage(lesson)
+	]);
 
 	return {
 		lesson,
 		words,
 		cefrTargets,
 		storyWordCoverage,
+		vocabWordCoverage,
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};

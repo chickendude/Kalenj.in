@@ -18,6 +18,9 @@
 
 	let showLessonEdit = $state(false);
 	let showWordCoverage = $state(false);
+	let showAllCoverageWords = $state(false);
+	let showVocabCoverage = $state(false);
+	let showAllVocabWords = $state(false);
 	let showAddWordForm = $state(false);
 	let editingLessonWordId = $state<string | null>(null);
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
@@ -282,6 +285,7 @@
 
 	{#if data.storyWordCoverage}
 		{@const uninstructedCount = data.storyWordCoverage.filter((e) => !e.introduced).length}
+		{@const visibleEntries = showAllCoverageWords ? data.storyWordCoverage : data.storyWordCoverage.filter((e) => !e.introduced)}
 		<section class="summary-card">
 			<div class="card-header">
 				<div>
@@ -302,8 +306,14 @@
 			</div>
 
 			{#if showWordCoverage}
+				<div class="coverage-filter">
+					<label class="coverage-filter-label">
+						<input type="checkbox" bind:checked={showAllCoverageWords} />
+						Show introduced words
+					</label>
+				</div>
 				<div class="coverage-list">
-					{#each data.storyWordCoverage as entry}
+					{#each visibleEntries as entry}
 						<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
 							<div class="coverage-word">
 								<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
@@ -325,6 +335,9 @@
 							</div>
 						</div>
 					{/each}
+					{#if visibleEntries.length === 0}
+						<p class="coverage-empty">All words introduced.</p>
+					{/if}
 				</div>
 			{/if}
 		</section>
@@ -435,6 +448,70 @@
 			{/if}
 		</section>
 	{:else}
+		{#if data.vocabWordCoverage}
+			{@const uninstructedCount = data.vocabWordCoverage.words.filter((e) => !e.introduced).length}
+			{@const visibleEntries = showAllVocabWords ? data.vocabWordCoverage.words : data.vocabWordCoverage.words.filter((e) => !e.introduced)}
+			<section class="summary-card">
+				<div class="card-header">
+					<div>
+						<strong>Next story coverage</strong>
+						<p class="summary-line">
+							<a href={`/lessons/${data.vocabWordCoverage.storyLesson.id}`} class="story-link">
+								{data.vocabWordCoverage.storyLesson.title}
+							</a>
+							·
+							{#if uninstructedCount > 0}
+								{uninstructedCount} of {data.vocabWordCoverage.words.length} word{data.vocabWordCoverage.words.length === 1 ? '' : 's'} not yet introduced
+							{:else}
+								All {data.vocabWordCoverage.words.length} word{data.vocabWordCoverage.words.length === 1 ? '' : 's'} introduced
+							{/if}
+						</p>
+					</div>
+					{#if data.vocabWordCoverage.words.length > 0}
+						<button type="button" class="secondary-button" onclick={() => (showVocabCoverage = !showVocabCoverage)}>
+							{showVocabCoverage ? 'Hide' : 'Show'}
+						</button>
+					{/if}
+				</div>
+
+				{#if showVocabCoverage}
+					<div class="coverage-filter">
+						<label class="coverage-filter-label">
+							<input type="checkbox" bind:checked={showAllVocabWords} />
+							Show introduced words
+						</label>
+					</div>
+					<div class="coverage-list">
+						{#each visibleEntries as entry}
+							<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
+								<div class="coverage-word">
+									<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
+										{entry.word.kalenjin}
+									</a>
+									<span class="coverage-translations">{entry.word.translations}</span>
+								</div>
+								<div class="coverage-sentences">
+									{#each entry.sentences as sentence}
+										<span class="coverage-sentence">{sentence.kalenjin}</span>
+									{/each}
+								</div>
+								<div class="coverage-status">
+									{#if entry.introduced}
+										<span class="status-introduced">✓ Introduced</span>
+									{:else}
+										<span class="status-missing">Not yet introduced</span>
+									{/if}
+								</div>
+							</div>
+						{/each}
+						{#if visibleEntries.length === 0}
+							<p class="coverage-empty">All words introduced.</p>
+						{/if}
+					</div>
+				{/if}
+			</section>
+		{/if}
+
 		<section class="content-card">
 			<div class="card-header">
 				<strong>Lesson words</strong>
@@ -889,6 +966,28 @@
 		.two-column-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
 		}
+	}
+
+	.coverage-filter {
+		margin-top: 0.75rem;
+	}
+
+	.coverage-filter-label {
+		align-items: center;
+		cursor: pointer;
+		display: flex;
+		font-size: 0.9rem;
+		gap: 0.4rem;
+	}
+
+	.coverage-empty {
+		color: #555;
+		font-size: 0.9rem;
+		margin: 0.5rem 0 0;
+	}
+
+	.story-link {
+		color: inherit;
 	}
 
 	.coverage-list {

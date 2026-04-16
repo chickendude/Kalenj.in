@@ -1,8 +1,12 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
 	let { data, form } = $props();
 	const values = $derived(form?.values ?? data.word);
+	const alternativeSpellingsValue = $derived.by(() =>
+		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
+	);
 </script>
 
 <section>
@@ -22,8 +26,22 @@
 		</label>
 
 		<label>
-			English *
-			<input name="english" required value={values.english ?? ''} />
+			Translations *
+			<input
+				name="translations"
+				required
+				value={values.translations ?? ''}
+				placeholder="comma-separated translations"
+			/>
+		</label>
+
+		<label>
+			Alternative spellings
+			<textarea
+				name="alternativeSpellings"
+				rows="3"
+				placeholder="One spelling per line"
+			>{alternativeSpellingsValue}</textarea>
 		</label>
 
 		<label>
@@ -37,15 +55,9 @@
 		</label>
 
 		<label>
-			Definition
-			<textarea name="definition" rows="3">{values.definition ?? ''}</textarea>
-		</label>
-
-		<label>
 			Notes
 			<textarea name="notes" rows="3">{values.notes ?? ''}</textarea>
 		</label>
-
 		<button type="submit">Save changes</button>
 	</form>
 
@@ -57,12 +69,15 @@
 	{#if data.word.sentences.length === 0}
 		<p>No linked sentences yet.</p>
 	{:else}
-		<ul>
+		<ul class="examples-list">
 			{#each data.word.sentences as link}
 				<li>
-					<strong>{link.exampleSentence.kalenjin}</strong>
-					<br />
-					<small>{link.exampleSentence.english}</small>
+					<TokenHoverPreview
+						sentenceId={link.exampleSentence.id}
+						sentenceText={link.exampleSentence.kalenjin}
+						tokens={link.exampleSentence.tokens}
+					/>
+					<small class="example-english">{link.exampleSentence.english}</small>
 				</li>
 			{/each}
 		</ul>
@@ -102,5 +117,25 @@
 
 	.delete-form {
 		margin: 0.5rem 0 1.5rem;
+	}
+
+	.examples-list {
+		margin: 0;
+		padding: 0;
+	}
+
+	.examples-list li {
+		list-style: none;
+		margin: 0 0 0.75rem;
+		padding: 0;
+	}
+
+	.examples-list li:last-child {
+		margin-bottom: 0;
+	}
+
+	.example-english {
+		display: block;
+		margin-top: 0.2rem;
 	}
 </style>

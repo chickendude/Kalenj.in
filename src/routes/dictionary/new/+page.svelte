@@ -19,8 +19,22 @@
 		</label>
 
 		<label>
-			English *
-			<input name="english" required value={form?.values?.english ?? ''} />
+			Translations *
+			<input
+				name="translations"
+				required
+				value={form?.values?.translations ?? ''}
+				placeholder="comma-separated translations"
+			/>
+		</label>
+
+		<label>
+			Alternative spellings
+			<textarea
+				name="alternativeSpellings"
+				rows="3"
+				placeholder="One spelling per line"
+			>{form?.values?.alternativeSpellings ?? ''}</textarea>
 		</label>
 
 		<label>
@@ -34,15 +48,9 @@
 		</label>
 
 		<label>
-			Definition
-			<textarea name="definition" rows="3">{form?.values?.definition ?? ''}</textarea>
-		</label>
-
-		<label>
 			Notes
 			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
 		</label>
-
 		<button type="submit">Create word</button>
 	</form>
 </section>

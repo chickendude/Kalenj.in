@@ -704,7 +704,7 @@
 					<div class="table-header vocab-grid">
 						<span>Word</span>
 						<span>Sentence</span>
-						<span>Word for word</span>
+						<span>Translation</span>
 						<span></span>
 					</div>
 
@@ -726,55 +726,62 @@
 									<p class="error-text">{inlineWordError}</p>
 								{/if}
 							</div>
-							<div class="sentence-cell">
+							<div class="vocab-text-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
+								{:else if !lwLocal.sentenceKalenjin}
+									<button type="button" class="inline-edit-button empty-sentence-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
 								{:else}
-									<button type="button" class="inline-edit-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
+									<SentenceTokenAnnotations
+										entityId={lessonWord.id}
+										entityIdField="lessonWordId"
+										entityKind="example"
+										sentenceId={lessonWord.sentence.id}
+										sentenceText={lessonWord.sentence.kalenjin}
+										tokens={lessonWord.sentence.tokens}
+										dictionaryWords={data.words}
+										updateAction="?/updateExampleSentenceToken"
+										createAction="?/createExampleSentenceWord"
+										searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+										tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+									/>
 								{/if}
-								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
-									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-english-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
-								{:else}
-									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || 'Add translation'}</button>
-								{/if}
-								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field !== 'notesMarkdown'}
+								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
 									<p class="error-text">{inlineLessonWordError}</p>
 								{/if}
 							</div>
-							<div class="word-for-word-cell">
-								<SentenceTokenAnnotations
-									entityId={lessonWord.id}
-									entityIdField="lessonWordId"
-									entityKind="example"
-									sentenceId={lessonWord.sentence.id}
-									sentenceText={lessonWord.sentence.kalenjin}
-									tokens={lessonWord.sentence.tokens}
-									dictionaryWords={data.words}
-									updateAction="?/updateExampleSentenceToken"
-									createAction="?/createExampleSentenceWord"
-									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
-								/>
+							<div class="translation-cell">
+								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
+									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-english-input inline-translation-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
+								{:else}
+									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || 'Add translation'}</button>
+								{/if}
+								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
+									<p class="error-text">{inlineLessonWordError}</p>
+								{/if}
+
+								<div class="sentence-notes">
+									<small>Notes</small>
+
+									{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
+										<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-notes-input" rows="3" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordKeydown}></textarea>
+										<div class="inline-actions compact-actions">
+											<button type="button" onclick={() => void saveInlineLessonWordEdit()}>Save notes</button>
+											<button type="button" class="secondary-button" onclick={cancelInlineLessonWordEdit}>Cancel</button>
+										</div>
+									{:else}
+										<button type="button" class="inline-edit-button sentence-notes-text" class:sentence-notes-empty={!lwLocal.notesMarkdown} onclick={() => beginInlineLessonWordEdit(lessonWord, 'notesMarkdown')}>{lwLocal.notesMarkdown || 'Add notes'}</button>
+									{/if}
+									{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
+										<p class="error-text">{inlineLessonWordError}</p>
+									{/if}
+								</div>
 							</div>
 							<div class="row-action">
 								<form method="POST" action="?/deleteWord" class="inline-delete">
 									<input type="hidden" name="id" value={lessonWord.id} />
 									<button type="submit" class="secondary-button">Delete</button>
 								</form>
-							</div>
-							<div class="notes-cell">
-								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
-									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-notes-input" rows="3" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordKeydown}></textarea>
-									<div class="inline-actions compact-actions">
-										<button type="button" onclick={() => void saveInlineLessonWordEdit()}>Save notes</button>
-										<button type="button" class="secondary-button" onclick={cancelInlineLessonWordEdit}>Cancel</button>
-									</div>
-								{:else}
-									<button type="button" class="inline-edit-button sentence-notes-text" class:sentence-notes-empty={!lwLocal.notesMarkdown} onclick={() => beginInlineLessonWordEdit(lessonWord, 'notesMarkdown')}>{lwLocal.notesMarkdown || 'Add notes'}</button>
-								{/if}
-								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
-									<p class="error-text">{inlineLessonWordError}</p>
-								{/if}
 							</div>
 						</div>
 
@@ -1022,7 +1029,7 @@
 	}
 
 	.vocab-grid {
-		grid-template-columns: minmax(150px, 0.9fr) minmax(0, 1.4fr) minmax(300px, 2fr) auto;
+		grid-template-columns: minmax(150px, 0.8fr) minmax(320px, 2fr) minmax(240px, 1.4fr) auto;
 	}
 
 	.word-cell {
@@ -1059,24 +1066,24 @@
 		font-size: 0.9rem;
 	}
 
-	.sentence-cell {
-		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-	}
-
-	.word-for-word-cell {
+	.vocab-text-cell {
+		align-self: stretch;
 		min-width: 0;
 	}
 
-	.notes-cell {
-		border-top: 1px solid #eee;
+	.empty-sentence-button {
+		align-items: center;
+		border: 1px dashed #d0d0d0;
+		box-sizing: border-box;
 		display: flex;
-		flex-direction: column;
-		gap: 0.3rem;
-		grid-column: 2 / 4;
-		min-width: 0;
-		padding-top: 0.55rem;
+		min-height: 4.5rem;
+		padding: 0.45rem 0.5rem;
+		width: 100%;
+	}
+
+	.empty-sentence-button:hover {
+		background: #f7f7f7;
+		border-color: #aaa;
 	}
 
 	.sentence-english-text {
@@ -1353,9 +1360,6 @@
 			justify-content: start;
 		}
 
-		.notes-cell {
-			grid-column: auto;
-		}
 	}
 
 </style>

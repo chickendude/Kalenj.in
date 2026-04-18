@@ -745,28 +745,6 @@ export const actions: Actions = {
 
 		return { updateWordSuccess: true };
 	},
-	updateWordCefrTargets: async ({ request }) => {
-		const formData = await request.formData();
-		const id = readText(formData, 'id');
-		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
-
-		if (!id) {
-			return fail(400, { error: 'Lesson word id is required.' });
-		}
-
-		try {
-			await ensureCefrCoverage(id, cefrTargetIds);
-		} catch (updateError) {
-			return fail(400, {
-				error:
-					updateError instanceof Error
-						? updateError.message
-						: 'Could not update CEFR coverage.'
-			});
-		}
-
-		return { updateWordCefrTargetsSuccess: true };
-	},
 	deleteWord: async ({ request }) => {
 		const formData = await request.formData();
 		const id = readText(formData, 'id');

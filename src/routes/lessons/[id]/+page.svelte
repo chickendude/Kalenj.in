@@ -10,6 +10,7 @@
 		formatVocabularyLessonType,
 		splitLessonItemsIntoSections
 	} from '$lib/course';
+	import { suggestCefrTargets } from '$lib/cefr-suggestions';
 
 	let { data, form } = $props();
 
@@ -43,16 +44,21 @@
 	let inlineWordInput = $state<HTMLInputElement | null>(null);
 	let wordLocalState = $state(new Map<string, WordLocalState>());
 
+	let cefrLocalTargets = $state(new Map<string, string[]>());
+	let cefrDismissed = $state(new Map<string, Set<string>>());
+	let cefrSearchQuery = $state(new Map<string, string>());
+	let cefrSearchOpen = $state(new Map<string, boolean>());
+
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
 	let lessonVocabularyType = $state<VocabularyType>('VOCAB');
 	let lessonGrammarMarkdown = $state('');
 
-	let cefrSaveState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
 	type WordSearchResult = { id: string; kalenjin: string; translations: string; notes: string | null };
+	type CefrTarget = (typeof data.cefrTargets)[number];
 	let wordPickerQuery = $state('');
 	let wordPickerResults = $state<WordSearchResult[]>([]);
 	let wordPickerOpen = $state(false);
@@ -125,34 +131,6 @@
 		selectedTargets: Array<{ id: string }>
 	): boolean {
 		return selectedTargets.some((target) => target.id === targetId);
-	}
-
-	function enhanceCefrForm(lessonWordId: string) {
-		return () => {
-			cefrSaveState[lessonWordId] = 'saving';
-
-			return async ({
-				result,
-				update
-			}: {
-				result: EnhancedSubmitResult;
-				update: EnhancedUpdate;
-			}) => {
-				if (result.type === 'success') {
-					await update({ reset: false, invalidateAll: true });
-					cefrSaveState[lessonWordId] = 'saved';
-					window.setTimeout(() => {
-						if (cefrSaveState[lessonWordId] === 'saved') {
-							cefrSaveState[lessonWordId] = 'idle';
-						}
-					}, 1500);
-					return;
-				}
-
-				cefrSaveState[lessonWordId] = 'error';
-				await applyAction(result);
-			};
-		};
 	}
 
 	function beginInlineStoryEdit(sentence: (typeof storySentences)[number], field: InlineStoryField) {
@@ -381,6 +359,85 @@
 		}
 	}
 
+	function getCefrCoveredIds(lw: { id: string; coveredCefrTargets: { id: string }[] }): string[] {
+		return cefrLocalTargets.get(lw.id) ?? lw.coveredCefrTargets.map((t) => t.id);
+	}
+
+	function getCefrCoveredTargets(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
+		const ids = getCefrCoveredIds(lw);
+		return ids
+			.map((id) => data.cefrTargets.find((t) => t.id === id))
+			.filter((target): target is CefrTarget => target !== undefined);
+	}
+
+	function isCefrTargetUsedByAnotherWord(target: CefrTarget, lessonWordId: string): boolean {
+		return Boolean(target.coveredByLessonWordId && target.coveredByLessonWordId !== lessonWordId);
+	}
+
+	function getCefrSuggestions(lw: { id: string; coveredCefrTargets: { id: string }[]; word: { id: string; kalenjin: string; translations: string } }) {
+		const coveredIds = new Set(getCefrCoveredIds(lw));
+		const dismissed = cefrDismissed.get(lw.id) ?? new Set<string>();
+		return suggestCefrTargets(getWordLocal(lw).translations, data.cefrTargets, coveredIds).filter(
+			(t) => !dismissed.has(t.id)
+		);
+	}
+
+	function getCefrSearchResults(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
+		const query = (cefrSearchQuery.get(lw.id) ?? '').toLowerCase().trim();
+		if (!query) return [];
+		const coveredIds = new Set(getCefrCoveredIds(lw));
+		return data.cefrTargets
+			.filter(
+				(t) =>
+					!coveredIds.has(t.id) &&
+					(t.english.toLowerCase().includes(query) || t.level.toLowerCase().includes(query))
+			)
+			.slice(0, 8);
+	}
+
+	function resetCefrSearch(lessonWordId: string) {
+		cefrSearchQuery = new Map(cefrSearchQuery).set(lessonWordId, '');
+		cefrSearchOpen = new Map(cefrSearchOpen).set(lessonWordId, false);
+	}
+
+	async function addCefrTarget(lessonWordId: string, targetId: string) {
+		const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ lessonWordId, targetId, action: 'add' })
+		});
+		if (response.ok) {
+			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
+			if (lw) {
+				cefrLocalTargets = new Map(cefrLocalTargets).set(lessonWordId, [
+					...new Set([...getCefrCoveredIds(lw), targetId])
+				]);
+			}
+		}
+	}
+
+	async function removeCefrTarget(lessonWordId: string, targetId: string) {
+		const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ lessonWordId, targetId, action: 'remove' })
+		});
+		if (response.ok) {
+			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
+			if (lw) {
+				cefrLocalTargets = new Map(cefrLocalTargets).set(
+					lessonWordId,
+					getCefrCoveredIds(lw).filter((id) => id !== targetId)
+				);
+			}
+		}
+	}
+
+	function dismissCefrSuggestion(lessonWordId: string, targetId: string) {
+		const current = cefrDismissed.get(lessonWordId) ?? new Set<string>();
+		cefrDismissed = new Map(cefrDismissed).set(lessonWordId, new Set([...current, targetId]));
+	}
+
 	async function searchWords(query: string) {
 		if (wordPickerTimer) clearTimeout(wordPickerTimer);
 		wordPickerTimer = window.setTimeout(async () => {
@@ -475,8 +532,6 @@
 		<p class="success">Saved lesson word.</p>
 	{:else if form?.updateStorySentenceSuccess}
 		<p class="success">Saved story sentence.</p>
-	{:else if form?.updateWordCefrTargetsSuccess}
-		<p class="success">Saved CEFR coverage.</p>
 	{:else if form?.deleteWordSuccess}
 		<p class="success">Deleted lesson word.</p>
 	{:else if form?.updateStorySentenceTokenSuccess || form?.updateExampleSentenceTokenSuccess}
@@ -833,47 +888,107 @@
 										(editingLessonWordId =
 											editingLessonWordId === lessonWord.id ? null : lessonWord.id)}
 								>
-									{editingLessonWordId === lessonWord.id ? 'Close' : 'Edit'}
+									{editingLessonWordId === lessonWord.id ? 'Close' : 'Details'}
 								</button>
 							</div>
 						</div>
 
-						<form
-							method="POST"
-							action="?/updateWordCefrTargets"
-							class="cefr-row"
-							use:enhance={enhanceCefrForm(lessonWord.id)}
-						>
-							<input type="hidden" name="id" value={lessonWord.id} />
+						{@const cefrCovered = getCefrCoveredTargets(lessonWord)}
+						{@const cefrSuggestions = getCefrSuggestions(lessonWord)}
+						{@const cefrResults = getCefrSearchResults(lessonWord)}
+						<div class="cefr-row">
 							<span class="cefr-label">CEFR</span>
-							<select
-								name="cefrTargetIds"
-								multiple
-								size="4"
-								class="cefr-select"
-								onchange={(event) => event.currentTarget.form?.requestSubmit()}
-							>
-								{#each data.cefrTargets as target}
-									<option
-										value={target.id}
-										selected={isTargetSelected(target.id, lessonWord.coveredCefrTargets)}
-										disabled={Boolean(
-											target.coveredByLessonWordId &&
-												target.coveredByLessonWordId !== lessonWord.id
-										)}
-									>
-										{target.level}: {target.english}
-									</option>
+							<div class="cefr-pills">
+								{#each cefrCovered as target}
+									<span class="cefr-pill cefr-pill--covered">
+										<span class="cefr-pill-level">{target.level}</span>
+										{target.english}
+										<button
+											type="button"
+											class="cefr-pill-btn"
+											aria-label={`Remove ${target.level} ${target.english}`}
+											title="Remove"
+											onclick={() => void removeCefrTarget(lessonWord.id, target.id)}
+										>
+											×
+										</button>
+									</span>
 								{/each}
-							</select>
-							{#if cefrSaveState[lessonWord.id] === 'saving'}
-								<span class="cefr-status">Saving…</span>
-							{:else if cefrSaveState[lessonWord.id] === 'saved'}
-								<span class="cefr-status success-text">Saved.</span>
-							{:else if cefrSaveState[lessonWord.id] === 'error'}
-								<span class="cefr-status error-text">Error.</span>
-							{/if}
-						</form>
+
+								{#each cefrSuggestions as suggestion}
+									<span class="cefr-pill cefr-pill--suggest">
+										<span class="cefr-pill-level">{suggestion.level}</span>
+										{suggestion.english}
+										<button
+											type="button"
+											class="cefr-pill-btn cefr-pill-btn--confirm"
+											aria-label={`Confirm ${suggestion.level} ${suggestion.english}`}
+											title="Confirm"
+											onclick={() => void addCefrTarget(lessonWord.id, suggestion.id)}
+										>
+											✓
+										</button>
+										<button
+											type="button"
+											class="cefr-pill-btn"
+											aria-label={`Dismiss ${suggestion.level} ${suggestion.english}`}
+											title="Dismiss"
+											onclick={() => dismissCefrSuggestion(lessonWord.id, suggestion.id)}
+										>
+											×
+										</button>
+									</span>
+								{/each}
+
+								<div class="cefr-search-wrap">
+									<input
+										type="text"
+										class="cefr-search-input"
+										placeholder="Search CEFR words..."
+										value={cefrSearchQuery.get(lessonWord.id) ?? ''}
+										autocomplete="off"
+										oninput={(e) => {
+											cefrSearchQuery = new Map(cefrSearchQuery).set(lessonWord.id, e.currentTarget.value);
+											cefrSearchOpen = new Map(cefrSearchOpen).set(lessonWord.id, true);
+										}}
+										onfocus={() => {
+											cefrSearchOpen = new Map(cefrSearchOpen).set(lessonWord.id, true);
+										}}
+										onblur={() =>
+											window.setTimeout(() => {
+												cefrSearchOpen = new Map(cefrSearchOpen).set(lessonWord.id, false);
+											}, 150)}
+									/>
+									{#if cefrSearchOpen.get(lessonWord.id) && cefrResults.length > 0}
+										<ul class="cefr-search-dropdown">
+											{#each cefrResults as result}
+												{@const resultUsed = isCefrTargetUsedByAnotherWord(result, lessonWord.id)}
+												<li>
+													<button
+														type="button"
+														class:cefr-search-result--used={resultUsed}
+														disabled={resultUsed}
+														title={resultUsed ? 'Already attached to another lesson word' : undefined}
+														onmousedown={(event) => {
+															event.preventDefault();
+															if (resultUsed) return;
+															void addCefrTarget(lessonWord.id, result.id);
+															resetCefrSearch(lessonWord.id);
+														}}
+													>
+														<span class="cefr-pill-level">{result.level}</span>
+														<span class="cefr-search-result-text">{result.english}</span>
+														{#if resultUsed}
+															<span class="cefr-search-result-note">used</span>
+														{/if}
+													</button>
+												</li>
+											{/each}
+										</ul>
+									{/if}
+								</div>
+							</div>
+						</div>
 
 						{#if editingLessonWordId === lessonWord.id}
 							<div class="expanded-panel">
@@ -990,8 +1105,7 @@
 		font-weight: 600;
 	}
 
-	.success,
-	.success-text {
+	.success {
 		color: #1a7f37;
 		font-weight: 600;
 	}
@@ -1148,8 +1262,9 @@
 
 	.cefr-row {
 		align-items: start;
-		display: flex;
+		display: grid;
 		gap: 0.6rem;
+		grid-template-columns: auto minmax(0, 1fr);
 		padding: 0 0 0.5rem;
 	}
 
@@ -1161,16 +1276,132 @@
 		white-space: nowrap;
 	}
 
-	.cefr-select {
+	.cefr-pills {
+		align-items: center;
+		display: flex;
 		flex: 1;
-		font-size: 0.85rem;
+		flex-wrap: wrap;
+		gap: 0.35rem;
 		min-width: 0;
-		padding: 0.2rem 0.3rem;
 	}
 
-	.cefr-status {
+	.cefr-pill {
+		align-items: center;
+		background: #fff7ed;
+		border: 1px solid #fed7aa;
+		border-radius: 3px;
+		color: inherit;
+		display: inline-flex;
+		flex: 0 1 auto;
 		font-size: 0.85rem;
-		white-space: nowrap;
+		gap: 0.3rem;
+		line-height: 1.2;
+		max-width: 100%;
+		min-width: 0;
+		overflow-wrap: anywhere;
+		padding: 0.2rem 0.35rem 0.2rem 0.45rem;
+	}
+
+	.cefr-pill--covered:hover {
+		border-color: #c08457;
+	}
+
+	.cefr-pill--suggest {
+		background: #eff6ff;
+		border-color: #bfdbfe;
+		border-style: dashed;
+	}
+
+	.cefr-pill-level {
+		color: #555;
+		font-weight: 600;
+	}
+
+	.cefr-pill-btn {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-radius: 2px;
+		color: #666;
+		cursor: pointer;
+		display: inline-flex;
+		font-size: 0.85rem;
+		height: 1.25rem;
+		justify-content: center;
+		line-height: 1;
+		margin-left: 0.05rem;
+		padding: 0;
+		width: 1.25rem;
+	}
+
+	.cefr-pill-btn:hover {
+		background: rgba(0, 0, 0, 0.07);
+		color: #111;
+	}
+
+	.cefr-pill-btn--confirm {
+		color: #166534;
+	}
+
+	.cefr-search-wrap {
+		min-width: 12rem;
+		position: relative;
+	}
+
+	.cefr-search-input {
+		border: 1px solid #d0d0d0;
+		box-sizing: border-box;
+		font-size: 0.85rem;
+		padding: 0.25rem 0.45rem;
+		width: 100%;
+	}
+
+	.cefr-search-dropdown {
+		background: #fff;
+		border: 1px solid #ccc;
+		list-style: none;
+		margin: 0.2rem 0 0;
+		max-height: 12rem;
+		overflow-y: auto;
+		padding: 0;
+		position: absolute;
+		width: min(22rem, 80vw);
+		z-index: 10;
+	}
+
+	.cefr-search-dropdown li button {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		cursor: pointer;
+		display: flex;
+		gap: 0.45rem;
+		padding: 0.4rem 0.55rem;
+		text-align: left;
+		width: 100%;
+	}
+
+	.cefr-search-dropdown li button:hover {
+		background: #f0f0f0;
+	}
+
+	.cefr-search-dropdown li button:disabled {
+		color: #777;
+		cursor: not-allowed;
+	}
+
+	.cefr-search-dropdown li button:disabled:hover {
+		background: transparent;
+	}
+
+	.cefr-search-result--used .cefr-search-result-text {
+		text-decoration: line-through;
+	}
+
+	.cefr-search-result-note {
+		color: #777;
+		font-size: 0.8rem;
+		margin-left: auto;
 	}
 
 	.expanded-panel {
@@ -1251,7 +1482,7 @@
 		align-items: center;
 		display: flex;
 		gap: 0.75rem;
-		margin: 3.5rem 0 0.75rem;
+		margin: 1.75rem 0 0.75rem;
 	}
 
 	.section-divider hr {
@@ -1277,6 +1508,7 @@
 		.page-header,
 		.card-header,
 		.story-grid,
+		.cefr-row,
 		.vocab-grid {
 			grid-template-columns: 1fr;
 			display: grid;

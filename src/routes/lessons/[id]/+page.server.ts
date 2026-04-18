@@ -646,6 +646,8 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
 		const wordId = readText(formData, 'wordId');
+		const kalenjin = readText(formData, 'kalenjin');
+		const translations = readText(formData, 'translations');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceSource = readOptionalText(formData, 'sentenceSource');
@@ -654,10 +656,9 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonId || !wordId || !sentenceKalenjin || !sentenceEnglish) {
+		if (!lessonId || (!wordId && (!kalenjin || !translations))) {
 			return fail(400, {
-				error:
-					'Lesson, word, sentence text, and sentence translation are required.'
+				error: 'Lesson, word, and translation are required.'
 			});
 		}
 
@@ -665,6 +666,14 @@ export const actions: Actions = {
 			const lessonWord = await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
 				const itemOrder = await getNextLessonWordOrder(tx, lessonId);
+				const word = wordId
+					? await tx.word.findUnique({ where: { id: wordId }, select: buildWordSelect() })
+					: await createOrUpdateLinkedWord(tx, { kalenjin, translations });
+
+				if (!word) {
+					throw new Error('Word not found.');
+				}
+
 				const sentence = await tx.exampleSentence.create({
 					data: {
 						kalenjin: sentenceKalenjin,
@@ -673,12 +682,14 @@ export const actions: Actions = {
 					}
 				});
 
-				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+				if (sentenceKalenjin) {
+					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+				}
 
 				const createdLessonWord = await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
-						wordId,
+						wordId: word.id,
 						itemOrder,
 						sentenceId: sentence.id,
 						sentenceTranslation,
@@ -687,10 +698,10 @@ export const actions: Actions = {
 					}
 				});
 
-				return { sentenceId: sentence.id, lessonWordId: createdLessonWord.id };
+				return { sentenceId: sentence.id, lessonWordId: createdLessonWord.id, wordId: word.id };
 			});
 
-			await ensureWordSentenceLink(wordId, lessonWord.sentenceId);
+			await ensureWordSentenceLink(lessonWord.wordId, lessonWord.sentenceId);
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
 			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {

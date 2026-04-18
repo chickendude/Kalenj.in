@@ -57,17 +57,7 @@
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
-	type WordSearchResult = { id: string; kalenjin: string; translations: string; notes: string | null };
 	type CefrTarget = (typeof data.cefrTargets)[number];
-	let wordPickerQuery = $state('');
-	let wordPickerResults = $state<WordSearchResult[]>([]);
-	let wordPickerOpen = $state(false);
-	let wordPickerLoading = $state(false);
-	let selectedWordId = $state('');
-	let selectedWordKalenjin = $state('');
-	let selectedWordTranslations = $state('');
-	let sentenceEnglishDefault = $state('');
-	let wordPickerTimer: number | null = null;
 
 	const flattenedLessonWords = $derived(
 		data.lesson.sections
@@ -438,49 +428,8 @@
 		cefrDismissed = new Map(cefrDismissed).set(lessonWordId, new Set([...current, targetId]));
 	}
 
-	async function searchWords(query: string) {
-		if (wordPickerTimer) clearTimeout(wordPickerTimer);
-		wordPickerTimer = window.setTimeout(async () => {
-			wordPickerLoading = true;
-			try {
-				const response = await fetch(
-					`/lessons/${data.lesson.id}/word-search?q=${encodeURIComponent(query)}`
-				);
-				const json = (await response.json()) as { results: WordSearchResult[] };
-				wordPickerResults = json.results;
-				wordPickerOpen = wordPickerResults.length > 0;
-			} finally {
-				wordPickerLoading = false;
-			}
-		}, 200);
-	}
-
-	function selectWord(word: WordSearchResult) {
-		selectedWordId = word.id;
-		selectedWordKalenjin = word.kalenjin;
-		selectedWordTranslations = word.translations;
-		sentenceEnglishDefault = word.translations;
-		wordPickerOpen = false;
-		wordPickerQuery = '';
-	}
-
-	function resetWordPicker() {
-		selectedWordId = '';
-		selectedWordKalenjin = '';
-		selectedWordTranslations = '';
-		sentenceEnglishDefault = '';
-		wordPickerQuery = '';
-		wordPickerResults = [];
-		wordPickerOpen = false;
-		if (wordPickerTimer) {
-			clearTimeout(wordPickerTimer);
-			wordPickerTimer = null;
-		}
-	}
-
 	function toggleAddWordForm() {
 		showAddWordForm = !showAddWordForm;
-		if (!showAddWordForm) resetWordPicker();
 	}
 
 	function enhanceAddWordForm() {
@@ -492,14 +441,8 @@
 			update: EnhancedUpdate;
 		}) => {
 			if (result.type === 'success') {
-				const newId = (result.data as Record<string, unknown> | undefined)
-					?.createdLessonWordId as string | undefined;
 				await update({ reset: true, invalidateAll: true });
 				showAddWordForm = false;
-				resetWordPicker();
-				if (newId) {
-					editingLessonWordId = newId;
-				}
 				return;
 			}
 			await applyAction(result);
@@ -723,99 +666,20 @@
 			{#if showAddWordForm}
 				<form method="POST" action="?/createWord" class="editor-form compact-form" use:enhance={enhanceAddWordForm}>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
-					<input type="hidden" name="wordId" value={selectedWordId} />
-
-					<label>
-						Word
-						<div class="word-picker">
-							{#if selectedWordId}
-								<div class="word-picker-selected">
-									<div class="word-picker-selected-info">
-										<span class="word-picker-kalenjin">{selectedWordKalenjin}</span>
-										<span class="word-picker-translation">{selectedWordTranslations}</span>
-									</div>
-									<button type="button" class="word-picker-clear" onclick={resetWordPicker}>×</button>
-								</div>
-							{:else}
-								<input
-									type="text"
-									placeholder="Search words..."
-									bind:value={wordPickerQuery}
-									oninput={() => void searchWords(wordPickerQuery)}
-									onfocus={() => void searchWords(wordPickerQuery)}
-									onblur={() => window.setTimeout(() => { wordPickerOpen = false; }, 150)}
-									autocomplete="off"
-								/>
-								{#if wordPickerLoading}
-									<p class="word-picker-hint">Searching…</p>
-								{:else if wordPickerOpen}
-									<ul class="word-picker-dropdown">
-										{#each wordPickerResults as word}
-											<li>
-												<button type="button" onmousedown={() => selectWord(word)}>
-													<span class="word-picker-kalenjin">{word.kalenjin}</span>
-													<span class="word-picker-translation">{word.translations}</span>
-												</button>
-											</li>
-										{/each}
-									</ul>
-								{/if}
-							{/if}
-						</div>
-					</label>
 
 					<div class="two-column-grid">
 						<label>
-							Sample sentence
-							<textarea name="sentenceKalenjin" rows="3" required></textarea>
+							Word
+							<input name="kalenjin" required autocomplete="off" />
 						</label>
 
 						<label>
-							English translation
-							<textarea name="sentenceEnglish" rows="3" required bind:value={sentenceEnglishDefault}></textarea>
+							Translation
+							<input name="translations" required placeholder="comma-separated translations" />
 						</label>
 					</div>
 
-					<details class="optional-fields">
-						<summary>Optional fields</summary>
-
-						<div class="optional-fields-body">
-							<div class="two-column-grid">
-								<label>
-									Lesson translation
-									<textarea name="sentenceTranslation" rows="2"></textarea>
-								</label>
-
-								<label>
-									Word-for-word translation
-									<textarea name="wordForWordTranslation" rows="2"></textarea>
-								</label>
-							</div>
-
-							<label>
-								Sentence notes
-								<textarea name="notesMarkdown" rows="3"></textarea>
-							</label>
-
-							<label>
-								Sentence source
-								<input name="sentenceSource" />
-							</label>
-
-							<label>
-								CEFR targets covered
-								<select name="cefrTargetIds" multiple size="8">
-									{#each data.cefrTargets as target}
-										<option value={target.id} disabled={Boolean(target.coveredByLessonWordId)}>
-											{target.level}: {target.english}
-										</option>
-									{/each}
-								</select>
-							</label>
-						</div>
-					</details>
-
-					<button type="submit" disabled={!selectedWordId}>Create lesson word</button>
+					<button type="submit">Create lesson word</button>
 				</form>
 			{/if}
 
@@ -1517,84 +1381,6 @@
 		.row-action {
 			justify-content: start;
 		}
-	}
-
-	.word-picker {
-		position: relative;
-	}
-
-	.word-picker-selected {
-		align-items: center;
-		background: #f6f6f6;
-		border: 1px solid #ccc;
-		display: flex;
-		gap: 0.5rem;
-		justify-content: space-between;
-		padding: 0.45rem 0.5rem;
-	}
-
-	.word-picker-selected-info {
-		display: flex;
-		flex-direction: column;
-		gap: 0.1rem;
-	}
-
-	.word-picker-clear {
-		background: transparent;
-		border: 0;
-		color: #666;
-		cursor: pointer;
-		font-size: 1.1rem;
-		line-height: 1;
-		padding: 0 0.2rem;
-	}
-
-	.word-picker-clear:hover {
-		color: #111;
-	}
-
-	.word-picker-dropdown {
-		background: #fff;
-		border: 1px solid #ccc;
-		border-top: 0;
-		list-style: none;
-		margin: 0;
-		max-height: 14rem;
-		overflow-y: auto;
-		padding: 0;
-		position: absolute;
-		width: 100%;
-		z-index: 10;
-	}
-
-	.word-picker-dropdown li button {
-		background: transparent;
-		border: 0;
-		cursor: pointer;
-		display: flex;
-		gap: 0.75rem;
-		padding: 0.45rem 0.6rem;
-		text-align: left;
-		width: 100%;
-	}
-
-	.word-picker-dropdown li button:hover {
-		background: #f0f0f0;
-	}
-
-	.word-picker-kalenjin {
-		font-weight: 600;
-		min-width: 8rem;
-	}
-
-	.word-picker-translation {
-		color: #555;
-	}
-
-	.word-picker-hint {
-		color: #888;
-		font-size: 0.9rem;
-		margin: 0.25rem 0 0;
 	}
 
 	.optional-fields {

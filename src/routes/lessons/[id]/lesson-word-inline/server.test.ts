@@ -57,6 +57,14 @@ async function post(payload: Record<string, unknown>, lessonId = 'lesson-1') {
 	} as never);
 }
 
+function expectExistingTokenLookup() {
+	expect(mocks.tx.exampleSentenceToken.findMany).toHaveBeenCalledWith(
+		expect.objectContaining({
+			where: { exampleSentenceId: 'sentence-1' }
+		})
+	);
+}
+
 beforeEach(() => {
 	resetMocks();
 	mocks.prisma.lessonWord.findUnique.mockResolvedValue({
@@ -137,6 +145,7 @@ describe('POST /lessons/[id]/lesson-word-inline', () => {
 			value: 'Oh there eh'
 		});
 
+		expectExistingTokenLookup();
 		expect(mocks.tx.exampleSentenceToken.createMany).toHaveBeenCalledWith({
 			data: [
 				{
@@ -183,6 +192,7 @@ describe('POST /lessons/[id]/lesson-word-inline', () => {
 			value: 'Oh eh'
 		});
 
+		expectExistingTokenLookup();
 		expect(mocks.tx.exampleSentenceToken.createMany).toHaveBeenCalledWith({
 			data: [
 				{

@@ -39,16 +39,16 @@ function findPreservedAnnotation(
 		return existingTokens[sameOrderIndex];
 	}
 
-	const sameSurfaceIndex = existingTokens.findIndex(
+	const sameNormalizedIndex = existingTokens.findIndex(
 		(existing, index) =>
 			!usedIndexes.has(index) &&
 			existing.normalizedForm === incoming.normalizedForm &&
 			hasAnnotation(existing)
 	);
 
-	if (sameSurfaceIndex >= 0) {
-		usedIndexes.add(sameSurfaceIndex);
-		return existingTokens[sameSurfaceIndex];
+	if (sameNormalizedIndex >= 0) {
+		usedIndexes.add(sameNormalizedIndex);
+		return existingTokens[sameNormalizedIndex];
 	}
 
 	const sameLemmaIndex = existingTokens.findIndex(

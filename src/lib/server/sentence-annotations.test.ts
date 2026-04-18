@@ -4,6 +4,32 @@ import { buildSyncedTokenRows } from './sentence-annotations';
 const parentIds = { exampleSentenceId: 'sentence-1' };
 
 describe('buildSyncedTokenRows', () => {
+	it('creates plain token rows when there are no existing annotations', () => {
+		const rows = buildSyncedTokenRows(
+			parentIds,
+			[
+				{ tokenOrder: 0, surfaceForm: 'Oh', normalizedForm: 'oh' },
+				{ tokenOrder: 1, surfaceForm: 'eh', normalizedForm: 'eh' }
+			],
+			[]
+		);
+
+		expect(rows).toEqual([
+			{
+				exampleSentenceId: 'sentence-1',
+				tokenOrder: 0,
+				surfaceForm: 'Oh',
+				normalizedForm: 'oh'
+			},
+			{
+				exampleSentenceId: 'sentence-1',
+				tokenOrder: 1,
+				surfaceForm: 'eh',
+				normalizedForm: 'eh'
+			}
+		]);
+	});
+
 	it('preserves annotations by same token order and normalized form first', () => {
 		const rows = buildSyncedTokenRows(
 			parentIds,
@@ -114,5 +140,27 @@ describe('buildSyncedTokenRows', () => {
 			wordId: 'word-exact',
 			inContextTranslation: 'exact meaning'
 		});
+	});
+
+	it('preserves in-context meanings even when a token has no linked lemma', () => {
+		const rows = buildSyncedTokenRows(
+			parentIds,
+			[{ tokenOrder: 0, surfaceForm: 'Oh', normalizedForm: 'oh' }],
+			[
+				{
+					tokenOrder: 0,
+					surfaceForm: 'Oh',
+					normalizedForm: 'oh',
+					wordId: null,
+					inContextTranslation: 'hello',
+					word: null
+				}
+			]
+		);
+
+		expect(rows[0]).toMatchObject({
+			inContextTranslation: 'hello'
+		});
+		expect(rows[0]).not.toHaveProperty('wordId');
 	});
 });

@@ -12,7 +12,7 @@ import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
-import type { CefrLevel, Prisma } from '@prisma/client';
+import { Prisma, type CefrLevel } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
 function buildWordSelect() {
@@ -137,6 +137,10 @@ async function ensureWordSentenceLink(wordId: string, exampleSentenceId: string)
 			exampleSentenceId
 		}
 	});
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+	return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 }
 
 async function ensureDefaultLessonSection(
@@ -362,7 +366,7 @@ async function buildWordCoverageEntries(
 			select: {
 				wordId: true,
 				word: { select: { id: true, kalenjin: true, translations: true } },
-				storySentence: { select: { id: true, kalenjin: true, sentenceOrder: true } }
+				storySentence: { select: { id: true, kalenjin: true, english: true, sentenceOrder: true } }
 			},
 			orderBy: [{ storySentence: { sentenceOrder: 'asc' } }, { tokenOrder: 'asc' }]
 		}),
@@ -387,7 +391,7 @@ async function buildWordCoverageEntries(
 	const wordMap = new Map<string, {
 		word: { id: string; kalenjin: string; translations: string };
 		introduced: boolean;
-		sentences: Map<string, { id: string; kalenjin: string; sentenceOrder: number }>;
+		sentences: Map<string, { id: string; kalenjin: string; english: string; sentenceOrder: number }>;
 	}>();
 
 	for (const token of tokens) {
@@ -657,9 +661,9 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonId || !kalenjin || !translations) {
+		if (!lessonId || !kalenjin || !translations || !sentenceKalenjin || !sentenceEnglish) {
 			return fail(400, {
-				error: 'Lesson, word, and translation are required.'
+				error: 'Lesson, word, translation, sentence text, and sentence translation are required.'
 			});
 		}
 
@@ -1019,9 +1023,15 @@ export const actions: Actions = {
 	quickAddWord: async ({ request, params }) => {
 		const formData = await request.formData();
 		const wordId = readText(formData, 'wordId');
+		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
+		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 
 		if (!wordId) {
 			return fail(400, { error: 'Word ID is required.' });
+		}
+
+		if (!sentenceKalenjin.trim() || !sentenceEnglish.trim()) {
+			return fail(400, { error: 'Sentence text and translation are required.' });
 		}
 
 		const word = await prisma.word.findUnique({
@@ -1038,8 +1048,9 @@ export const actions: Actions = {
 				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
 				const itemOrder = await getNextLessonWordOrder(tx, params.id);
 				const sentence = await tx.exampleSentence.create({
-					data: { kalenjin: '', english: word.translations }
+					data: { kalenjin: sentenceKalenjin, english: sentenceEnglish }
 				});
+				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
 				await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
@@ -1052,10 +1063,10 @@ export const actions: Actions = {
 				});
 			});
 		} catch (createError: unknown) {
-			const msg = createError instanceof Error ? createError.message : '';
-			if (msg.includes('Unique constraint')) {
+			if (isUniqueConstraintError(createError)) {
 				return { quickAddWordSuccess: true };
 			}
+			const msg = createError instanceof Error ? createError.message : '';
 			return fail(400, { error: msg || 'Could not add word.' });
 		}
 

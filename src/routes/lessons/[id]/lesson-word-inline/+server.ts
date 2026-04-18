@@ -50,9 +50,7 @@ export const POST: RequestHandler = async ({ request, params }) => {
 				where: { id: lessonWord.sentenceId },
 				data: { kalenjin: value }
 			});
-			if (lessonWord.sentence.kalenjin !== value) {
-				await syncExampleSentenceTokens(tx, lessonWord.sentenceId, value);
-			}
+			await syncExampleSentenceTokens(tx, lessonWord.sentenceId, value);
 		});
 	} else if (typedField === 'sentenceEnglish') {
 		await prisma.exampleSentence.update({

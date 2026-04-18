@@ -4,7 +4,7 @@
 	type CoverageEntry = {
 		word: { id: string; kalenjin: string; translations: string };
 		introduced: boolean;
-		sentences: { id: string; kalenjin: string; sentenceOrder: number }[];
+		sentences: { id: string; kalenjin: string; english: string; sentenceOrder: number }[];
 	};
 
 	let {
@@ -34,6 +34,7 @@
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
 	function enhanceQuickAdd(wordId: string) {
+		// SvelteKit enhance actions receive a submit callback, which can return the result handler.
 		return () => async ({ result, update }: { result: { type: string }; update: EnhancedUpdate }) => {
 			if (result.type === 'success') {
 				addedWordIds = new Set([...addedWordIds, wordId]);
@@ -46,7 +47,7 @@
 {#if entries.length}
 	<section class="coverage-card">
 		<div class="coverage-card-header">
-			<button type="button" class="coverage-toggle" onclick={toggle}>
+			<button type="button" class="coverage-toggle" aria-expanded={showPanel} onclick={toggle}>
 				<strong>{title}</strong>
 				<span class="coverage-chevron" aria-hidden="true">{showPanel ? '▲' : '▼'}</span>
 			</button>
@@ -90,6 +91,8 @@
 							{:else if quickAddAction}
 								<form method="POST" action={quickAddAction} use:enhance={enhanceQuickAdd(entry.word.id)}>
 									<input type="hidden" name="wordId" value={entry.word.id} />
+									<input type="hidden" name="sentenceKalenjin" value={entry.sentences[0]?.kalenjin ?? ''} />
+									<input type="hidden" name="sentenceEnglish" value={entry.sentences[0]?.english ?? entry.word.translations} />
 									<button type="submit" class="add-button">+ Add to lesson</button>
 								</form>
 							{:else}

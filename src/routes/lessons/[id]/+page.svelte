@@ -51,6 +51,7 @@
 	let cefrDismissed = $state(new Map<string, Set<string>>());
 	let cefrSearchQuery = $state(new Map<string, string>());
 	let cefrSearchOpen = $state(new Map<string, boolean>());
+	let cefrErrors = $state(new Map<string, string>());
 
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
@@ -61,6 +62,7 @@
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
 	type CefrTarget = (typeof data.cefrTargets)[number];
+	const replaceSentenceLabel = 'Replace sentence text';
 
 	const flattenedLessonWords = $derived(
 		data.lesson.sections
@@ -388,17 +390,23 @@
 		);
 	}
 
-	function getCefrSearchResults(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
+	function getCefrSearchMatches(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
 		const query = (cefrSearchQuery.get(lw.id) ?? '').toLowerCase().trim();
 		if (!query) return [];
 		const coveredIds = new Set(getCefrCoveredIds(lw));
-		return data.cefrTargets
-			.filter(
-				(t) =>
-					!coveredIds.has(t.id) &&
-					(t.english.toLowerCase().includes(query) || t.level.toLowerCase().includes(query))
-			)
-			.slice(0, 8);
+		return data.cefrTargets.filter(
+			(t) =>
+				!coveredIds.has(t.id) &&
+				(t.english.toLowerCase().includes(query) || t.level.toLowerCase().includes(query))
+		);
+	}
+
+	function getCefrSearchResults(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
+		return getCefrSearchMatches(lw).slice(0, 8);
+	}
+
+	function getCefrSearchResultCount(lw: { id: string; coveredCefrTargets: { id: string }[] }) {
+		return getCefrSearchMatches(lw).length;
 	}
 
 	function resetCefrSearch(lessonWordId: string) {
@@ -406,29 +414,50 @@
 		cefrSearchOpen = new Map(cefrSearchOpen).set(lessonWordId, false);
 	}
 
+	async function readCefrError(response: Response) {
+		try {
+			const payload = (await response.json()) as { message?: string; error?: string };
+			return payload.message ?? payload.error ?? 'Could not update CEFR targets.';
+		} catch {
+			return 'Could not update CEFR targets.';
+		}
+	}
+
 	async function addCefrTarget(lessonWordId: string, targetId: string) {
-		const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ lessonWordId, targetId, action: 'add' })
-		});
-		if (response.ok) {
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lessonWordId, targetId, action: 'add' })
+			});
+			if (!response.ok) {
+				throw new Error(await readCefrError(response));
+			}
 			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
 			if (lw) {
 				cefrLocalTargets = new Map(cefrLocalTargets).set(lessonWordId, [
 					...new Set([...getCefrCoveredIds(lw), targetId])
 				]);
 			}
+			cefrErrors = new Map(cefrErrors).set(lessonWordId, '');
+		} catch (error) {
+			cefrErrors = new Map(cefrErrors).set(
+				lessonWordId,
+				error instanceof Error ? error.message : 'Could not update CEFR targets.'
+			);
 		}
 	}
 
 	async function removeCefrTarget(lessonWordId: string, targetId: string) {
-		const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
-			method: 'POST',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ lessonWordId, targetId, action: 'remove' })
-		});
-		if (response.ok) {
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/cefr-target`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lessonWordId, targetId, action: 'remove' })
+			});
+			if (!response.ok) {
+				throw new Error(await readCefrError(response));
+			}
 			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
 			if (lw) {
 				cefrLocalTargets = new Map(cefrLocalTargets).set(
@@ -436,6 +465,12 @@
 					getCefrCoveredIds(lw).filter((id) => id !== targetId)
 				);
 			}
+			cefrErrors = new Map(cefrErrors).set(lessonWordId, '');
+		} catch (error) {
+			cefrErrors = new Map(cefrErrors).set(
+				lessonWordId,
+				error instanceof Error ? error.message : 'Could not update CEFR targets.'
+			);
 		}
 	}
 
@@ -693,6 +728,16 @@
 						</label>
 					</div>
 
+					<label>
+						Example sentence
+						<textarea name="sentenceKalenjin" required rows="2"></textarea>
+					</label>
+
+					<label>
+						Sentence translation
+						<textarea name="sentenceEnglish" required rows="2"></textarea>
+					</label>
+
 					<button type="submit">Create lesson word</button>
 				</form>
 			{/if}
@@ -737,19 +782,34 @@
 								{:else if !lwLocal.sentenceKalenjin}
 									<button type="button" class="inline-edit-button empty-sentence-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
 								{:else}
-									<SentenceTokenAnnotations
-										entityId={lessonWord.id}
-										entityIdField="lessonWordId"
-										entityKind="example"
-										sentenceId={lessonWord.sentence.id}
-										sentenceText={lessonWord.sentence.kalenjin}
-										tokens={lessonWord.sentence.tokens}
-										dictionaryWords={data.words}
-										updateAction="?/updateExampleSentenceToken"
-										createAction="?/createExampleSentenceWord"
-										searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-										tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
-									/>
+									<div class="sentence-annotation-shell">
+										<SentenceTokenAnnotations
+											entityId={lessonWord.id}
+											entityIdField="lessonWordId"
+											entityKind="example"
+											sentenceId={lessonWord.sentence.id}
+											sentenceText={lessonWord.sentence.kalenjin}
+											tokens={lessonWord.sentence.tokens}
+											dictionaryWords={data.words}
+											updateAction="?/updateExampleSentenceToken"
+											createAction="?/createExampleSentenceWord"
+											searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+											tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+										/>
+										<button
+											type="button"
+											class="secondary-button sentence-edit-button"
+											aria-label={replaceSentenceLabel}
+											data-tooltip={replaceSentenceLabel}
+											onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}
+										>
+											<svg aria-hidden="true" viewBox="0 0 24 24" focusable="false">
+												<path
+													d="M7 7h9.2l-1.8-1.8L16 3.6 20.4 8 16 12.4l-1.6-1.6L16.2 9H7a3 3 0 0 0-3 3v1H2v-1a5 5 0 0 1 5-5Zm10 10H7.8l1.8 1.8L8 20.4 3.6 16 8 11.6l1.6 1.6L7.8 15H17a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5Z"
+												/>
+											</svg>
+										</button>
+									</div>
 								{/if}
 								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
 									<p class="error-text">{inlineLessonWordError}</p>
@@ -793,6 +853,7 @@
 						{@const cefrCovered = getCefrCoveredTargets(lessonWord)}
 						{@const cefrSuggestions = getCefrSuggestions(lessonWord)}
 						{@const cefrResults = getCefrSearchResults(lessonWord)}
+						{@const cefrResultCount = getCefrSearchResultCount(lessonWord)}
 						<div class="cefr-row">
 							<span class="cefr-label">CEFR</span>
 							<div class="cefr-pills">
@@ -881,9 +942,17 @@
 													</button>
 												</li>
 											{/each}
+											{#if cefrResultCount > cefrResults.length}
+												<li class="cefr-search-more">
+													...and {cefrResultCount - cefrResults.length} more
+												</li>
+											{/if}
 										</ul>
 									{/if}
 								</div>
+								{#if cefrErrors.get(lessonWord.id)}
+									<p class="error-text cefr-error">{cefrErrors.get(lessonWord.id)}</p>
+								{/if}
 							</div>
 						</div>
 
@@ -1076,6 +1145,54 @@
 		min-width: 0;
 	}
 
+	.sentence-annotation-shell {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
+	.sentence-edit-button {
+		align-items: center;
+		border-radius: 4px;
+		display: inline-flex;
+		height: 2rem;
+		justify-content: center;
+		padding: 0;
+		position: relative;
+		width: 2rem;
+	}
+
+	.sentence-edit-button svg {
+		fill: currentColor;
+		height: 1rem;
+		width: 1rem;
+	}
+
+	.sentence-edit-button::after {
+		background: #222;
+		border-radius: 3px;
+		color: #fff;
+		content: attr(data-tooltip);
+		font-size: 0.78rem;
+		left: 50%;
+		line-height: 1.2;
+		opacity: 0;
+		padding: 0.3rem 0.4rem;
+		pointer-events: none;
+		position: absolute;
+		bottom: calc(100% + 0.35rem);
+		transform: translateX(-50%);
+		transition: opacity 0.04s ease;
+		white-space: nowrap;
+		z-index: 20;
+	}
+
+	.sentence-edit-button:hover::after,
+	.sentence-edit-button:focus-visible::after {
+		opacity: 1;
+	}
+
 	.empty-sentence-button {
 		align-items: center;
 		border: 1px dashed #d0d0d0;
@@ -1258,6 +1375,18 @@
 		color: #777;
 		font-size: 0.8rem;
 		margin-left: auto;
+	}
+
+	.cefr-search-more {
+		color: #666;
+		font-size: 0.82rem;
+		padding: 0.35rem 0.55rem;
+	}
+
+	.cefr-error {
+		flex-basis: 100%;
+		font-size: 0.85rem;
+		margin: 0;
 	}
 
 	label {

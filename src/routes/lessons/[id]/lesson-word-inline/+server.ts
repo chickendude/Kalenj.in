@@ -3,7 +3,13 @@ import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens } from '$lib/server/sentence-annotations';
 import type { RequestHandler } from './$types';
 
-const ALLOWED_FIELDS = ['sentenceKalenjin', 'sentenceEnglish', 'notesMarkdown'] as const;
+const ALLOWED_FIELDS = [
+	'kalenjin',
+	'translations',
+	'sentenceKalenjin',
+	'sentenceEnglish',
+	'notesMarkdown'
+] as const;
 type InlineField = (typeof ALLOWED_FIELDS)[number];
 
 export const POST: RequestHandler = async ({ request, params }) => {
@@ -33,7 +39,12 @@ export const POST: RequestHandler = async ({ request, params }) => {
 
 	const typedField = field as InlineField;
 
-	if (typedField === 'sentenceKalenjin') {
+	if (typedField === 'kalenjin' || typedField === 'translations') {
+		await prisma.lessonWord.update({
+			where: { id: lessonWordId },
+			data: { [typedField]: value }
+		});
+	} else if (typedField === 'sentenceKalenjin') {
 		await prisma.$transaction(async (tx) => {
 			await tx.exampleSentence.update({
 				where: { id: lessonWord.sentenceId },

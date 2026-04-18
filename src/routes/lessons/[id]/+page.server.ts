@@ -380,7 +380,9 @@ async function buildWordCoverageEntries(
 		})
 	]);
 
-	const introducedWordIds = new Set(vocabLessonWords.map((lw) => lw.wordId));
+	const introducedWordIds = new Set(
+		vocabLessonWords.map((lw) => lw.wordId).filter((wordId): wordId is string => Boolean(wordId))
+	);
 
 	const wordMap = new Map<string, {
 		word: { id: string; kalenjin: string; translations: string };
@@ -645,7 +647,6 @@ export const actions: Actions = {
 	createWord: async ({ request }) => {
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
-		const wordId = readText(formData, 'wordId');
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
@@ -656,7 +657,7 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonId || (!wordId && (!kalenjin || !translations))) {
+		if (!lessonId || !kalenjin || !translations) {
 			return fail(400, {
 				error: 'Lesson, word, and translation are required.'
 			});
@@ -666,13 +667,6 @@ export const actions: Actions = {
 			const lessonWord = await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
 				const itemOrder = await getNextLessonWordOrder(tx, lessonId);
-				const word = wordId
-					? await tx.word.findUnique({ where: { id: wordId }, select: buildWordSelect() })
-					: await createOrUpdateLinkedWord(tx, { kalenjin, translations });
-
-				if (!word) {
-					throw new Error('Word not found.');
-				}
 
 				const sentence = await tx.exampleSentence.create({
 					data: {
@@ -689,7 +683,8 @@ export const actions: Actions = {
 				const createdLessonWord = await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
-						wordId: word.id,
+						kalenjin,
+						translations,
 						itemOrder,
 						sentenceId: sentence.id,
 						sentenceTranslation,
@@ -698,10 +693,9 @@ export const actions: Actions = {
 					}
 				});
 
-				return { sentenceId: sentence.id, lessonWordId: createdLessonWord.id, wordId: word.id };
+				return { lessonWordId: createdLessonWord.id };
 			});
 
-			await ensureWordSentenceLink(lessonWord.wordId, lessonWord.sentenceId);
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
 			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {
@@ -1032,30 +1026,31 @@ export const actions: Actions = {
 
 		const word = await prisma.word.findUnique({
 			where: { id: wordId },
-			select: { translations: true }
+			select: { id: true, kalenjin: true, translations: true }
 		});
 
+		if (!word) {
+			return fail(404, { error: 'Word not found.' });
+		}
+
 		try {
-			let newSentenceId: string | undefined;
 			await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
 				const itemOrder = await getNextLessonWordOrder(tx, params.id);
 				const sentence = await tx.exampleSentence.create({
-					data: { kalenjin: '', english: word?.translations ?? '' }
+					data: { kalenjin: '', english: word.translations }
 				});
-				newSentenceId = sentence.id;
 				await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
-						wordId,
+						wordId: word.id,
+						kalenjin: word.kalenjin,
+						translations: word.translations,
 						itemOrder,
 						sentenceId: sentence.id
 					}
 				});
 			});
-			if (newSentenceId) {
-				await ensureWordSentenceLink(wordId, newSentenceId);
-			}
 		} catch (createError: unknown) {
 			const msg = createError instanceof Error ? createError.message : '';
 			if (msg.includes('Unique constraint')) {

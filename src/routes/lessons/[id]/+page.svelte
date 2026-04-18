@@ -41,7 +41,7 @@
 
 	type InlineWordField = 'kalenjin' | 'translations';
 	type WordLocalState = { kalenjin: string; translations: string };
-	let inlineWordEdit = $state<{ lessonWordId: string; wordId: string; field: InlineWordField } | null>(null);
+	let inlineWordEdit = $state<{ lessonWordId: string; field: InlineWordField } | null>(null);
 	let inlineWordValue = $state('');
 	let inlineWordError = $state<string | null>(null);
 	let inlineWordInput = $state<HTMLInputElement | null>(null);
@@ -233,21 +233,21 @@
 	}
 
 	function getWordLocal(
-		lw: { id: string; word: { id: string; kalenjin: string; translations: string } }
+		lw: { id: string; kalenjin: string; translations: string }
 	): WordLocalState {
 		return (
 			wordLocalState.get(lw.id) ?? {
-				kalenjin: lw.word.kalenjin,
-				translations: lw.word.translations
+				kalenjin: lw.kalenjin,
+				translations: lw.translations
 			}
 		);
 	}
 
 	function beginInlineWordEdit(
-		lw: { id: string; word: { id: string; kalenjin: string; translations: string } },
+		lw: { id: string; kalenjin: string; translations: string },
 		field: InlineWordField
 	) {
-		inlineWordEdit = { lessonWordId: lw.id, wordId: lw.word.id, field };
+		inlineWordEdit = { lessonWordId: lw.id, field };
 		inlineWordValue = getWordLocal(lw)[field];
 		inlineWordError = null;
 	}
@@ -260,12 +260,12 @@
 
 	async function saveInlineWordEdit() {
 		if (!inlineWordEdit) return;
-		const { lessonWordId, wordId, field } = inlineWordEdit;
+		const { lessonWordId, field } = inlineWordEdit;
 		try {
-			const response = await fetch(`/dictionary/${wordId}/inline`, {
+			const response = await fetch(`/lessons/${data.lesson.id}/lesson-word-inline`, {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ field, value: inlineWordValue })
+				body: JSON.stringify({ lessonWordId, field, value: inlineWordValue })
 			});
 			const result = (await response.json()) as { error?: string };
 			if (!response.ok) throw new Error(result.error ?? 'Could not save.');
@@ -375,7 +375,12 @@
 		return Boolean(target.coveredByLessonWordId && target.coveredByLessonWordId !== lessonWordId);
 	}
 
-	function getCefrSuggestions(lw: { id: string; coveredCefrTargets: { id: string }[]; word: { id: string; kalenjin: string; translations: string } }) {
+	function getCefrSuggestions(lw: {
+		id: string;
+		kalenjin: string;
+		translations: string;
+		coveredCefrTargets: { id: string }[];
+	}) {
 		const coveredIds = new Set(getCefrCoveredIds(lw));
 		const dismissed = cefrDismissed.get(lw.id) ?? new Set<string>();
 		return suggestCefrTargets(getWordLocal(lw).translations, data.cefrTargets, coveredIds).filter(

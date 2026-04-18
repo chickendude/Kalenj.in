@@ -140,6 +140,7 @@ async function getUninstructedWordsByLessonId(
 	// lessonId -> Set<wordId>
 	const vocabWordIdsByLessonId = new Map<string, Set<string>>();
 	for (const lw of lessonWordRows) {
+		if (!lw.wordId) continue;
 		const lessonId = lw.lessonSection.lessonId;
 		if (!vocabWordIdsByLessonId.has(lessonId)) vocabWordIdsByLessonId.set(lessonId, new Set());
 		vocabWordIdsByLessonId.get(lessonId)!.add(lw.wordId);

@@ -205,7 +205,7 @@
 								Covered by lesson {target.coveredByLessonWord.lessonSection.lesson.level}
 								.{target.coveredByLessonWord.lessonSection.lesson.lessonOrder}, section
 								{target.coveredByLessonWord.lessonSection.sectionOrder}:
-								{target.coveredByLessonWord.word.kalenjin}
+								{target.coveredByLessonWord.kalenjin}
 							{:else}
 								Not covered yet.
 							{/if}

@@ -35,6 +35,14 @@
 	let inlineLessonWordInput = $state<HTMLTextAreaElement | null>(null);
 	let lessonWordLocalState = $state(new Map<string, LessonWordLocalState>());
 
+	type InlineWordField = 'kalenjin' | 'translations';
+	type WordLocalState = { kalenjin: string; translations: string };
+	let inlineWordEdit = $state<{ lessonWordId: string; wordId: string; field: InlineWordField } | null>(null);
+	let inlineWordValue = $state('');
+	let inlineWordError = $state<string | null>(null);
+	let inlineWordInput = $state<HTMLInputElement | null>(null);
+	let wordLocalState = $state(new Map<string, WordLocalState>());
+
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
 	let lessonVocabularyType = $state<VocabularyType>('VOCAB');
@@ -99,6 +107,15 @@
 		const timeout = window.setTimeout(() => {
 			inlineLessonWordInput?.focus();
 			inlineLessonWordInput?.select();
+		}, 0);
+		return () => window.clearTimeout(timeout);
+	});
+
+	$effect(() => {
+		if (!inlineWordEdit) return;
+		const timeout = window.setTimeout(() => {
+			inlineWordInput?.focus();
+			inlineWordInput?.select();
 		}, 0);
 		return () => window.clearTimeout(timeout);
 	});
@@ -238,6 +255,66 @@
 				notesMarkdown: lw.notesMarkdown ?? ''
 			}
 		);
+	}
+
+	function getWordLocal(
+		lw: { id: string; word: { id: string; kalenjin: string; translations: string } }
+	): WordLocalState {
+		return (
+			wordLocalState.get(lw.id) ?? {
+				kalenjin: lw.word.kalenjin,
+				translations: lw.word.translations
+			}
+		);
+	}
+
+	function beginInlineWordEdit(
+		lw: { id: string; word: { id: string; kalenjin: string; translations: string } },
+		field: InlineWordField
+	) {
+		inlineWordEdit = { lessonWordId: lw.id, wordId: lw.word.id, field };
+		inlineWordValue = getWordLocal(lw)[field];
+		inlineWordError = null;
+	}
+
+	function cancelInlineWordEdit() {
+		inlineWordEdit = null;
+		inlineWordValue = '';
+		inlineWordError = null;
+	}
+
+	async function saveInlineWordEdit() {
+		if (!inlineWordEdit) return;
+		const { lessonWordId, wordId, field } = inlineWordEdit;
+		try {
+			const response = await fetch(`/dictionary/${wordId}/inline`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ field, value: inlineWordValue })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) throw new Error(result.error ?? 'Could not save.');
+			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
+			if (lw) {
+				wordLocalState = new Map(wordLocalState).set(lessonWordId, {
+					...getWordLocal(lw),
+					[field]: inlineWordValue
+				});
+			}
+			cancelInlineWordEdit();
+		} catch (err) {
+			inlineWordError = err instanceof Error ? err.message : 'Could not save.';
+		}
+	}
+
+	function handleInlineWordKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void saveInlineWordEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineWordEdit();
+		}
 	}
 
 	function beginInlineLessonWordEdit(
@@ -706,8 +783,19 @@
 						{@const lwLocal = getLessonWordLocal(lessonWord)}
 						<div class="table-row vocab-grid">
 							<div class="word-cell">
-								<span class="word-kalenjin">{lessonWord.word.kalenjin}</span>
-								<span class="word-translations">{lessonWord.word.translations}</span>
+								{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'kalenjin'}
+									<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-kalenjin-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
+								{:else}
+									<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+								{/if}
+								{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
+									<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
+								{:else}
+									<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{getWordLocal(lessonWord).translations}</button>
+								{/if}
+								{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
+									<p class="error-text">{inlineWordError}</p>
+								{/if}
 							</div>
 							<div class="sentence-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
@@ -1008,6 +1096,25 @@
 		font-size: 0.9rem;
 	}
 
+	.word-inline-input {
+		background: transparent;
+		border: 0;
+		border-bottom: 1px solid transparent;
+		outline: none;
+		padding: 0;
+		width: 100%;
+	}
+
+	.word-inline-input:focus {
+		border-bottom-color: #aaa;
+	}
+
+
+	.word-translations-input {
+		color: #555;
+		font-size: 0.9rem;
+	}
+
 	.sentence-cell {
 		display: flex;
 		flex-direction: column;
@@ -1115,6 +1222,10 @@
 
 	.inline-edit-button--wide {
 		width: 100%;
+	}
+
+	.inline-edit-button.word-kalenjin {
+		font-weight: 600;
 	}
 
 	.inline-edit-button.sentence-english-text {

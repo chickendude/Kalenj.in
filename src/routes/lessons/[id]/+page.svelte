@@ -21,7 +21,6 @@
 
 	let showLessonEdit = $state(false);
 	let showAddWordForm = $state(false);
-	let editingLessonWordId = $state<string | null>(null);
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
 	let inlineStoryValue = $state('');
 	let inlineStoryError = $state<string | null>(null);
@@ -29,7 +28,11 @@
 	let inlineStoryInput = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
 	type InlineLessonWordField = 'sentenceKalenjin' | 'sentenceEnglish' | 'notesMarkdown';
-	type LessonWordLocalState = { sentenceKalenjin: string; sentenceEnglish: string; notesMarkdown: string };
+	type LessonWordLocalState = {
+		sentenceKalenjin: string;
+		sentenceEnglish: string;
+		notesMarkdown: string;
+	};
 	let inlineLessonWordEdit = $state<{ lessonWordId: string; field: InlineLessonWordField } | null>(null);
 	let inlineLessonWordValue = $state('');
 	let inlineLessonWordError = $state<string | null>(null);
@@ -214,7 +217,11 @@
 	}
 
 	function getLessonWordLocal(
-		lw: { id: string; sentence: { kalenjin: string; english: string }; notesMarkdown: string | null }
+		lw: {
+			id: string;
+			sentence: { kalenjin: string; english: string };
+			notesMarkdown: string | null;
+		}
 	): LessonWordLocalState {
 		return (
 			lessonWordLocalState.get(lw.id) ?? {
@@ -286,7 +293,11 @@
 	}
 
 	function beginInlineLessonWordEdit(
-		lw: { id: string; sentence: { kalenjin: string; english: string }; notesMarkdown: string | null },
+		lw: {
+			id: string;
+			sentence: { kalenjin: string; english: string };
+			notesMarkdown: string | null;
+		},
 		field: InlineLessonWordField
 	) {
 		inlineLessonWordEdit = { lessonWordId: lw.id, field };
@@ -471,8 +482,6 @@
 		<p class="success">Saved lesson changes.</p>
 	{:else if form?.createWordSuccess}
 		<p class="success">Created lesson word.</p>
-	{:else if form?.updateWordSuccess}
-		<p class="success">Saved lesson word.</p>
 	{:else if form?.updateStorySentenceSuccess}
 		<p class="success">Saved story sentence.</p>
 	{:else if form?.deleteWordSuccess}
@@ -695,6 +704,7 @@
 					<div class="table-header vocab-grid">
 						<span>Word</span>
 						<span>Sentence</span>
+						<span>Word for word</span>
 						<span></span>
 					</div>
 
@@ -727,6 +737,32 @@
 								{:else}
 									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || 'Add translation'}</button>
 								{/if}
+								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field !== 'notesMarkdown'}
+									<p class="error-text">{inlineLessonWordError}</p>
+								{/if}
+							</div>
+							<div class="word-for-word-cell">
+								<SentenceTokenAnnotations
+									entityId={lessonWord.id}
+									entityIdField="lessonWordId"
+									entityKind="example"
+									sentenceId={lessonWord.sentence.id}
+									sentenceText={lessonWord.sentence.kalenjin}
+									tokens={lessonWord.sentence.tokens}
+									dictionaryWords={data.words}
+									updateAction="?/updateExampleSentenceToken"
+									createAction="?/createExampleSentenceWord"
+									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+								/>
+							</div>
+							<div class="row-action">
+								<form method="POST" action="?/deleteWord" class="inline-delete">
+									<input type="hidden" name="id" value={lessonWord.id} />
+									<button type="submit" class="secondary-button">Delete</button>
+								</form>
+							</div>
+							<div class="notes-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-notes-input" rows="3" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordKeydown}></textarea>
 									<div class="inline-actions compact-actions">
@@ -736,24 +772,9 @@
 								{:else}
 									<button type="button" class="inline-edit-button sentence-notes-text" class:sentence-notes-empty={!lwLocal.notesMarkdown} onclick={() => beginInlineLessonWordEdit(lessonWord, 'notesMarkdown')}>{lwLocal.notesMarkdown || 'Add notes'}</button>
 								{/if}
-								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id}
+								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
 									<p class="error-text">{inlineLessonWordError}</p>
 								{/if}
-							</div>
-							<div class="row-action">
-								<form method="POST" action="?/deleteWord" class="inline-delete">
-									<input type="hidden" name="id" value={lessonWord.id} />
-									<button type="submit" class="secondary-button">Delete</button>
-								</form>
-								<button
-									type="button"
-									class="secondary-button"
-									onclick={() =>
-										(editingLessonWordId =
-											editingLessonWordId === lessonWord.id ? null : lessonWord.id)}
-								>
-									{editingLessonWordId === lessonWord.id ? 'Close' : 'Details'}
-								</button>
 							</div>
 						</div>
 
@@ -854,61 +875,6 @@
 							</div>
 						</div>
 
-						{#if editingLessonWordId === lessonWord.id}
-							<div class="expanded-panel">
-								<form method="POST" action="?/updateWord" class="editor-form compact-form">
-									<input type="hidden" name="id" value={lessonWord.id} />
-									<input type="hidden" name="itemOrder" value={lessonWord.itemOrder} />
-
-									<label>
-										Word
-										<select name="wordId" required value={lessonWord.wordId}>
-											{#each data.words as word}
-												<option value={word.id}>{word.kalenjin} - {word.translations}</option>
-											{/each}
-										</select>
-									</label>
-
-									<details class="optional-fields">
-										<summary>Optional fields</summary>
-										<div class="optional-fields-body">
-											<div class="two-column-grid">
-												<label>
-													Lesson translation
-													<textarea name="sentenceTranslation" rows="2">{lessonWord.sentenceTranslation ?? ''}</textarea>
-												</label>
-
-												<label>
-													Word-for-word translation
-													<textarea name="wordForWordTranslation" rows="2">{lessonWord.wordForWordTranslation ?? ''}</textarea>
-												</label>
-											</div>
-
-											<label>
-												Sentence source
-												<input name="sentenceSource" value={lessonWord.sentence.source ?? ''} />
-											</label>
-										</div>
-									</details>
-
-									<button type="submit">Save lesson word</button>
-								</form>
-
-								<SentenceTokenAnnotations
-									entityId={lessonWord.id}
-									entityIdField="lessonWordId"
-									entityKind="example"
-									sentenceId={lessonWord.sentence.id}
-									sentenceText={lessonWord.sentence.kalenjin}
-									tokens={lessonWord.sentence.tokens}
-									dictionaryWords={data.words}
-									updateAction="?/updateExampleSentenceToken"
-									createAction="?/createExampleSentenceWord"
-									searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-									tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
-								/>
-							</div>
-						{/if}
 					{/each}
 				{/each}
 			{/if}
@@ -1056,7 +1022,7 @@
 	}
 
 	.vocab-grid {
-		grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr) auto;
+		grid-template-columns: minmax(150px, 0.9fr) minmax(0, 1.4fr) minmax(300px, 2fr) auto;
 	}
 
 	.word-cell {
@@ -1097,6 +1063,20 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.3rem;
+	}
+
+	.word-for-word-cell {
+		min-width: 0;
+	}
+
+	.notes-cell {
+		border-top: 1px solid #eee;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		grid-column: 2 / 4;
+		min-width: 0;
+		padding-top: 0.55rem;
 	}
 
 	.sentence-english-text {
@@ -1268,14 +1248,6 @@
 		margin-left: auto;
 	}
 
-	.expanded-panel {
-		border-top: 1px dashed #ddd;
-		display: grid;
-		gap: 0.75rem;
-		margin-bottom: 0.75rem;
-		padding-top: 0.75rem;
-	}
-
 	label {
 		display: grid;
 		gap: 0.25rem;
@@ -1283,7 +1255,6 @@
 
 	input,
 	textarea,
-	select,
 	button {
 		font: inherit;
 		padding: 0.45rem 0.5rem;
@@ -1381,24 +1352,10 @@
 		.row-action {
 			justify-content: start;
 		}
+
+		.notes-cell {
+			grid-column: auto;
+		}
 	}
 
-	.optional-fields {
-		border: 1px solid #e2e2e2;
-		padding: 0.5rem 0.75rem;
-	}
-
-	.optional-fields summary {
-		color: #555;
-		cursor: pointer;
-		font-weight: 600;
-		padding: 0.2rem 0;
-		user-select: none;
-	}
-
-	.optional-fields-body {
-		display: grid;
-		gap: 0.75rem;
-		margin-top: 0.75rem;
-	}
 </style>

@@ -711,51 +711,6 @@ export const actions: Actions = {
 			});
 		}
 	},
-	updateWord: async ({ request }) => {
-		const formData = await request.formData();
-		const id = readText(formData, 'id');
-		const wordId = readText(formData, 'wordId');
-		const itemOrder = readInteger(formData, 'itemOrder');
-		const sentenceSource = readOptionalText(formData, 'sentenceSource');
-		const sentenceTranslation = readOptionalText(formData, 'sentenceTranslation');
-		const wordForWordTranslation = readOptionalText(formData, 'wordForWordTranslation');
-
-		if (!id || !wordId || itemOrder === null) {
-			return fail(400, { error: 'Lesson word id, word, and item order are required.' });
-		}
-
-		const existingLessonWord = await prisma.lessonWord.findUnique({
-			where: { id },
-			select: { sentenceId: true }
-		});
-
-		if (!existingLessonWord) {
-			return fail(404, { error: 'Lesson word not found.' });
-		}
-
-		try {
-			await prisma.$transaction(async (tx) => {
-				if (sentenceSource !== undefined) {
-					await tx.exampleSentence.update({
-						where: { id: existingLessonWord.sentenceId },
-						data: { source: sentenceSource }
-					});
-				}
-				await tx.lessonWord.update({
-					where: { id },
-					data: { wordId, itemOrder, sentenceTranslation, wordForWordTranslation }
-				});
-			});
-			await ensureWordSentenceLink(wordId, existingLessonWord.sentenceId);
-		} catch (updateError) {
-			return fail(400, {
-				error:
-					updateError instanceof Error ? updateError.message : 'Could not update lesson word.'
-			});
-		}
-
-		return { updateWordSuccess: true };
-	},
 	deleteWord: async ({ request }) => {
 		const formData = await request.formData();
 		const id = readText(formData, 'id');

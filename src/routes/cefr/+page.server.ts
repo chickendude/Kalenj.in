@@ -76,7 +76,6 @@ export const load: PageServerLoad = async ({ url }) => {
 		include: {
 			coveredByLessonWord: {
 				include: {
-					word: true,
 					lessonSection: {
 						include: {
 							lesson: true

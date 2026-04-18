@@ -12,7 +12,7 @@ import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
-import type { Prisma } from '@prisma/client';
+import { Prisma, type CefrLevel } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
 function buildWordSelect() {
@@ -139,6 +139,10 @@ async function ensureWordSentenceLink(wordId: string, exampleSentenceId: string)
 	});
 }
 
+function isUniqueConstraintError(error: unknown): boolean {
+	return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
 async function ensureDefaultLessonSection(
 	tx: Prisma.TransactionClient,
 	lessonId: string
@@ -180,6 +184,19 @@ async function getNextLessonWordOrder(
 	return lessonWords.length === 0
 		? 1
 		: Math.max(...lessonWords.map((lessonWord) => lessonWord.itemOrder)) + 1;
+}
+
+function temporaryLessonWordOrderUpdates<T extends { id: string; itemOrder: number }>(items: T[]) {
+	const temporaryOrderFloor = items.reduce(
+		(currentMin, item) => Math.min(currentMin, item.itemOrder),
+		0
+	) - items.length;
+	const firstTemporaryOrder = Math.min(-1, temporaryOrderFloor);
+
+	return items.map((item, index) => ({
+		id: item.id,
+		itemOrder: firstTemporaryOrder - index
+	}));
 }
 
 async function ensureStorySentence(
@@ -345,6 +362,128 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	});
 }
 
+// orderComparator: 'lt' for story pages (introduced *before* the story),
+//                  'lte' for vocab pages (introduced *up to and including* this lesson).
+async function buildWordCoverageEntries(
+	storyId: string,
+	level: CefrLevel,
+	introducedUpToOrder: number,
+	orderComparator: 'lt' | 'lte'
+) {
+	const [tokens, vocabLessonWords] = await Promise.all([
+		prisma.storySentenceToken.findMany({
+			where: {
+				wordId: { not: null },
+				storySentence: { storyId }
+			},
+			select: {
+				wordId: true,
+				word: { select: { id: true, kalenjin: true, translations: true } },
+				storySentence: { select: { id: true, kalenjin: true, english: true, sentenceOrder: true } }
+			},
+			orderBy: [{ storySentence: { sentenceOrder: 'asc' } }, { tokenOrder: 'asc' }]
+		}),
+		prisma.lessonWord.findMany({
+			where: {
+				lessonSection: {
+					lesson: {
+						level,
+						type: 'VOCABULARY',
+						lessonOrder: { [orderComparator]: introducedUpToOrder }
+					}
+				}
+			},
+			select: { wordId: true }
+		})
+	]);
+
+	const introducedWordIds = new Set(
+		vocabLessonWords.map((lw) => lw.wordId).filter((wordId): wordId is string => Boolean(wordId))
+	);
+
+	const wordMap = new Map<string, {
+		word: { id: string; kalenjin: string; translations: string };
+		introduced: boolean;
+		sentences: Map<string, { id: string; kalenjin: string; english: string; sentenceOrder: number }>;
+	}>();
+
+	for (const token of tokens) {
+		if (!token.wordId || !token.word) continue;
+		if (!wordMap.has(token.wordId)) {
+			wordMap.set(token.wordId, {
+				word: token.word,
+				introduced: introducedWordIds.has(token.wordId),
+				sentences: new Map()
+			});
+		}
+		wordMap.get(token.wordId)!.sentences.set(token.storySentence.id, token.storySentence);
+	}
+
+	return [...wordMap.values()]
+		.map((entry) => ({
+			word: entry.word,
+			introduced: entry.introduced,
+			sentences: [...entry.sentences.values()].sort((a, b) => a.sentenceOrder - b.sentenceOrder)
+		}))
+		.sort((a, b) => {
+			if (a.introduced !== b.introduced) return a.introduced ? 1 : -1;
+			return a.word.kalenjin.localeCompare(b.word.kalenjin);
+		});
+}
+
+async function getStoryWordCoverage(lesson: {
+	type: string;
+	level: CefrLevel;
+	lessonOrder: number;
+	storyId: string | null;
+}) {
+	if (lesson.type !== 'STORY' || !lesson.storyId) {
+		return null;
+	}
+
+	return buildWordCoverageEntries(lesson.storyId, lesson.level, lesson.lessonOrder, 'lt');
+}
+
+async function getVocabWordCoverage(lesson: {
+	type: string;
+	level: CefrLevel;
+	lessonOrder: number;
+}) {
+	if (lesson.type !== 'VOCABULARY') {
+		return null;
+	}
+
+	const nextStoryLesson = await prisma.lesson.findFirst({
+		where: {
+			level: lesson.level,
+			type: 'STORY',
+			lessonOrder: { gt: lesson.lessonOrder }
+		},
+		orderBy: { lessonOrder: 'asc' },
+		select: { id: true, title: true, lessonOrder: true, storyId: true }
+	});
+
+	if (!nextStoryLesson?.storyId) {
+		return null;
+	}
+
+	const words = await buildWordCoverageEntries(
+		nextStoryLesson.storyId,
+		lesson.level,
+		lesson.lessonOrder,
+		'lte'
+	);
+
+	return {
+		storyLesson: {
+			id: nextStoryLesson.id,
+			title: nextStoryLesson.title,
+			lessonOrder: nextStoryLesson.lessonOrder
+		},
+		words
+	};
+}
+
 export const load: PageServerLoad = async ({ params }) => {
 	await backfillMissingStoryTokens(params.id);
 
@@ -363,10 +502,17 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, 'Lesson not found');
 	}
 
+	const [storyWordCoverage, vocabWordCoverage] = await Promise.all([
+		getStoryWordCoverage(lesson),
+		getVocabWordCoverage(lesson)
+	]);
+
 	return {
 		lesson,
 		words,
 		cefrTargets,
+		storyWordCoverage,
+		vocabWordCoverage,
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};
@@ -518,7 +664,8 @@ export const actions: Actions = {
 	createWord: async ({ request }) => {
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
-		const wordId = readText(formData, 'wordId');
+		const kalenjin = readText(formData, 'kalenjin');
+		const translations = readText(formData, 'translations');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceSource = readOptionalText(formData, 'sentenceSource');
@@ -527,10 +674,9 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonId || !wordId || !sentenceKalenjin || !sentenceEnglish) {
+		if (!lessonId || !kalenjin || !translations || !sentenceKalenjin || !sentenceEnglish) {
 			return fail(400, {
-				error:
-					'Lesson, word, sentence text, and sentence translation are required.'
+				error: 'Lesson, word, translation, sentence text, and sentence translation are required.'
 			});
 		}
 
@@ -538,6 +684,7 @@ export const actions: Actions = {
 			const lessonWord = await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
 				const itemOrder = await getNextLessonWordOrder(tx, lessonId);
+
 				const sentence = await tx.exampleSentence.create({
 					data: {
 						kalenjin: sentenceKalenjin,
@@ -546,12 +693,15 @@ export const actions: Actions = {
 					}
 				});
 
-				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+				if (sentenceKalenjin) {
+					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+				}
 
 				const createdLessonWord = await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
-						wordId,
+						kalenjin,
+						translations,
 						itemOrder,
 						sentenceId: sentence.id,
 						sentenceTranslation,
@@ -560,112 +710,17 @@ export const actions: Actions = {
 					}
 				});
 
-				return { sentenceId: sentence.id, lessonWordId: createdLessonWord.id };
+				return { lessonWordId: createdLessonWord.id };
 			});
 
-			await ensureWordSentenceLink(wordId, lessonWord.sentenceId);
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
+			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create lesson word.'
 			});
 		}
-
-		return { createWordSuccess: true };
-	},
-	updateWord: async ({ request }) => {
-		const formData = await request.formData();
-		const id = readText(formData, 'id');
-		const wordId = readText(formData, 'wordId');
-		const itemOrder = readInteger(formData, 'itemOrder');
-		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
-		const sentenceEnglish = readText(formData, 'sentenceEnglish');
-		const sentenceSource = readOptionalText(formData, 'sentenceSource');
-		const sentenceTranslation = readOptionalText(formData, 'sentenceTranslation');
-		const wordForWordTranslation = readOptionalText(formData, 'wordForWordTranslation');
-		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
-
-		if (!id || !wordId || itemOrder === null || !sentenceKalenjin || !sentenceEnglish) {
-			return fail(400, {
-				error: 'Lesson word id, word, item order, and sentence fields are required.'
-			});
-		}
-
-		const existingLessonWord = await prisma.lessonWord.findUnique({
-			where: { id },
-			select: {
-				sentenceId: true,
-				sentence: {
-					select: {
-						kalenjin: true
-					}
-				}
-			}
-		});
-
-		if (!existingLessonWord) {
-			return fail(404, { error: 'Lesson word not found.' });
-		}
-
-		try {
-			await prisma.$transaction(async (tx) => {
-				await tx.exampleSentence.update({
-					where: { id: existingLessonWord.sentenceId },
-					data: {
-						kalenjin: sentenceKalenjin,
-						english: sentenceEnglish,
-						source: sentenceSource
-					}
-				});
-
-				if (existingLessonWord.sentence.kalenjin !== sentenceKalenjin) {
-					await syncExampleSentenceTokens(tx, existingLessonWord.sentenceId, sentenceKalenjin);
-				}
-
-				await tx.lessonWord.update({
-					where: { id },
-					data: {
-						wordId,
-						itemOrder,
-						sentenceTranslation,
-						wordForWordTranslation,
-						notesMarkdown
-					}
-				});
-			});
-
-			await ensureWordSentenceLink(wordId, existingLessonWord.sentenceId);
-		} catch (updateError) {
-			return fail(400, {
-				error:
-					updateError instanceof Error ? updateError.message : 'Could not update lesson word.'
-			});
-		}
-
-		return { updateWordSuccess: true };
-	},
-	updateWordCefrTargets: async ({ request }) => {
-		const formData = await request.formData();
-		const id = readText(formData, 'id');
-		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
-
-		if (!id) {
-			return fail(400, { error: 'Lesson word id is required.' });
-		}
-
-		try {
-			await ensureCefrCoverage(id, cefrTargetIds);
-		} catch (updateError) {
-			return fail(400, {
-				error:
-					updateError instanceof Error
-						? updateError.message
-						: 'Could not update CEFR coverage.'
-			});
-		}
-
-		return { updateWordCefrTargetsSuccess: true };
 	},
 	deleteWord: async ({ request }) => {
 		const formData = await request.formData();
@@ -680,6 +735,75 @@ export const actions: Actions = {
 		});
 
 		return { deleteWordSuccess: true };
+	},
+	reorderWords: async ({ request, params }) => {
+		const formData = await request.formData();
+		const orderedIdsRaw = readText(formData, 'orderedIds');
+		let orderedIds: string[] = [];
+
+		try {
+			const parsed = JSON.parse(orderedIdsRaw) as unknown;
+			if (Array.isArray(parsed)) {
+				orderedIds = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+			}
+		} catch {
+			return fail(400, { error: 'Could not read the new word order.' });
+		}
+
+		if (orderedIds.length === 0 || new Set(orderedIds).size !== orderedIds.length) {
+			return fail(400, { error: 'Word order must include each lesson word once.' });
+		}
+
+		const lessonWords = await prisma.lessonWord.findMany({
+			where: {
+				lessonSection: {
+					lessonId: params.id
+				}
+			},
+			select: {
+				id: true,
+				itemOrder: true
+			}
+		});
+
+		const lessonWordIds = new Set(lessonWords.map((lessonWord) => lessonWord.id));
+		if (
+			orderedIds.length !== lessonWords.length ||
+			orderedIds.some((id) => !lessonWordIds.has(id))
+		) {
+			return fail(400, { error: 'Word order does not match this lesson.' });
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
+
+				for (const update of temporaryLessonWordOrderUpdates(lessonWords)) {
+					await tx.lessonWord.update({
+						where: { id: update.id },
+						data: { itemOrder: update.itemOrder }
+					});
+				}
+
+				for (const [index, id] of orderedIds.entries()) {
+					await tx.lessonWord.update({
+						where: { id },
+						data: {
+							// The lesson detail page presents an auto-sectioned flat word list, so
+							// persisted order is normalized into the default lesson section.
+							lessonSectionId: lessonSection.id,
+							itemOrder: index + 1
+						}
+					});
+				}
+			});
+		} catch (reorderError) {
+			return fail(400, {
+				error: reorderError instanceof Error ? reorderError.message : 'Could not save word order.'
+			});
+		}
+
+		return { reorderWordsSuccess: true };
 	},
 	updateStorySentence: async ({ request }) => {
 		const formData = await request.formData();
@@ -977,5 +1101,57 @@ export const actions: Actions = {
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
 			});
 		}
+	},
+	quickAddWord: async ({ request, params }) => {
+		const formData = await request.formData();
+		const wordId = readText(formData, 'wordId');
+		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
+		const sentenceEnglish = readText(formData, 'sentenceEnglish');
+
+		if (!wordId) {
+			return fail(400, { error: 'Word ID is required.' });
+		}
+
+		if (!sentenceKalenjin.trim() || !sentenceEnglish.trim()) {
+			return fail(400, { error: 'Sentence text and translation are required.' });
+		}
+
+		const word = await prisma.word.findUnique({
+			where: { id: wordId },
+			select: { id: true, kalenjin: true, translations: true }
+		});
+
+		if (!word) {
+			return fail(404, { error: 'Word not found.' });
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
+				const itemOrder = await getNextLessonWordOrder(tx, params.id);
+				const sentence = await tx.exampleSentence.create({
+					data: { kalenjin: sentenceKalenjin, english: sentenceEnglish }
+				});
+				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+				await tx.lessonWord.create({
+					data: {
+						lessonSectionId: lessonSection.id,
+						wordId: word.id,
+						kalenjin: word.kalenjin,
+						translations: word.translations,
+						itemOrder,
+						sentenceId: sentence.id
+					}
+				});
+			});
+		} catch (createError: unknown) {
+			if (isUniqueConstraintError(createError)) {
+				return { quickAddWordSuccess: true };
+			}
+			const msg = createError instanceof Error ? createError.message : '';
+			return fail(400, { error: msg || 'Could not add word.' });
+		}
+
+		return { quickAddWordSuccess: true };
 	}
 };

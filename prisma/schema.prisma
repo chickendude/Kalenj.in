@@ -230,7 +230,9 @@ model LessonSection {
 model LessonWord {
   id                     String          @id @default(cuid())
   lessonSectionId        String
-  wordId                 String
+  wordId                 String?
+  kalenjin               String
+  translations           String
   itemOrder              Int
   sentenceId             String
   sentenceTranslation    String?
@@ -239,7 +241,7 @@ model LessonWord {
   createdAt              DateTime        @default(now())
   updatedAt              DateTime        @updatedAt
   lessonSection          LessonSection   @relation(fields: [lessonSectionId], references: [id], onDelete: Cascade)
-  word                   Word            @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  word                   Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
   sentence               ExampleSentence @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
   coveredCefrTargets     CefrEnglishTarget[]
 

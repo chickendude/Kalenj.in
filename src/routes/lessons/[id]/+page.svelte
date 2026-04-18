@@ -46,6 +46,12 @@
 	let inlineWordError = $state<string | null>(null);
 	let inlineWordInput = $state<HTMLInputElement | null>(null);
 	let wordLocalState = $state(new Map<string, WordLocalState>());
+	let lessonWordOrder = $state<string[]>([]);
+	let lessonWordOrderSignature = $state('');
+	let draggedLessonWordId = $state<string | null>(null);
+	let dropTargetLessonWordId = $state<string | null>(null);
+	let reorderWordsForm = $state<HTMLFormElement | null>(null);
+	let reorderWordsError = $state<string | null>(null);
 
 	let cefrLocalTargets = $state(new Map<string, string[]>());
 	let cefrDismissed = $state(new Map<string, Set<string>>());
@@ -80,7 +86,8 @@
 				return a.itemOrder - b.itemOrder;
 			})
 	);
-	const displaySections = $derived(splitLessonItemsIntoSections(flattenedLessonWords));
+	const orderedLessonWords = $derived(orderLessonWords(flattenedLessonWords, lessonWordOrder));
+	const displaySections = $derived(splitLessonItemsIntoSections(orderedLessonWords));
 
 	$effect(() => {
 		lessonTitle = data.lesson.title;
@@ -88,6 +95,14 @@
 		lessonVocabularyType = data.lesson.vocabularyType ?? 'VOCAB';
 		lessonGrammarMarkdown = data.lesson.grammarMarkdown ?? '';
 		storySentences = data.lesson.story?.sentences.map((sentence) => ({ ...sentence })) ?? [];
+	});
+
+	$effect(() => {
+		const nextSignature = flattenedLessonWords.map((word) => word.id).join('|');
+		if (nextSignature !== lessonWordOrderSignature) {
+			lessonWordOrder = flattenedLessonWords.map((word) => word.id);
+			lessonWordOrderSignature = nextSignature;
+		}
 	});
 
 	$effect(() => {
@@ -243,6 +258,19 @@
 				translations: lw.translations
 			}
 		);
+	}
+
+	function orderLessonWords<T extends { id: string }>(words: T[], orderedIds: string[]): T[] {
+		if (orderedIds.length === 0) {
+			return words;
+		}
+
+		const wordsById = new Map(words.map((word) => [word.id, word]));
+		const ordered = orderedIds
+			.map((id) => wordsById.get(id))
+			.filter((word): word is T => word !== undefined);
+		const orderedSet = new Set(ordered.map((word) => word.id));
+		return [...ordered, ...words.filter((word) => !orderedSet.has(word.id))];
 	}
 
 	function beginInlineWordEdit(
@@ -499,6 +527,85 @@
 			await applyAction(result);
 		};
 	}
+
+	function enhanceReorderWordsForm() {
+		return async ({
+			result,
+			update
+		}: {
+			result: EnhancedSubmitResult;
+			update: EnhancedUpdate;
+		}) => {
+			if (result.type === 'success') {
+				reorderWordsError = null;
+				await update({ reset: false, invalidateAll: true });
+				return;
+			}
+
+			const data = result.type === 'failure' ? result.data : undefined;
+			reorderWordsError =
+				data && 'error' in data && typeof data.error === 'string'
+					? data.error
+					: 'Could not save word order.';
+		};
+	}
+
+	function handleLessonWordDragStart(event: DragEvent, lessonWordId: string) {
+		draggedLessonWordId = lessonWordId;
+		dropTargetLessonWordId = null;
+		reorderWordsError = null;
+		event.dataTransfer?.setData('text/plain', lessonWordId);
+		if (event.dataTransfer) {
+			event.dataTransfer.effectAllowed = 'move';
+		}
+	}
+
+	function handleLessonWordDragOver(event: DragEvent, lessonWordId: string) {
+		if (!draggedLessonWordId || draggedLessonWordId === lessonWordId) {
+			return;
+		}
+
+		event.preventDefault();
+		dropTargetLessonWordId = lessonWordId;
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = 'move';
+		}
+	}
+
+	function handleLessonWordDragLeave(lessonWordId: string) {
+		if (dropTargetLessonWordId === lessonWordId) {
+			dropTargetLessonWordId = null;
+		}
+	}
+
+	function handleLessonWordDragEnd() {
+		draggedLessonWordId = null;
+		dropTargetLessonWordId = null;
+	}
+
+	function handleLessonWordDrop(event: DragEvent, targetLessonWordId: string) {
+		event.preventDefault();
+		const sourceLessonWordId =
+			draggedLessonWordId || event.dataTransfer?.getData('text/plain') || null;
+		draggedLessonWordId = null;
+		dropTargetLessonWordId = null;
+
+		if (!sourceLessonWordId || sourceLessonWordId === targetLessonWordId) {
+			return;
+		}
+
+		const nextOrder = [...lessonWordOrder];
+		const sourceIndex = nextOrder.indexOf(sourceLessonWordId);
+		const targetIndex = nextOrder.indexOf(targetLessonWordId);
+		if (sourceIndex < 0 || targetIndex < 0) {
+			return;
+		}
+
+		const [movedId] = nextOrder.splice(sourceIndex, 1);
+		nextOrder.splice(targetIndex, 0, movedId);
+		lessonWordOrder = nextOrder;
+		window.setTimeout(() => reorderWordsForm?.requestSubmit(), 0);
+	}
 </script>
 
 <section class="lesson-page">
@@ -526,6 +633,8 @@
 		<p class="success">Saved story sentence.</p>
 	{:else if form?.deleteWordSuccess}
 		<p class="success">Deleted lesson word.</p>
+	{:else if form?.reorderWordsSuccess}
+		<p class="success">Saved word order.</p>
 	{:else if form?.updateStorySentenceTokenSuccess || form?.updateExampleSentenceTokenSuccess}
 		<p class="success">Saved sentence annotation.</p>
 	{:else if form?.createStorySentenceWordSuccess || form?.createExampleSentenceWordSuccess}
@@ -745,37 +854,80 @@
 			{#if flattenedLessonWords.length === 0}
 				<p>No lesson words yet.</p>
 			{:else}
-				{#each displaySections as section}
-					<div class="section-divider">
-						<hr />
-						<span>Section {section.sectionNumber}</span>
-					</div>
+				<form
+					method="POST"
+					action="?/reorderWords"
+					class="sr-only"
+					bind:this={reorderWordsForm}
+					use:enhance={enhanceReorderWordsForm}
+				>
+					<input type="hidden" name="orderedIds" value={JSON.stringify(lessonWordOrder)} />
+					<button type="submit">Save word order</button>
+				</form>
+				{#if reorderWordsError}
+					<p class="error-text">{reorderWordsError}</p>
+				{/if}
+				<div role="list" aria-label="Lesson words">
+					{#each displaySections as section}
+						<div class="section-divider">
+							<hr />
+							<span>Section {section.sectionNumber}</span>
+						</div>
 
-					<div class="table-header vocab-grid">
-						<span>Word</span>
-						<span>Sentence</span>
-						<span>Translation</span>
-						<span></span>
-					</div>
+						<div class="table-header vocab-grid">
+							<span></span>
+							<span>Word</span>
+							<span>Sentence</span>
+							<span>Translation</span>
+							<span></span>
+						</div>
 
-					{#each section.items as lessonWord}
-						{@const lwLocal = getLessonWordLocal(lessonWord)}
-						<div class="table-row vocab-grid">
-							<div class="word-cell">
-								{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'kalenjin'}
-									<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-kalenjin-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
-								{:else}
-									<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
-								{/if}
-								{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
-									<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
-								{:else}
-									<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{getWordLocal(lessonWord).translations}</button>
-								{/if}
-								{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
-									<p class="error-text">{inlineWordError}</p>
-								{/if}
-							</div>
+						{#each section.items as lessonWord}
+							{@const lwLocal = getLessonWordLocal(lessonWord)}
+							<div
+								class="table-row vocab-grid vocab-row"
+								role="listitem"
+								class:vocab-row--dragging={draggedLessonWordId === lessonWord.id}
+								class:vocab-row--drop-target={dropTargetLessonWordId === lessonWord.id}
+								ondragover={(event) => handleLessonWordDragOver(event, lessonWord.id)}
+								ondragleave={() => handleLessonWordDragLeave(lessonWord.id)}
+								ondrop={(event) => handleLessonWordDrop(event, lessonWord.id)}
+							>
+								<div class="drag-cell">
+									<button
+										type="button"
+										class="drag-handle"
+										aria-label={`Move ${getWordLocal(lessonWord).kalenjin}`}
+										title="Drag to reorder"
+										draggable="true"
+										ondragstart={(event) => handleLessonWordDragStart(event, lessonWord.id)}
+										ondragend={handleLessonWordDragEnd}
+									>
+										<svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+											<circle cx="5" cy="3" r="1.2" />
+											<circle cx="11" cy="3" r="1.2" />
+											<circle cx="5" cy="8" r="1.2" />
+											<circle cx="11" cy="8" r="1.2" />
+											<circle cx="5" cy="13" r="1.2" />
+											<circle cx="11" cy="13" r="1.2" />
+										</svg>
+									</button>
+								</div>
+								<div class="word-cell">
+									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'kalenjin'}
+										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-kalenjin-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
+									{:else}
+										<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+									{/if}
+									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
+										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
+									{:else}
+										<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{getWordLocal(lessonWord).translations}</button>
+									{/if}
+									{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
+										<p class="error-text">{inlineWordError}</p>
+									{/if}
+								</div>
 							<div class="vocab-text-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
@@ -958,6 +1110,7 @@
 
 					{/each}
 				{/each}
+				</div>
 			{/if}
 		</section>
 	{/if}
@@ -1024,6 +1177,15 @@
 	.error-text {
 		color: #8c1c13;
 		font-weight: 600;
+	}
+
+	.sr-only {
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		padding: 0;
+		position: absolute;
+		width: 1px;
 	}
 
 	.editor-form {
@@ -1103,7 +1265,55 @@
 	}
 
 	.vocab-grid {
-		grid-template-columns: minmax(150px, 0.8fr) minmax(320px, 2fr) minmax(240px, 1.4fr) auto;
+		grid-template-columns: 2rem minmax(150px, 0.8fr) minmax(320px, 2fr) minmax(240px, 1.4fr) auto;
+	}
+
+	.vocab-row {
+		transition: background 0.12s ease, opacity 0.12s ease;
+	}
+
+	.vocab-row--dragging {
+		opacity: 0.55;
+	}
+
+	.vocab-row--drop-target {
+		background: #f8fafc;
+	}
+
+	.drag-cell {
+		align-items: start;
+		display: flex;
+		justify-content: center;
+	}
+
+	.drag-handle {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-radius: 4px;
+		color: #777;
+		cursor: grab;
+		display: inline-flex;
+		height: 2rem;
+		justify-content: center;
+		padding: 0;
+		width: 1.75rem;
+	}
+
+	.drag-handle:hover,
+	.drag-handle:focus-visible {
+		background: #f0f0f0;
+		color: #222;
+	}
+
+	.drag-handle:active {
+		cursor: grabbing;
+	}
+
+	.drag-handle svg {
+		fill: currentColor;
+		height: 1rem;
+		width: 1rem;
 	}
 
 	.word-cell {

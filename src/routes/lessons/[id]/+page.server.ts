@@ -186,6 +186,19 @@ async function getNextLessonWordOrder(
 		: Math.max(...lessonWords.map((lessonWord) => lessonWord.itemOrder)) + 1;
 }
 
+function temporaryLessonWordOrderUpdates<T extends { id: string; itemOrder: number }>(items: T[]) {
+	const temporaryOrderFloor = items.reduce(
+		(currentMin, item) => Math.min(currentMin, item.itemOrder),
+		0
+	) - items.length;
+	const firstTemporaryOrder = Math.min(-1, temporaryOrderFloor);
+
+	return items.map((item, index) => ({
+		id: item.id,
+		itemOrder: firstTemporaryOrder - index
+	}));
+}
+
 async function ensureStorySentence(
 	storyId: string,
 	storySentenceId: string
@@ -722,6 +735,75 @@ export const actions: Actions = {
 		});
 
 		return { deleteWordSuccess: true };
+	},
+	reorderWords: async ({ request, params }) => {
+		const formData = await request.formData();
+		const orderedIdsRaw = readText(formData, 'orderedIds');
+		let orderedIds: string[] = [];
+
+		try {
+			const parsed = JSON.parse(orderedIdsRaw) as unknown;
+			if (Array.isArray(parsed)) {
+				orderedIds = parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+			}
+		} catch {
+			return fail(400, { error: 'Could not read the new word order.' });
+		}
+
+		if (orderedIds.length === 0 || new Set(orderedIds).size !== orderedIds.length) {
+			return fail(400, { error: 'Word order must include each lesson word once.' });
+		}
+
+		const lessonWords = await prisma.lessonWord.findMany({
+			where: {
+				lessonSection: {
+					lessonId: params.id
+				}
+			},
+			select: {
+				id: true,
+				itemOrder: true
+			}
+		});
+
+		const lessonWordIds = new Set(lessonWords.map((lessonWord) => lessonWord.id));
+		if (
+			orderedIds.length !== lessonWords.length ||
+			orderedIds.some((id) => !lessonWordIds.has(id))
+		) {
+			return fail(400, { error: 'Word order does not match this lesson.' });
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
+
+				for (const update of temporaryLessonWordOrderUpdates(lessonWords)) {
+					await tx.lessonWord.update({
+						where: { id: update.id },
+						data: { itemOrder: update.itemOrder }
+					});
+				}
+
+				for (const [index, id] of orderedIds.entries()) {
+					await tx.lessonWord.update({
+						where: { id },
+						data: {
+							// The lesson detail page presents an auto-sectioned flat word list, so
+							// persisted order is normalized into the default lesson section.
+							lessonSectionId: lessonSection.id,
+							itemOrder: index + 1
+						}
+					});
+				}
+			});
+		} catch (reorderError) {
+			return fail(400, {
+				error: reorderError instanceof Error ? reorderError.message : 'Could not save word order.'
+			});
+		}
+
+		return { reorderWordsSuccess: true };
 	},
 	updateStorySentence: async ({ request }) => {
 		const formData = await request.formData();

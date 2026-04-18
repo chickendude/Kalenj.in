@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
@@ -26,6 +27,14 @@
 	let storySentences = $state<StorySentence[]>([]);
 	let inlineStoryInput = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
 
+	type InlineLessonWordField = 'sentenceKalenjin' | 'sentenceEnglish' | 'notesMarkdown';
+	type LessonWordLocalState = { sentenceKalenjin: string; sentenceEnglish: string; notesMarkdown: string };
+	let inlineLessonWordEdit = $state<{ lessonWordId: string; field: InlineLessonWordField } | null>(null);
+	let inlineLessonWordValue = $state('');
+	let inlineLessonWordError = $state<string | null>(null);
+	let inlineLessonWordInput = $state<HTMLTextAreaElement | null>(null);
+	let lessonWordLocalState = $state(new Map<string, LessonWordLocalState>());
+
 	let lessonTitle = $state('');
 	let lessonType = $state<LessonType>('VOCABULARY');
 	let lessonVocabularyType = $state<VocabularyType>('VOCAB');
@@ -34,6 +43,17 @@
 	let cefrSaveState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
+
+	type WordSearchResult = { id: string; kalenjin: string; translations: string; notes: string | null };
+	let wordPickerQuery = $state('');
+	let wordPickerResults = $state<WordSearchResult[]>([]);
+	let wordPickerOpen = $state(false);
+	let wordPickerLoading = $state(false);
+	let selectedWordId = $state('');
+	let selectedWordKalenjin = $state('');
+	let selectedWordTranslations = $state('');
+	let sentenceEnglishDefault = $state('');
+	let wordPickerTimer: number | null = null;
 
 	const flattenedLessonWords = $derived(
 		data.lesson.sections
@@ -71,6 +91,15 @@
 			inlineStoryInput?.select();
 		}, 0);
 
+		return () => window.clearTimeout(timeout);
+	});
+
+	$effect(() => {
+		if (!inlineLessonWordEdit) return;
+		const timeout = window.setTimeout(() => {
+			inlineLessonWordInput?.focus();
+			inlineLessonWordInput?.select();
+		}, 0);
 		return () => window.clearTimeout(timeout);
 	});
 
@@ -197,6 +226,150 @@
 
 	function saveInlineStoryEditOnBlur() {
 		void saveInlineStoryEdit();
+	}
+
+	function getLessonWordLocal(
+		lw: { id: string; sentence: { kalenjin: string; english: string }; notesMarkdown: string | null }
+	): LessonWordLocalState {
+		return (
+			lessonWordLocalState.get(lw.id) ?? {
+				sentenceKalenjin: lw.sentence.kalenjin,
+				sentenceEnglish: lw.sentence.english,
+				notesMarkdown: lw.notesMarkdown ?? ''
+			}
+		);
+	}
+
+	function beginInlineLessonWordEdit(
+		lw: { id: string; sentence: { kalenjin: string; english: string }; notesMarkdown: string | null },
+		field: InlineLessonWordField
+	) {
+		inlineLessonWordEdit = { lessonWordId: lw.id, field };
+		inlineLessonWordValue = getLessonWordLocal(lw)[field];
+		inlineLessonWordError = null;
+	}
+
+	function cancelInlineLessonWordEdit() {
+		inlineLessonWordEdit = null;
+		inlineLessonWordValue = '';
+		inlineLessonWordError = null;
+	}
+
+	async function saveInlineLessonWordEdit() {
+		if (!inlineLessonWordEdit) return;
+		const { lessonWordId, field } = inlineLessonWordEdit;
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/lesson-word-inline`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ lessonWordId, field, value: inlineLessonWordValue })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) throw new Error(result.error ?? 'Could not save.');
+			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
+			if (lw) {
+				lessonWordLocalState = new Map(lessonWordLocalState).set(lessonWordId, {
+					...getLessonWordLocal(lw),
+					[field]: inlineLessonWordValue
+				});
+			}
+			cancelInlineLessonWordEdit();
+			// Refresh page data after a Kalenjin sentence edit so SentenceTokenAnnotations
+			// receives the freshly re-synced tokens rather than the stale page-load snapshot.
+			if (field === 'sentenceKalenjin') {
+				await invalidateAll();
+			}
+		} catch (err) {
+			inlineLessonWordError = err instanceof Error ? err.message : 'Could not save.';
+		}
+	}
+
+	function handleInlineLessonWordKeydown(event: KeyboardEvent) {
+		if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+			event.preventDefault();
+			void saveInlineLessonWordEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineLessonWordEdit();
+		}
+	}
+
+	function handleInlineLessonWordLineKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void saveInlineLessonWordEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineLessonWordEdit();
+		}
+	}
+
+	async function searchWords(query: string) {
+		if (wordPickerTimer) clearTimeout(wordPickerTimer);
+		wordPickerTimer = window.setTimeout(async () => {
+			wordPickerLoading = true;
+			try {
+				const response = await fetch(
+					`/lessons/${data.lesson.id}/word-search?q=${encodeURIComponent(query)}`
+				);
+				const json = (await response.json()) as { results: WordSearchResult[] };
+				wordPickerResults = json.results;
+				wordPickerOpen = wordPickerResults.length > 0;
+			} finally {
+				wordPickerLoading = false;
+			}
+		}, 200);
+	}
+
+	function selectWord(word: WordSearchResult) {
+		selectedWordId = word.id;
+		selectedWordKalenjin = word.kalenjin;
+		selectedWordTranslations = word.translations;
+		sentenceEnglishDefault = word.translations;
+		wordPickerOpen = false;
+		wordPickerQuery = '';
+	}
+
+	function resetWordPicker() {
+		selectedWordId = '';
+		selectedWordKalenjin = '';
+		selectedWordTranslations = '';
+		sentenceEnglishDefault = '';
+		wordPickerQuery = '';
+		wordPickerResults = [];
+		wordPickerOpen = false;
+		if (wordPickerTimer) {
+			clearTimeout(wordPickerTimer);
+			wordPickerTimer = null;
+		}
+	}
+
+	function toggleAddWordForm() {
+		showAddWordForm = !showAddWordForm;
+		if (!showAddWordForm) resetWordPicker();
+	}
+
+	function enhanceAddWordForm() {
+		return async ({
+			result,
+			update
+		}: {
+			result: EnhancedSubmitResult;
+			update: EnhancedUpdate;
+		}) => {
+			if (result.type === 'success') {
+				const newId = (result.data as Record<string, unknown> | undefined)
+					?.createdLessonWordId as string | undefined;
+				await update({ reset: true, invalidateAll: true });
+				showAddWordForm = false;
+				resetWordPicker();
+				if (newId) {
+					editingLessonWordId = newId;
+				}
+				return;
+			}
+			await applyAction(result);
+		};
 	}
 </script>
 
@@ -394,29 +567,69 @@
 				title="Next story coverage"
 				entries={data.vocabWordCoverage.words}
 				storyLesson={data.vocabWordCoverage.storyLesson}
+				quickAddAction="?/quickAddWord"
 			/>
 		{/if}
 
 		<section class="content-card">
 			<div class="card-header">
 				<strong>Lesson words</strong>
-				<button type="button" class="secondary-button" onclick={() => (showAddWordForm = !showAddWordForm)}>
+				{#if flattenedLessonWords.length > 0}
+					<span class="section-word-counts">
+						{#if displaySections.length === 1}
+							{flattenedLessonWords.length} word{flattenedLessonWords.length === 1 ? '' : 's'}
+						{:else}
+							{#each displaySections as section, i}{#if i > 0}<span class="section-sep">·</span>{/if}S{section.sectionNumber}: {section.items.length}{/each}
+						{/if}
+					</span>
+				{/if}
+				<button type="button" class="secondary-button" onclick={toggleAddWordForm}>
 					{showAddWordForm ? 'Close' : 'Add word'}
 				</button>
 			</div>
 
 			{#if showAddWordForm}
-				<form method="POST" action="?/createWord" class="editor-form compact-form">
+				<form method="POST" action="?/createWord" class="editor-form compact-form" use:enhance={enhanceAddWordForm}>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
+					<input type="hidden" name="wordId" value={selectedWordId} />
 
 					<label>
 						Word
-						<select name="wordId" required>
-							<option value="">Select...</option>
-							{#each data.words as word}
-								<option value={word.id}>{word.kalenjin} - {word.translations}</option>
-							{/each}
-						</select>
+						<div class="word-picker">
+							{#if selectedWordId}
+								<div class="word-picker-selected">
+									<div class="word-picker-selected-info">
+										<span class="word-picker-kalenjin">{selectedWordKalenjin}</span>
+										<span class="word-picker-translation">{selectedWordTranslations}</span>
+									</div>
+									<button type="button" class="word-picker-clear" onclick={resetWordPicker}>×</button>
+								</div>
+							{:else}
+								<input
+									type="text"
+									placeholder="Search words..."
+									bind:value={wordPickerQuery}
+									oninput={() => void searchWords(wordPickerQuery)}
+									onfocus={() => void searchWords(wordPickerQuery)}
+									onblur={() => window.setTimeout(() => { wordPickerOpen = false; }, 150)}
+									autocomplete="off"
+								/>
+								{#if wordPickerLoading}
+									<p class="word-picker-hint">Searching…</p>
+								{:else if wordPickerOpen}
+									<ul class="word-picker-dropdown">
+										{#each wordPickerResults as word}
+											<li>
+												<button type="button" onmousedown={() => selectWord(word)}>
+													<span class="word-picker-kalenjin">{word.kalenjin}</span>
+													<span class="word-picker-translation">{word.translations}</span>
+												</button>
+											</li>
+										{/each}
+									</ul>
+								{/if}
+							{/if}
+						</div>
 					</label>
 
 					<div class="two-column-grid">
@@ -426,45 +639,51 @@
 						</label>
 
 						<label>
-							Sentence translation
-							<textarea name="sentenceEnglish" rows="3" required></textarea>
+							English translation
+							<textarea name="sentenceEnglish" rows="3" required bind:value={sentenceEnglishDefault}></textarea>
 						</label>
 					</div>
 
-					<div class="two-column-grid">
-						<label>
-							Lesson translation
-							<textarea name="sentenceTranslation" rows="2"></textarea>
-						</label>
+					<details class="optional-fields">
+						<summary>Optional fields</summary>
 
-						<label>
-							Word-for-word translation
-							<textarea name="wordForWordTranslation" rows="2"></textarea>
-						</label>
-					</div>
+						<div class="optional-fields-body">
+							<div class="two-column-grid">
+								<label>
+									Lesson translation
+									<textarea name="sentenceTranslation" rows="2"></textarea>
+								</label>
 
-					<label>
-						Sentence notes
-						<textarea name="notesMarkdown" rows="3"></textarea>
-					</label>
+								<label>
+									Word-for-word translation
+									<textarea name="wordForWordTranslation" rows="2"></textarea>
+								</label>
+							</div>
 
-					<label>
-						Sentence source
-						<input name="sentenceSource" />
-					</label>
+							<label>
+								Sentence notes
+								<textarea name="notesMarkdown" rows="3"></textarea>
+							</label>
 
-					<label>
-						CEFR targets covered
-						<select name="cefrTargetIds" multiple size="8">
-							{#each data.cefrTargets as target}
-								<option value={target.id} disabled={Boolean(target.coveredByLessonWordId)}>
-									{target.level}: {target.english}
-								</option>
-							{/each}
-						</select>
-					</label>
+							<label>
+								Sentence source
+								<input name="sentenceSource" />
+							</label>
 
-					<button type="submit">Create lesson word</button>
+							<label>
+								CEFR targets covered
+								<select name="cefrTargetIds" multiple size="8">
+									{#each data.cefrTargets as target}
+										<option value={target.id} disabled={Boolean(target.coveredByLessonWordId)}>
+											{target.level}: {target.english}
+										</option>
+									{/each}
+								</select>
+							</label>
+						</div>
+					</details>
+
+					<button type="submit" disabled={!selectedWordId}>Create lesson word</button>
 				</form>
 			{/if}
 
@@ -479,17 +698,46 @@
 
 					<div class="table-header vocab-grid">
 						<span>Word</span>
-						<span>Sample sentence</span>
-						<span>Translation</span>
+						<span>Sentence</span>
 						<span></span>
 					</div>
 
 					{#each section.items as lessonWord}
+						{@const lwLocal = getLessonWordLocal(lessonWord)}
 						<div class="table-row vocab-grid">
-							<div>{lessonWord.word.kalenjin}</div>
-							<div>{lessonWord.sentence.kalenjin}</div>
-							<div>{lessonWord.sentence.english}</div>
+							<div class="word-cell">
+								<span class="word-kalenjin">{lessonWord.word.kalenjin}</span>
+								<span class="word-translations">{lessonWord.word.translations}</span>
+							</div>
+							<div class="sentence-cell">
+								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
+									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
+								{:else}
+									<button type="button" class="inline-edit-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
+								{/if}
+								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
+									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-english-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
+								{:else}
+									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || 'Add translation'}</button>
+								{/if}
+								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
+									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-notes-input" rows="3" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordKeydown}></textarea>
+									<div class="inline-actions compact-actions">
+										<button type="button" onclick={() => void saveInlineLessonWordEdit()}>Save notes</button>
+										<button type="button" class="secondary-button" onclick={cancelInlineLessonWordEdit}>Cancel</button>
+									</div>
+								{:else}
+									<button type="button" class="inline-edit-button sentence-notes-text" class:sentence-notes-empty={!lwLocal.notesMarkdown} onclick={() => beginInlineLessonWordEdit(lessonWord, 'notesMarkdown')}>{lwLocal.notesMarkdown || 'Add notes'}</button>
+								{/if}
+								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id}
+									<p class="error-text">{inlineLessonWordError}</p>
+								{/if}
+							</div>
 							<div class="row-action">
+								<form method="POST" action="?/deleteWord" class="inline-delete">
+									<input type="hidden" name="id" value={lessonWord.id} />
+									<button type="submit" class="secondary-button">Delete</button>
+								</form>
 								<button
 									type="button"
 									class="secondary-button"
@@ -501,6 +749,43 @@
 								</button>
 							</div>
 						</div>
+
+						<form
+							method="POST"
+							action="?/updateWordCefrTargets"
+							class="cefr-row"
+							use:enhance={enhanceCefrForm(lessonWord.id)}
+						>
+							<input type="hidden" name="id" value={lessonWord.id} />
+							<span class="cefr-label">CEFR</span>
+							<select
+								name="cefrTargetIds"
+								multiple
+								size="4"
+								class="cefr-select"
+								onchange={(event) => event.currentTarget.form?.requestSubmit()}
+							>
+								{#each data.cefrTargets as target}
+									<option
+										value={target.id}
+										selected={isTargetSelected(target.id, lessonWord.coveredCefrTargets)}
+										disabled={Boolean(
+											target.coveredByLessonWordId &&
+												target.coveredByLessonWordId !== lessonWord.id
+										)}
+									>
+										{target.level}: {target.english}
+									</option>
+								{/each}
+							</select>
+							{#if cefrSaveState[lessonWord.id] === 'saving'}
+								<span class="cefr-status">Saving…</span>
+							{:else if cefrSaveState[lessonWord.id] === 'saved'}
+								<span class="cefr-status success-text">Saved.</span>
+							{:else if cefrSaveState[lessonWord.id] === 'error'}
+								<span class="cefr-status error-text">Error.</span>
+							{/if}
+						</form>
 
 						{#if editingLessonWordId === lessonWord.id}
 							<div class="expanded-panel">
@@ -517,89 +802,29 @@
 										</select>
 									</label>
 
-									<div class="two-column-grid">
-										<label>
-											Sample sentence
-											<textarea name="sentenceKalenjin" rows="3" required>{lessonWord.sentence.kalenjin}</textarea>
-										</label>
+									<details class="optional-fields">
+										<summary>Optional fields</summary>
+										<div class="optional-fields-body">
+											<div class="two-column-grid">
+												<label>
+													Lesson translation
+													<textarea name="sentenceTranslation" rows="2">{lessonWord.sentenceTranslation ?? ''}</textarea>
+												</label>
 
-										<label>
-											Sentence translation
-											<textarea name="sentenceEnglish" rows="3" required>{lessonWord.sentence.english}</textarea>
-										</label>
-									</div>
+												<label>
+													Word-for-word translation
+													<textarea name="wordForWordTranslation" rows="2">{lessonWord.wordForWordTranslation ?? ''}</textarea>
+												</label>
+											</div>
 
-									<div class="two-column-grid">
-										<label>
-											Lesson translation
-											<textarea name="sentenceTranslation" rows="2">{lessonWord.sentenceTranslation ?? ''}</textarea>
-										</label>
-
-										<label>
-											Word-for-word translation
-											<textarea name="wordForWordTranslation" rows="2">{lessonWord.wordForWordTranslation ?? ''}</textarea>
-										</label>
-									</div>
-
-									<label>
-										Sentence notes
-										<textarea name="notesMarkdown" rows="3">{lessonWord.notesMarkdown ?? ''}</textarea>
-									</label>
-
-									<label>
-										Sentence source
-										<input name="sentenceSource" value={lessonWord.sentence.source ?? ''} />
-									</label>
+											<label>
+												Sentence source
+												<input name="sentenceSource" value={lessonWord.sentence.source ?? ''} />
+											</label>
+										</div>
+									</details>
 
 									<button type="submit">Save lesson word</button>
-								</form>
-
-								<form method="POST" action="?/deleteWord" class="inline-delete">
-									<input type="hidden" name="id" value={lessonWord.id} />
-									<button type="submit">Delete</button>
-								</form>
-
-								<form
-									method="POST"
-									action="?/updateWordCefrTargets"
-									class="editor-form compact-form"
-									use:enhance={enhanceCefrForm(lessonWord.id)}
-								>
-									<input type="hidden" name="id" value={lessonWord.id} />
-
-									<label>
-										CEFR targets covered
-										<select
-											name="cefrTargetIds"
-											multiple
-											size="8"
-											onchange={(event) => event.currentTarget.form?.requestSubmit()}
-										>
-											{#each data.cefrTargets as target}
-												<option
-													value={target.id}
-													selected={isTargetSelected(target.id, lessonWord.coveredCefrTargets)}
-													disabled={Boolean(
-														target.coveredByLessonWordId &&
-															target.coveredByLessonWordId !== lessonWord.id
-													)}
-												>
-													{target.level}: {target.english}
-												</option>
-											{/each}
-										</select>
-									</label>
-
-									<div class="inline-actions">
-										<button type="submit" disabled={cefrSaveState[lessonWord.id] === 'saving'}>
-											{cefrSaveState[lessonWord.id] === 'saving' ? 'Saving...' : 'Save CEFR'}
-										</button>
-										{#if cefrSaveState[lessonWord.id] === 'saved'}
-											<span class="success-text">Saved.</span>
-										{:else if cefrSaveState[lessonWord.id] === 'error'}
-											<span class="error-text">Could not save.</span>
-										{/if}
-									</div>
 								</form>
 
 								<SentenceTokenAnnotations
@@ -658,6 +883,18 @@
 		justify-content: space-between;
 		gap: 1rem;
 		margin-bottom: 0.75rem;
+	}
+
+	.section-word-counts {
+		align-items: center;
+		color: #777;
+		display: flex;
+		font-size: 0.9rem;
+		margin-right: auto;
+	}
+
+	.section-sep {
+		margin: 0 0.5rem;
 	}
 
 	.error {
@@ -753,12 +990,80 @@
 	}
 
 	.vocab-grid {
-		grid-template-columns: 180px minmax(0, 2fr) minmax(0, 2fr) auto;
+		grid-template-columns: minmax(160px, 1fr) minmax(0, 3fr) auto;
+	}
+
+	.word-cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.2rem;
+	}
+
+	.word-kalenjin {
+		font-weight: 600;
+	}
+
+	.word-translations {
+		color: #555;
+		font-size: 0.9rem;
+	}
+
+	.sentence-cell {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+	}
+
+	.sentence-english-text {
+		color: #555;
+		font-style: italic;
+	}
+
+	.sentence-english-input {
+		font-style: italic;
+	}
+
+	.sentence-notes-text {
+		color: #444;
+		white-space: pre-wrap;
+	}
+
+	.sentence-notes-empty {
+		color: #9a9a9a;
 	}
 
 	.row-action {
+		align-items: start;
 		display: flex;
+		gap: 0.4rem;
 		justify-content: end;
+	}
+
+	.cefr-row {
+		align-items: start;
+		display: flex;
+		gap: 0.6rem;
+		padding: 0 0 0.5rem;
+	}
+
+	.cefr-label {
+		color: #555;
+		font-size: 0.85rem;
+		font-weight: 600;
+		padding-top: 0.3rem;
+		white-space: nowrap;
+	}
+
+	.cefr-select {
+		flex: 1;
+		font-size: 0.85rem;
+		min-width: 0;
+		padding: 0.2rem 0.3rem;
+	}
+
+	.cefr-status {
+		font-size: 0.85rem;
+		white-space: nowrap;
 	}
 
 	.expanded-panel {
@@ -812,6 +1117,10 @@
 		width: 100%;
 	}
 
+	.inline-edit-button.sentence-english-text {
+		font-style: italic;
+	}
+
 	.inline-edit-input {
 		font: inherit;
 		padding: 0.2rem 0.3rem;
@@ -831,7 +1140,7 @@
 		align-items: center;
 		display: flex;
 		gap: 0.75rem;
-		margin: 1rem 0 0.25rem;
+		margin: 3.5rem 0 0.75rem;
 	}
 
 	.section-divider hr {
@@ -865,5 +1174,102 @@
 		.row-action {
 			justify-content: start;
 		}
+	}
+
+	.word-picker {
+		position: relative;
+	}
+
+	.word-picker-selected {
+		align-items: center;
+		background: #f6f6f6;
+		border: 1px solid #ccc;
+		display: flex;
+		gap: 0.5rem;
+		justify-content: space-between;
+		padding: 0.45rem 0.5rem;
+	}
+
+	.word-picker-selected-info {
+		display: flex;
+		flex-direction: column;
+		gap: 0.1rem;
+	}
+
+	.word-picker-clear {
+		background: transparent;
+		border: 0;
+		color: #666;
+		cursor: pointer;
+		font-size: 1.1rem;
+		line-height: 1;
+		padding: 0 0.2rem;
+	}
+
+	.word-picker-clear:hover {
+		color: #111;
+	}
+
+	.word-picker-dropdown {
+		background: #fff;
+		border: 1px solid #ccc;
+		border-top: 0;
+		list-style: none;
+		margin: 0;
+		max-height: 14rem;
+		overflow-y: auto;
+		padding: 0;
+		position: absolute;
+		width: 100%;
+		z-index: 10;
+	}
+
+	.word-picker-dropdown li button {
+		background: transparent;
+		border: 0;
+		cursor: pointer;
+		display: flex;
+		gap: 0.75rem;
+		padding: 0.45rem 0.6rem;
+		text-align: left;
+		width: 100%;
+	}
+
+	.word-picker-dropdown li button:hover {
+		background: #f0f0f0;
+	}
+
+	.word-picker-kalenjin {
+		font-weight: 600;
+		min-width: 8rem;
+	}
+
+	.word-picker-translation {
+		color: #555;
+	}
+
+	.word-picker-hint {
+		color: #888;
+		font-size: 0.9rem;
+		margin: 0.25rem 0 0;
+	}
+
+	.optional-fields {
+		border: 1px solid #e2e2e2;
+		padding: 0.5rem 0.75rem;
+	}
+
+	.optional-fields summary {
+		color: #555;
+		cursor: pointer;
+		font-weight: 600;
+		padding: 0.2rem 0;
+		user-select: none;
+	}
+
+	.optional-fields-body {
+		display: grid;
+		gap: 0.75rem;
+		margin-top: 0.75rem;
 	}
 </style>

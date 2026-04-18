@@ -692,43 +692,30 @@ export const actions: Actions = {
 
 			await ensureWordSentenceLink(wordId, lessonWord.sentenceId);
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
+			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create lesson word.'
 			});
 		}
-
-		return { createWordSuccess: true };
 	},
 	updateWord: async ({ request }) => {
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 		const wordId = readText(formData, 'wordId');
 		const itemOrder = readInteger(formData, 'itemOrder');
-		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
-		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceSource = readOptionalText(formData, 'sentenceSource');
 		const sentenceTranslation = readOptionalText(formData, 'sentenceTranslation');
 		const wordForWordTranslation = readOptionalText(formData, 'wordForWordTranslation');
-		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 
-		if (!id || !wordId || itemOrder === null || !sentenceKalenjin || !sentenceEnglish) {
-			return fail(400, {
-				error: 'Lesson word id, word, item order, and sentence fields are required.'
-			});
+		if (!id || !wordId || itemOrder === null) {
+			return fail(400, { error: 'Lesson word id, word, and item order are required.' });
 		}
 
 		const existingLessonWord = await prisma.lessonWord.findUnique({
 			where: { id },
-			select: {
-				sentenceId: true,
-				sentence: {
-					select: {
-						kalenjin: true
-					}
-				}
-			}
+			select: { sentenceId: true }
 		});
 
 		if (!existingLessonWord) {
@@ -737,31 +724,17 @@ export const actions: Actions = {
 
 		try {
 			await prisma.$transaction(async (tx) => {
-				await tx.exampleSentence.update({
-					where: { id: existingLessonWord.sentenceId },
-					data: {
-						kalenjin: sentenceKalenjin,
-						english: sentenceEnglish,
-						source: sentenceSource
-					}
-				});
-
-				if (existingLessonWord.sentence.kalenjin !== sentenceKalenjin) {
-					await syncExampleSentenceTokens(tx, existingLessonWord.sentenceId, sentenceKalenjin);
+				if (sentenceSource !== undefined) {
+					await tx.exampleSentence.update({
+						where: { id: existingLessonWord.sentenceId },
+						data: { source: sentenceSource }
+					});
 				}
-
 				await tx.lessonWord.update({
 					where: { id },
-					data: {
-						wordId,
-						itemOrder,
-						sentenceTranslation,
-						wordForWordTranslation,
-						notesMarkdown
-					}
+					data: { wordId, itemOrder, sentenceTranslation, wordForWordTranslation }
 				});
 			});
-
 			await ensureWordSentenceLink(wordId, existingLessonWord.sentenceId);
 		} catch (updateError) {
 			return fail(400, {
@@ -1104,5 +1077,49 @@ export const actions: Actions = {
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
 			});
 		}
+	},
+	quickAddWord: async ({ request, params }) => {
+		const formData = await request.formData();
+		const wordId = readText(formData, 'wordId');
+
+		if (!wordId) {
+			return fail(400, { error: 'Word ID is required.' });
+		}
+
+		const word = await prisma.word.findUnique({
+			where: { id: wordId },
+			select: { translations: true }
+		});
+
+		try {
+			let newSentenceId: string | undefined;
+			await prisma.$transaction(async (tx) => {
+				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
+				const itemOrder = await getNextLessonWordOrder(tx, params.id);
+				const sentence = await tx.exampleSentence.create({
+					data: { kalenjin: '', english: word?.translations ?? '' }
+				});
+				newSentenceId = sentence.id;
+				await tx.lessonWord.create({
+					data: {
+						lessonSectionId: lessonSection.id,
+						wordId,
+						itemOrder,
+						sentenceId: sentence.id
+					}
+				});
+			});
+			if (newSentenceId) {
+				await ensureWordSentenceLink(wordId, newSentenceId);
+			}
+		} catch (createError: unknown) {
+			const msg = createError instanceof Error ? createError.message : '';
+			if (msg.includes('Unique constraint')) {
+				return { quickAddWordSuccess: true };
+			}
+			return fail(400, { error: msg || 'Could not add word.' });
+		}
+
+		return { quickAddWordSuccess: true };
 	}
 };

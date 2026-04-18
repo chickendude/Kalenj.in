@@ -1,40 +1,38 @@
 <script lang="ts">
+	import { page } from '$app/stores';
+	import '../app.css';
 	import favicon from '$lib/assets/favicon.svg';
 
 	let { children } = $props();
+
+	const section = $derived(
+		$page.url.pathname === '/'
+			? 'home'
+			: $page.url.pathname.startsWith('/dictionary')
+				? 'dictionary'
+				: $page.url.pathname.startsWith('/corpus')
+					? 'corpus'
+					: ''
+	);
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<header>
-	<nav>
-		<a href="/">Home</a>
-		<a href="/dictionary">Dictionary</a>
-		<a href="/corpus">Corpus</a>
-	</nav>
+<header class="topbar">
+	<div class="topbar-inner">
+		<a href="/" class="brand">
+			<span class="brand-dot"></span>
+			<span>Kalenj<span style="color: var(--accent)">.</span>in</span>
+			<span class="brand-sub">Dictionary &amp; Corpus</span>
+		</a>
+		<nav class="topbar-nav">
+			<a href="/" class:active={section === 'home'}>Home</a>
+			<a href="/dictionary" class:active={section === 'dictionary'}>Dictionary</a>
+			<a href="/corpus" class:active={section === 'corpus'}>Corpus</a>
+		</nav>
+	</div>
 </header>
 
-<main>
-	{@render children()}
-</main>
-
-<style>
-	header {
-		border-bottom: 1px solid #ddd;
-		padding: 0.75rem 1rem;
-	}
-
-	nav {
-		display: flex;
-		gap: 1rem;
-		font-size: 0.95rem;
-	}
-
-	main {
-		margin: 0 auto;
-		max-width: 960px;
-		padding: 1.5rem 1rem;
-	}
-</style>
+{@render children()}

@@ -733,10 +733,7 @@
 		<div class="page-header-main">
 			<div class="kicker">
 				{#if lessonType === 'VOCABULARY'}
-					{@const currentVocabType =
-						lessonVocabularyType && lessonVocabularyType !== ''
-							? lessonVocabularyType
-							: 'VOCAB'}
+					{@const currentVocabType = lessonVocabularyType || 'VOCAB'}
 					<span class="vocab-type-select-wrap" bind:this={vocabTypeWrap}>
 						<button
 							type="button"
@@ -2020,7 +2017,6 @@
 		gap: 0.25rem;
 	}
 
-	.form-actions,
 	.inline-actions {
 		align-items: center;
 		display: flex;

@@ -656,8 +656,56 @@ export const actions: Actions = {
 		return { updateLessonSuccess: true };
 	},
 	deleteLesson: async ({ params }) => {
-		await prisma.lesson.delete({
-			where: { id: params.id }
+		const lesson = await prisma.lesson.findUnique({
+			where: { id: params.id },
+			select: {
+				storyId: true,
+				sections: {
+					select: {
+						words: { select: { sentenceId: true } }
+					}
+				}
+			}
+		});
+
+		if (!lesson) {
+			redirect(303, '/lessons');
+		}
+
+		const sentenceIds = [
+			...new Set(
+				lesson.sections.flatMap((section) =>
+					section.words.map((word) => word.sentenceId)
+				)
+			)
+		];
+		const { storyId } = lesson;
+
+		await prisma.$transaction(async (tx) => {
+			await tx.lesson.delete({ where: { id: params.id } });
+
+			if (sentenceIds.length > 0) {
+				const stillReferenced = await tx.lessonWord.findMany({
+					where: { sentenceId: { in: sentenceIds } },
+					select: { sentenceId: true }
+				});
+				const stillReferencedIds = new Set(
+					stillReferenced.map((lessonWord) => lessonWord.sentenceId)
+				);
+				const orphanedSentenceIds = sentenceIds.filter(
+					(id) => !stillReferencedIds.has(id)
+				);
+
+				if (orphanedSentenceIds.length > 0) {
+					await tx.exampleSentence.deleteMany({
+						where: { id: { in: orphanedSentenceIds } }
+					});
+				}
+			}
+
+			if (storyId) {
+				await tx.story.delete({ where: { id: storyId } });
+			}
 		});
 
 		redirect(303, '/lessons');

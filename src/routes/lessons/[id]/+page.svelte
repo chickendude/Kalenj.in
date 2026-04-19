@@ -2,10 +2,11 @@
 	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
-	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
+	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
 	import {
+		VOCABULARY_LESSON_TYPES,
 		formatLessonType,
 		formatVocabularyLessonType,
 		splitLessonItemsIntoSections
@@ -19,7 +20,6 @@
 	type StorySentence = NonNullable<typeof data.lesson.story>['sentences'][number];
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
-	let showLessonEdit = $state(false);
 	let showAddWordForm = $state(false);
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
 	let inlineStoryValue = $state('');
@@ -63,6 +63,15 @@
 	let lessonType = $state<LessonType>('VOCABULARY');
 	let lessonVocabularyType = $state<VocabularyType>('VOCAB');
 	let lessonGrammarMarkdown = $state('');
+
+	let titleEditing = $state(false);
+	let titleDraft = $state('');
+	let titleInput = $state<HTMLInputElement | null>(null);
+	let titleError = $state<string | null>(null);
+	let titleSaving = $state(false);
+	let vocabularyTypeError = $state<string | null>(null);
+	let vocabTypeOpen = $state(false);
+	let vocabTypeWrap = $state<HTMLSpanElement | null>(null);
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
@@ -135,6 +144,117 @@
 		}, 0);
 		return () => window.clearTimeout(timeout);
 	});
+
+	$effect(() => {
+		if (!titleEditing) return;
+		const timeout = window.setTimeout(() => {
+			titleInput?.focus();
+			titleInput?.select();
+		}, 0);
+		return () => window.clearTimeout(timeout);
+	});
+
+	async function postLessonInline(field: 'title' | 'vocabularyType' | 'grammarMarkdown', value: string) {
+		const response = await fetch(`/lessons/${data.lesson.id}/lesson-inline`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ field, value })
+		});
+		const payload = (await response.json()) as { error?: string };
+		if (!response.ok) {
+			throw new Error(payload.error ?? 'Could not save.');
+		}
+	}
+
+	function startTitleEdit() {
+		titleDraft = lessonTitle;
+		titleError = null;
+		titleEditing = true;
+	}
+
+	function cancelTitleEdit() {
+		titleEditing = false;
+		titleError = null;
+	}
+
+	async function saveTitleEdit() {
+		if (titleSaving) return;
+		const next = titleDraft.trim();
+		if (!next) {
+			titleError = 'Title is required.';
+			return;
+		}
+		if (next === lessonTitle) {
+			titleEditing = false;
+			return;
+		}
+		titleSaving = true;
+		try {
+			await postLessonInline('title', next);
+			lessonTitle = next;
+			titleEditing = false;
+			await invalidateAll();
+		} catch (err) {
+			titleError = err instanceof Error ? err.message : 'Could not save title.';
+		} finally {
+			titleSaving = false;
+		}
+	}
+
+	function handleTitleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			void saveTitleEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelTitleEdit();
+		}
+	}
+
+	async function setVocabularyType(next: VocabularyType) {
+		vocabTypeOpen = false;
+		if (lessonType !== 'VOCABULARY') return;
+		if (!next || next === lessonVocabularyType) return;
+		vocabularyTypeError = null;
+		const previous = lessonVocabularyType;
+		lessonVocabularyType = next;
+		try {
+			await postLessonInline('vocabularyType', next);
+			await invalidateAll();
+		} catch (err) {
+			lessonVocabularyType = previous;
+			vocabularyTypeError = err instanceof Error ? err.message : 'Could not change vocabulary type.';
+		}
+	}
+
+	function handleVocabTypeWindowClick(event: MouseEvent) {
+		if (!vocabTypeOpen) return;
+		const target = event.target;
+		if (vocabTypeWrap && target instanceof Node && vocabTypeWrap.contains(target)) return;
+		vocabTypeOpen = false;
+	}
+
+	function handleVocabTypeWindowKey(event: KeyboardEvent) {
+		if (event.key === 'Escape' && vocabTypeOpen) {
+			vocabTypeOpen = false;
+		}
+	}
+
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		window.addEventListener('mousedown', handleVocabTypeWindowClick);
+		window.addEventListener('keydown', handleVocabTypeWindowKey);
+		return () => {
+			window.removeEventListener('mousedown', handleVocabTypeWindowClick);
+			window.removeEventListener('keydown', handleVocabTypeWindowKey);
+		};
+	});
+
+	async function saveGrammarMarkdown(value: string) {
+		await postLessonInline('grammarMarkdown', value);
+		lessonGrammarMarkdown = value;
+		await invalidateAll();
+	}
 
 	function isTargetSelected(
 		targetId: string,
@@ -609,19 +729,76 @@
 </script>
 
 <section class="lesson-page">
-	<div class="page-header">
-		<div>
-			<h1>{data.lesson.title}</h1>
-			<p class="summary-line">
-				{formatLessonType(data.lesson.type)}
-				{#if data.lesson.vocabularyType}
-					({formatVocabularyLessonType(data.lesson.vocabularyType)})
+	<div class="lesson-head-row">
+		<div class="page-header-main">
+			<div class="kicker">
+				{#if lessonType === 'VOCABULARY'}
+					{@const currentVocabType = lessonVocabularyType || 'VOCAB'}
+					<span class="vocab-type-select-wrap" bind:this={vocabTypeWrap}>
+						<button
+							type="button"
+							class="vocab-type-trigger"
+							aria-haspopup="listbox"
+							aria-expanded={vocabTypeOpen}
+							onclick={() => (vocabTypeOpen = !vocabTypeOpen)}
+						>
+							<span class="vocab-type-label">
+								{formatVocabularyLessonType(currentVocabType)}
+							</span>
+							<span class="vocab-type-chevron" aria-hidden="true">▾</span>
+						</button>
+						{#if vocabTypeOpen}
+							<ul class="vocab-type-menu" role="listbox">
+								{#each VOCABULARY_LESSON_TYPES as option}
+									<li>
+										<button
+											type="button"
+											role="option"
+											aria-selected={option === currentVocabType}
+											class="vocab-type-option"
+											class:vocab-type-option--selected={option === currentVocabType}
+											onclick={() => void setVocabularyType(option)}
+										>
+											{formatVocabularyLessonType(option)}
+										</button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					</span>
+				{:else}
+					{formatLessonType(lessonType)} lesson
 				{/if}
 				· Lesson {data.lesson.lessonOrder}
-			</p>
+			</div>
+			{#if titleEditing}
+				<input
+					bind:this={titleInput}
+					class="title-input"
+					bind:value={titleDraft}
+					onkeydown={handleTitleKeydown}
+					onblur={() => void saveTitleEdit()}
+					disabled={titleSaving}
+					aria-label="Lesson title"
+				/>
+			{:else}
+				<button type="button" class="title-button" onclick={startTitleEdit} title="Click to edit">
+					<h1>{lessonTitle}</h1>
+				</button>
+			{/if}
+			{#if titleError}
+				<p class="error-text">{titleError}</p>
+			{/if}
+			{#if vocabularyTypeError}
+				<p class="error-text">{vocabularyTypeError}</p>
+			{/if}
 		</div>
-		<a href="/lessons">Back to lessons</a>
+		<a href="/lessons" class="back-link">← Back to lessons</a>
 	</div>
+
+	{#if lessonType === 'VOCABULARY'}
+		<GrammarNotes source={lessonGrammarMarkdown} onSave={saveGrammarMarkdown} />
+	{/if}
 
 	{#if form?.error}
 		<p class="error">{form.error}</p>
@@ -641,50 +818,6 @@
 		<p class="success">Created lemma and linked it.</p>
 	{/if}
 
-	<section class="summary-card">
-		<div class="card-header">
-			<div>
-				<strong>Lesson details</strong>
-				<p class="summary-line">
-					{#if data.lesson.type === 'STORY'}
-						{data.lesson.story?.sentences.length ?? 0} sentence(s)
-					{:else}
-						{flattenedLessonWords.length} word(s)
-					{/if}
-				</p>
-			</div>
-			<button type="button" class="secondary-button" onclick={() => (showLessonEdit = !showLessonEdit)}>
-				{showLessonEdit ? 'Close' : 'Edit'}
-			</button>
-		</div>
-
-		{#if showLessonEdit}
-			<form method="POST" action="?/updateLesson" class="editor-form compact-form">
-				<label>
-					Lesson order
-					<input name="lessonOrder" type="number" min="1" required value={data.lesson.lessonOrder} />
-				</label>
-
-				<LessonFormFields
-					bind:title={lessonTitle}
-					bind:type={lessonType}
-					bind:vocabularyType={lessonVocabularyType}
-					bind:grammarMarkdown={lessonGrammarMarkdown}
-					showStoryImport={false}
-					lessonTypes={data.lessonTypes}
-					vocabularyTypes={data.vocabularyTypes}
-					titlePlaceholder="Lesson title"
-				/>
-
-				<div class="form-actions">
-					<button type="submit">Save lesson</button>
-					<button type="button" class="secondary-button" onclick={() => (showLessonEdit = false)}>
-						Cancel
-					</button>
-				</div>
-			</form>
-		{/if}
-	</section>
 
 	{#if data.storyWordCoverage}
 		<WordCoveragePanel title="Word coverage" entries={data.storyWordCoverage} />
@@ -758,7 +891,7 @@
 							{/if}
 
 							<div class="sentence-notes">
-								<small>Cultural / grammar notes</small>
+								<div class="notes-label">Cultural / grammar notes</div>
 
 								{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'grammarNotes'}
 									<textarea
@@ -769,8 +902,8 @@
 										onkeydown={handleInlineStoryNotesKeydown}
 									></textarea>
 									<div class="inline-actions compact-actions">
-										<button type="button" onclick={() => void saveInlineStoryEdit()}>Save notes</button>
-										<button type="button" class="secondary-button" onclick={cancelInlineStoryEdit}>
+										<button type="button" class="btn btn-sm" onclick={() => void saveInlineStoryEdit()}>Save notes</button>
+										<button type="button" class="btn ghost btn-sm" onclick={cancelInlineStoryEdit}>
 											Cancel
 										</button>
 									</div>
@@ -804,24 +937,41 @@
 			/>
 		{/if}
 
-		<section class="content-card">
-			<div class="card-header">
-				<strong>Lesson words</strong>
-				{#if flattenedLessonWords.length > 0}
-					<span class="section-word-counts">
-						{#if displaySections.length === 1}
-							{flattenedLessonWords.length} word{flattenedLessonWords.length === 1 ? '' : 's'}
+		<div class="words-head">
+			<div class="words-head-left">
+				<div class="words-head-num">{flattenedLessonWords.length}</div>
+				<div>
+					<h3 class="lesson-section-title">Lesson words</h3>
+					<div class="words-head-sub">
+						{#if flattenedLessonWords.length === 0}
+							No words yet
+						{:else if displaySections.length === 1}
+							in 1 section
 						{:else}
-							{#each displaySections as section, i}{#if i > 0}<span class="section-sep">·</span>{/if}S{section.sectionNumber}: {section.items.length}{/each}
+							across {displaySections.length} sections
 						{/if}
-					</span>
+					</div>
+				</div>
+			</div>
+			<div class="words-head-right">
+				{#if flattenedLessonWords.length > 0 && displaySections.length > 1}
+					<div class="section-pips">
+						{#each displaySections as section}
+							<div class="section-pip" title="Section {section.sectionNumber} · {section.items.length} word{section.items.length === 1 ? '' : 's'}">
+								<span class="pip-label">S{section.sectionNumber}</span>
+								<span class="pip-count">{section.items.length}</span>
+							</div>
+						{/each}
+					</div>
 				{/if}
-				<button type="button" class="secondary-button" onclick={toggleAddWordForm}>
+				<button type="button" class="btn ghost" onclick={toggleAddWordForm}>
 					{showAddWordForm ? 'Close' : 'Add word'}
 				</button>
 			</div>
+		</div>
 
-			{#if showAddWordForm}
+		{#if showAddWordForm}
+			<section class="card">
 				<form method="POST" action="?/createWord" class="editor-form compact-form" use:enhance={enhanceAddWordForm}>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
 
@@ -847,40 +997,42 @@
 						<textarea name="sentenceEnglish" required rows="2"></textarea>
 					</label>
 
-					<button type="submit">Create lesson word</button>
+					<button type="submit" class="btn">Create lesson word</button>
 				</form>
-			{/if}
+			</section>
+		{/if}
 
-			{#if flattenedLessonWords.length === 0}
-				<p>No lesson words yet.</p>
-			{:else}
-				<form
-					method="POST"
-					action="?/reorderWords"
-					class="sr-only"
-					bind:this={reorderWordsForm}
-					use:enhance={enhanceReorderWordsForm}
-				>
-					<input type="hidden" name="orderedIds" value={JSON.stringify(lessonWordOrder)} />
-					<button type="submit">Save word order</button>
-				</form>
-				{#if reorderWordsError}
-					<p class="error-text">{reorderWordsError}</p>
-				{/if}
-				<div role="list" aria-label="Lesson words">
-					{#each displaySections as section}
-						<div class="section-divider">
-							<hr />
-							<span>Section {section.sectionNumber}</span>
-						</div>
+		{#if flattenedLessonWords.length === 0}
+			<section class="content-card">
+				<p class="muted">No lesson words yet.</p>
+			</section>
+		{:else}
+			<form
+				method="POST"
+				action="?/reorderWords"
+				class="sr-only"
+				bind:this={reorderWordsForm}
+				use:enhance={enhanceReorderWordsForm}
+			>
+				<input type="hidden" name="orderedIds" value={JSON.stringify(lessonWordOrder)} />
+				<button type="submit">Save word order</button>
+			</form>
+			{#if reorderWordsError}
+				<p class="error-text">{reorderWordsError}</p>
+			{/if}
+			<div class="sections-stack" aria-label="Lesson words">
+				{#each displaySections as section}
+					<section class="content-card section-card">
+						<div class="section-label">Section {section.sectionNumber}</div>
 
 						<div class="table-header vocab-grid">
 							<span></span>
 							<span>Word</span>
 							<span>Sentence</span>
-							<span>Translation</span>
+							<span>Translation &amp; notes</span>
 							<span></span>
 						</div>
+						<div role="list" aria-label={`Section ${section.sectionNumber}`}>
 
 						{#each section.items as lessonWord}
 							{@const lwLocal = getLessonWordLocal(lessonWord)}
@@ -950,7 +1102,7 @@
 										/>
 										<button
 											type="button"
-											class="secondary-button sentence-edit-button"
+											class="btn ghost sentence-edit-button"
 											aria-label={replaceSentenceLabel}
 											data-tooltip={replaceSentenceLabel}
 											onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}
@@ -978,13 +1130,13 @@
 								{/if}
 
 								<div class="sentence-notes">
-									<small>Notes</small>
+									<div class="notes-label">Notes</div>
 
 									{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'notesMarkdown'}
 										<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-notes-input" rows="3" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordKeydown}></textarea>
 										<div class="inline-actions compact-actions">
-											<button type="button" onclick={() => void saveInlineLessonWordEdit()}>Save notes</button>
-											<button type="button" class="secondary-button" onclick={cancelInlineLessonWordEdit}>Cancel</button>
+											<button type="button" class="btn btn-sm" onclick={() => void saveInlineLessonWordEdit()}>Save notes</button>
+											<button type="button" class="btn ghost btn-sm" onclick={cancelInlineLessonWordEdit}>Cancel</button>
 										</div>
 									{:else}
 										<button type="button" class="inline-edit-button sentence-notes-text" class:sentence-notes-empty={!lwLocal.notesMarkdown} onclick={() => beginInlineLessonWordEdit(lessonWord, 'notesMarkdown')}>{lwLocal.notesMarkdown || 'Add notes'}</button>
@@ -997,7 +1149,7 @@
 							<div class="row-action">
 								<form method="POST" action="?/deleteWord" class="inline-delete">
 									<input type="hidden" name="id" value={lessonWord.id} />
-									<button type="submit" class="secondary-button">Delete</button>
+									<button type="submit" class="btn ghost btn-sm">Delete</button>
 								</form>
 							</div>
 						</div>
@@ -1108,11 +1260,12 @@
 							</div>
 						</div>
 
-					{/each}
+						{/each}
+						</div>
+					</section>
 				{/each}
-				</div>
-			{/if}
-		</section>
+			</div>
+		{/if}
 	{/if}
 </section>
 
@@ -1122,60 +1275,291 @@
 		gap: 1rem;
 	}
 
-	.page-header {
-		align-items: start;
+	.lesson-head-row {
+		align-items: flex-start;
 		display: flex;
-		justify-content: space-between;
 		gap: 1rem;
+		justify-content: space-between;
+	}
+
+	.page-header-main {
+		display: grid;
+		gap: 0.2rem;
+		min-width: 0;
+	}
+
+	.kicker {
+		color: var(--accent);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.16em;
+		margin-bottom: 6px;
+		text-transform: uppercase;
 	}
 
 	h1 {
-		margin-bottom: 0.35rem;
-	}
-
-	.summary-line {
-		color: #555;
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 2.5rem;
+		font-weight: 500;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
 		margin: 0;
 	}
 
-	.summary-card,
+	.title-button {
+		background: transparent;
+		border: 0;
+		cursor: text;
+		display: inline-block;
+		margin: 0;
+		padding: 0;
+		text-align: left;
+	}
+
+	.title-button h1 {
+		border-bottom: 1px dashed transparent;
+		margin: 0;
+		transition: border-color 0.15s;
+	}
+
+	.title-button:hover h1,
+	.title-button:focus-visible h1 {
+		border-bottom-color: var(--line);
+	}
+
+	.title-input {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 2.5rem;
+		font-weight: 500;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
+		margin: 0;
+		padding: 0.15rem 0.5rem;
+		width: 100%;
+	}
+
+	.title-input:focus {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
+		outline: none;
+	}
+
+	.vocab-type-select-wrap {
+		display: inline-block;
+		position: relative;
+	}
+
+	.vocab-type-trigger {
+		align-items: baseline;
+		background: transparent;
+		border: 0;
+		border-bottom: 1px dotted currentColor;
+		color: inherit;
+		cursor: pointer;
+		display: inline-flex;
+		font: inherit;
+		gap: 4px;
+		letter-spacing: inherit;
+		padding: 0 2px;
+		text-transform: inherit;
+	}
+
+	.vocab-type-trigger:hover,
+	.vocab-type-trigger:focus-visible {
+		color: var(--brand);
+		outline: none;
+	}
+
+	.vocab-type-chevron {
+		color: var(--ink-mute);
+		font-size: 0.85em;
+		transition: transform 0.12s ease;
+	}
+
+	.vocab-type-trigger[aria-expanded='true'] .vocab-type-chevron {
+		transform: translateY(1px) rotate(180deg);
+	}
+
+	.vocab-type-menu {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: 0 12px 28px -14px oklch(0.2 0.02 80 / 0.28);
+		left: 0;
+		list-style: none;
+		margin: 6px 0 0;
+		min-width: 100%;
+		padding: 4px;
+		position: absolute;
+		top: 100%;
+		z-index: 30;
+	}
+
+	.vocab-type-option {
+		background: transparent;
+		border: 0;
+		border-radius: calc(var(--radius) - 2px);
+		color: var(--ink);
+		cursor: pointer;
+		display: block;
+		font-family: var(--font-body);
+		font-size: 13px;
+		font-weight: 500;
+		letter-spacing: 0;
+		padding: 8px 12px;
+		text-align: left;
+		text-transform: none;
+		white-space: nowrap;
+		width: 100%;
+	}
+
+	.vocab-type-option:hover,
+	.vocab-type-option:focus-visible {
+		background: var(--surface);
+		outline: none;
+	}
+
+	.vocab-type-option--selected {
+		color: var(--brand);
+	}
+
+	.card {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem;
+	}
+
 	.content-card {
-		border: 1px solid #e2e2e2;
-		padding: 1rem;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: 1rem 1.25rem;
 	}
 
-	.card-header {
+	.words-head {
 		align-items: center;
+		border-bottom: 1px solid var(--line);
 		display: flex;
+		gap: 24px;
 		justify-content: space-between;
-		gap: 1rem;
-		margin-bottom: 0.75rem;
+		margin: 12px 0 18px;
+		padding-bottom: 18px;
 	}
 
-	.section-word-counts {
+	.words-head-left {
 		align-items: center;
-		color: #777;
 		display: flex;
-		font-size: 0.9rem;
-		margin-right: auto;
+		gap: 20px;
 	}
 
-	.section-sep {
-		margin: 0 0.5rem;
+	.words-head-num {
+		color: var(--brand);
+		font-family: var(--font-display);
+		font-size: 56px;
+		font-variant-numeric: tabular-nums;
+		font-weight: 500;
+		letter-spacing: -0.02em;
+		line-height: 1;
+	}
+
+	.lesson-section-title {
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-weight: 500;
+		margin: 0;
+	}
+
+	.words-head-sub {
+		color: var(--ink-soft);
+		font-size: 14px;
+		margin-top: 2px;
+	}
+
+	.words-head-right {
+		align-items: center;
+		display: flex;
+		gap: 16px;
+	}
+
+	.section-pips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.section-pip {
+		align-items: baseline;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		display: flex;
+		font-family: var(--font-mono);
+		font-size: 13px;
+		gap: 6px;
+		padding: 8px 12px;
+	}
+
+	.pip-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+
+	.pip-count {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-variant-numeric: tabular-nums;
+		font-weight: 500;
+	}
+
+	.sections-stack {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.section-card {
+		padding: 1.25rem 1.25rem 0.5rem;
+	}
+
+	.section-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.16em;
+		margin: 0 0 0.75rem;
+		text-align: right;
+		text-transform: uppercase;
+	}
+
+	.notes-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		margin-bottom: 2px;
+		text-transform: uppercase;
 	}
 
 	.error {
-		color: #8c1c13;
+		color: oklch(0.45 0.15 25);
 		font-weight: 600;
 	}
 
 	.success {
-		color: #1a7f37;
+		color: oklch(0.45 0.15 150);
 		font-weight: 600;
 	}
 
 	.error-text {
-		color: #8c1c13;
+		color: oklch(0.45 0.15 25);
 		font-weight: 600;
 	}
 
@@ -1200,7 +1584,7 @@
 	.table-header,
 	.table-row {
 		align-items: start;
-		border-top: 1px solid #eee;
+		border-top: 1px solid var(--line-soft);
 		display: grid;
 		gap: 0.75rem;
 		padding: 0.75rem 0;
@@ -1208,10 +1592,12 @@
 
 	.table-header {
 		border-top: 0;
-		color: #555;
-		font-size: 0.95rem;
+		color: var(--ink-mute);
+		font-size: 11px;
 		font-weight: 600;
+		letter-spacing: 0.1em;
 		padding-top: 0;
+		text-transform: uppercase;
 	}
 
 	.story-grid {
@@ -1229,24 +1615,21 @@
 	}
 
 	.sentence-notes {
-		border-top: 1px solid #eee;
+		border-top: 1px solid var(--line-soft);
 		display: grid;
 		gap: 0.3rem;
 		padding-top: 0.45rem;
 	}
 
-	.sentence-notes small {
-		color: #666;
-		font-weight: 600;
-	}
-
 	.notes-button {
-		color: #444;
+		color: var(--ink-soft);
+		font-size: 13px;
+		line-height: 1.45;
 		white-space: pre-wrap;
 	}
 
 	.notes-button--empty {
-		color: #9a9a9a;
+		color: var(--ink-mute);
 	}
 
 	.inline-notes-input {
@@ -1272,12 +1655,17 @@
 		transition: background 0.12s ease, opacity 0.12s ease;
 	}
 
+	.vocab-row:hover {
+		background: var(--surface);
+	}
+
 	.vocab-row--dragging {
-		opacity: 0.55;
+		opacity: 0.5;
 	}
 
 	.vocab-row--drop-target {
-		background: #f8fafc;
+		background: color-mix(in oklch, var(--brand) 8%, transparent);
+		box-shadow: inset 0 2px 0 var(--brand);
 	}
 
 	.drag-cell {
@@ -1290,8 +1678,8 @@
 		align-items: center;
 		background: transparent;
 		border: 0;
-		border-radius: 4px;
-		color: #777;
+		border-radius: var(--radius);
+		color: var(--ink-mute);
 		cursor: grab;
 		display: inline-flex;
 		height: 2rem;
@@ -1302,8 +1690,8 @@
 
 	.drag-handle:hover,
 	.drag-handle:focus-visible {
-		background: #f0f0f0;
-		color: #222;
+		background: var(--surface);
+		color: var(--ink);
 	}
 
 	.drag-handle:active {
@@ -1323,12 +1711,15 @@
 	}
 
 	.word-kalenjin {
-		font-weight: 600;
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-weight: 500;
 	}
 
 	.word-translations {
-		color: #555;
-		font-size: 0.9rem;
+		color: var(--ink-soft);
+		font-size: 13px;
 	}
 
 	.word-inline-input {
@@ -1341,13 +1732,12 @@
 	}
 
 	.word-inline-input:focus {
-		border-bottom-color: #aaa;
+		border-bottom-color: var(--brand);
 	}
 
-
 	.word-translations-input {
-		color: #555;
-		font-size: 0.9rem;
+		color: var(--ink-soft);
+		font-size: 13px;
 	}
 
 	.vocab-text-cell {
@@ -1364,7 +1754,7 @@
 
 	.sentence-edit-button {
 		align-items: center;
-		border-radius: 4px;
+		border-radius: var(--radius);
 		display: inline-flex;
 		height: 2rem;
 		justify-content: center;
@@ -1380,9 +1770,10 @@
 	}
 
 	.sentence-edit-button::after {
-		background: #222;
+		background: var(--ink);
 		border-radius: 3px;
-		color: #fff;
+		bottom: calc(100% + 0.35rem);
+		color: var(--bg-raised);
 		content: attr(data-tooltip);
 		font-size: 0.78rem;
 		left: 50%;
@@ -1391,7 +1782,6 @@
 		padding: 0.3rem 0.4rem;
 		pointer-events: none;
 		position: absolute;
-		bottom: calc(100% + 0.35rem);
 		transform: translateX(-50%);
 		transition: opacity 0.04s ease;
 		white-space: nowrap;
@@ -1405,8 +1795,10 @@
 
 	.empty-sentence-button {
 		align-items: center;
-		border: 1px dashed #d0d0d0;
+		border: 1px dashed var(--line);
+		border-radius: var(--radius);
 		box-sizing: border-box;
+		color: var(--ink-mute);
 		display: flex;
 		min-height: 4.5rem;
 		padding: 0.45rem 0.5rem;
@@ -1414,26 +1806,32 @@
 	}
 
 	.empty-sentence-button:hover {
-		background: #f7f7f7;
-		border-color: #aaa;
+		background: var(--surface);
+		border-color: var(--ink-mute);
+		color: var(--ink);
 	}
 
 	.sentence-english-text {
-		color: #555;
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 16px;
 		font-style: italic;
 	}
 
 	.sentence-english-input {
+		font-family: var(--font-display);
 		font-style: italic;
 	}
 
 	.sentence-notes-text {
-		color: #444;
+		color: var(--ink-soft);
+		font-size: 13px;
+		line-height: 1.45;
 		white-space: pre-wrap;
 	}
 
 	.sentence-notes-empty {
-		color: #9a9a9a;
+		color: var(--ink-mute);
 	}
 
 	.row-action {
@@ -1452,10 +1850,12 @@
 	}
 
 	.cefr-label {
-		color: #555;
-		font-size: 0.85rem;
+		color: var(--ink-mute);
+		font-size: 11px;
 		font-weight: 600;
+		letter-spacing: 0.1em;
 		padding-top: 0.3rem;
+		text-transform: uppercase;
 		white-space: nowrap;
 	}
 
@@ -1470,33 +1870,33 @@
 
 	.cefr-pill {
 		align-items: center;
-		background: #fff7ed;
-		border: 1px solid #fed7aa;
+		background: color-mix(in oklch, var(--accent) 10%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
 		border-radius: 3px;
-		color: inherit;
+		color: var(--accent);
 		display: inline-flex;
 		flex: 0 1 auto;
-		font-size: 0.85rem;
+		font-size: 11px;
 		gap: 0.3rem;
 		line-height: 1.2;
 		max-width: 100%;
 		min-width: 0;
 		overflow-wrap: anywhere;
-		padding: 0.2rem 0.35rem 0.2rem 0.45rem;
+		padding: 2px 6px;
 	}
 
 	.cefr-pill--covered:hover {
-		border-color: #c08457;
+		border-color: var(--accent);
 	}
 
 	.cefr-pill--suggest {
-		background: #eff6ff;
-		border-color: #bfdbfe;
+		background: color-mix(in oklch, var(--accent) 5%, transparent);
+		border-color: color-mix(in oklch, var(--accent) 25%, transparent);
 		border-style: dashed;
 	}
 
 	.cefr-pill-level {
-		color: #555;
+		color: var(--ink-soft);
 		font-weight: 600;
 	}
 
@@ -1505,7 +1905,7 @@
 		background: transparent;
 		border: 0;
 		border-radius: 2px;
-		color: #666;
+		color: var(--ink-mute);
 		cursor: pointer;
 		display: inline-flex;
 		font-size: 0.85rem;
@@ -1518,12 +1918,12 @@
 	}
 
 	.cefr-pill-btn:hover {
-		background: rgba(0, 0, 0, 0.07);
-		color: #111;
+		background: color-mix(in oklch, var(--ink) 8%, transparent);
+		color: var(--ink);
 	}
 
 	.cefr-pill-btn--confirm {
-		color: #166534;
+		color: oklch(0.45 0.15 150);
 	}
 
 	.cefr-search-wrap {
@@ -1532,16 +1932,28 @@
 	}
 
 	.cefr-search-input {
-		border: 1px solid #d0d0d0;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
 		box-sizing: border-box;
+		color: var(--ink);
 		font-size: 0.85rem;
-		padding: 0.25rem 0.45rem;
+		padding: 0.3rem 0.55rem;
+		transition: border-color 0.15s, box-shadow 0.15s;
 		width: 100%;
 	}
 
+	.cefr-search-input:focus {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
+		outline: none;
+	}
+
 	.cefr-search-dropdown {
-		background: #fff;
-		border: 1px solid #ccc;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: 0 8px 24px -12px oklch(0.2 0.02 80 / 0.25);
 		list-style: none;
 		margin: 0.2rem 0 0;
 		max-height: 12rem;
@@ -1556,6 +1968,7 @@
 		align-items: center;
 		background: transparent;
 		border: 0;
+		color: var(--ink);
 		cursor: pointer;
 		display: flex;
 		gap: 0.45rem;
@@ -1565,11 +1978,11 @@
 	}
 
 	.cefr-search-dropdown li button:hover {
-		background: #f0f0f0;
+		background: var(--surface);
 	}
 
 	.cefr-search-dropdown li button:disabled {
-		color: #777;
+		color: var(--ink-mute);
 		cursor: not-allowed;
 	}
 
@@ -1582,13 +1995,13 @@
 	}
 
 	.cefr-search-result-note {
-		color: #777;
+		color: var(--ink-mute);
 		font-size: 0.8rem;
 		margin-left: auto;
 	}
 
 	.cefr-search-more {
-		color: #666;
+		color: var(--ink-mute);
 		font-size: 0.82rem;
 		padding: 0.35rem 0.55rem;
 	}
@@ -1604,14 +2017,6 @@
 		gap: 0.25rem;
 	}
 
-	input,
-	textarea,
-	button {
-		font: inherit;
-		padding: 0.45rem 0.5rem;
-	}
-
-	.form-actions,
 	.inline-actions {
 		align-items: center;
 		display: flex;
@@ -1621,11 +2026,6 @@
 
 	.inline-delete {
 		margin: 0;
-	}
-
-	.secondary-button {
-		background: #fff;
-		border: 1px solid #d0d0d0;
 	}
 
 	.inline-edit-button {
@@ -1642,17 +2042,31 @@
 	}
 
 	.inline-edit-button.word-kalenjin {
-		font-weight: 600;
+		font-family: var(--font-display);
+		font-size: 18px;
+		font-weight: 500;
 	}
 
 	.inline-edit-button.sentence-english-text {
+		font-family: var(--font-display);
 		font-style: italic;
 	}
 
 	.inline-edit-input {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
 		font: inherit;
-		padding: 0.2rem 0.3rem;
+		padding: 0.25rem 0.4rem;
+		transition: border-color 0.15s, box-shadow 0.15s;
 		width: 100%;
+	}
+
+	.inline-edit-input:focus {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
+		outline: none;
 	}
 
 	.inline-edit-input--wide {
@@ -1664,26 +2078,6 @@
 		gap: 0.75rem;
 	}
 
-	.section-divider {
-		align-items: center;
-		display: flex;
-		gap: 0.75rem;
-		margin: 1.75rem 0 0.75rem;
-	}
-
-	.section-divider hr {
-		border: 0;
-		border-top: 1px solid #ddd;
-		flex: 1;
-		margin: 0;
-	}
-
-	.section-divider span {
-		color: #555;
-		font-size: 0.95rem;
-		font-weight: 600;
-	}
-
 	@media (min-width: 900px) {
 		.two-column-grid {
 			grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1691,19 +2085,21 @@
 	}
 
 	@media (max-width: 800px) {
-		.page-header,
-		.card-header,
+		.lesson-head-row,
+		.words-head,
 		.story-grid,
 		.cefr-row,
 		.vocab-grid {
-			grid-template-columns: 1fr;
 			display: grid;
+			grid-template-columns: 1fr;
+		}
+
+		.words-head-right {
+			justify-content: flex-start;
 		}
 
 		.row-action {
 			justify-content: start;
 		}
-
 	}
-
 </style>

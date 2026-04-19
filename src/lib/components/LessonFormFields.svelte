@@ -29,165 +29,139 @@
 	);
 </script>
 
-<label>
-	Title *
-	<input name="title" required bind:value={title} placeholder={titlePlaceholder} />
-</label>
+<div class="field">
+	<label for="lesson-title">Title *</label>
+	<input
+		id="lesson-title"
+		class="input"
+		name="title"
+		required
+		bind:value={title}
+		placeholder={titlePlaceholder}
+	/>
+</div>
 
-<div class="choice-row">
-	<fieldset class="choice-group type-group">
-		<legend>Type</legend>
-		<div class="choice-options type-options">
+<div class="type-row">
+	<div class="field" role="group" aria-labelledby="lesson-type-label">
+		<span id="lesson-type-label" class="field-legend">Type</span>
+		<div class="seg">
 			{#each lessonTypes as lessonType}
-				<label class:selected={type === lessonType} class="choice-card type-card">
-					<input type="radio" name="type" value={lessonType} bind:group={type} />
-					<span>{formatLessonType(lessonType)}</span>
-				</label>
+				<button
+					type="button"
+					class:active={type === lessonType}
+					onclick={() => (type = lessonType)}
+				>
+					{formatLessonType(lessonType)}
+				</button>
 			{/each}
 		</div>
-	</fieldset>
+		{#each lessonTypes as lessonType}
+			<input type="radio" name="type" value={lessonType} checked={type === lessonType} hidden />
+		{/each}
+	</div>
 
 	{#if type === 'VOCABULARY'}
-		<fieldset class="choice-group vocabulary-type-group">
-			<legend>Vocabulary type</legend>
-			<div class="choice-options vocabulary-type-options">
+		<div class="field" role="group" aria-labelledby="vocab-subtype-label">
+			<span id="vocab-subtype-label" class="field-legend">Vocabulary subtype</span>
+			<div class="seg">
 				{#each vocabularyTypes as currentVocabularyType}
-					<label class:selected={vocabularyType === currentVocabularyType} class="choice-card vocabulary-type-card">
-						<input
-							type="radio"
-							name="vocabularyType"
-							value={currentVocabularyType}
-							bind:group={vocabularyType}
-						/>
-						<span>{formatVocabularyLessonType(currentVocabularyType)}</span>
-					</label>
+					<button
+						type="button"
+						class:active={vocabularyType === currentVocabularyType}
+						onclick={() => (vocabularyType = currentVocabularyType)}
+					>
+						{formatVocabularyLessonType(currentVocabularyType)}
+					</button>
 				{/each}
 			</div>
-		</fieldset>
+			{#each vocabularyTypes as currentVocabularyType}
+				<input
+					type="radio"
+					name="vocabularyType"
+					value={currentVocabularyType}
+					checked={vocabularyType === currentVocabularyType}
+					hidden
+				/>
+			{/each}
+		</div>
 	{/if}
 </div>
 
 {#if type === 'VOCABULARY'}
-	<label>
-		Grammar markdown
+	<div class="field">
+		<label for="lesson-grammar">Grammar notes (markdown, optional)</label>
 		<textarea
+			id="lesson-grammar"
+			class="input"
 			name="grammarMarkdown"
 			rows="5"
 			bind:value={grammarMarkdown}
 			placeholder="Grammar markdown"
 		></textarea>
-	</label>
+	</div>
 {:else if showStoryImport}
-	<label>
-		Story text
+	<div class="field">
+		<label for="lesson-story-import">Story text</label>
 		<textarea
+			id="lesson-story-import"
+			class="input"
 			name="storyImportText"
 			rows="8"
 			bind:value={storyImportText}
 			placeholder="Paste story text here"
 		></textarea>
-	</label>
+	</div>
 	<div class="story-import-feedback">
 		{#if storyImportError}
 			<p class="story-import-error">{storyImportError}</p>
 		{:else if storyImportText}
 			<p class="story-import-hint">Format looks good.</p>
 		{:else}
-			<p class="story-import-hint">One line per sentence. Separate parts with tab or " / ": Kalenjin / English, or Speaker: / Kalenjin / English.</p>
+			<p class="story-import-hint">
+				One line per sentence. Separate parts with tab or " / ": Kalenjin / English, or
+				Speaker: / Kalenjin / English.
+			</p>
 		{/if}
 	</div>
 {/if}
 
 <style>
-	label {
-		display: grid;
-		gap: 0.25rem;
-	}
-
-	.choice-row {
-		display: grid;
-		gap: 0.75rem;
-	}
-
-	.choice-group {
-		border: 0;
-		display: grid;
-		gap: 0.5rem;
-		margin: 0;
-		padding: 0;
-		width: fit-content;
-	}
-
-	.type-group {
-		padding-right: 0.8rem;
-	}
-
-	.vocabulary-type-group {
-		padding-left: 0.2rem;
-	}
-
-	.choice-group legend {
+	.field-legend {
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ink-mute);
 		font-weight: 600;
-		margin-bottom: 0.25rem;
-		padding: 0;
 	}
-
-	.choice-options {
+	.type-row {
 		display: flex;
-		flex-wrap: nowrap;
-		gap: 0.45rem;
-		overflow-x: auto;
+		flex-wrap: wrap;
+		gap: 18px;
+		margin-top: 14px;
 	}
-
-	.choice-card {
-		align-items: center;
-		border: 1px solid #d0d7de;
-		cursor: pointer;
-		display: flex;
-		gap: 0.35rem;
-		padding: 0.6rem 0.65rem;
-		white-space: nowrap;
-		width: fit-content;
+	.type-row > .field {
+		flex: 0 0 auto;
 	}
-
-	.choice-card input {
-		display: none;
+	.field + .field {
+		margin-top: 14px;
 	}
-
-	.choice-card.selected {
-		background: #eff6ff;
-		border-color: #2563eb;
+	.type-row .field + .field {
+		margin-top: 0;
 	}
-
-	.type-card {
-		justify-content: center;
-		min-width: 6.75rem;
-	}
-
-	.vocabulary-type-card {
-		justify-content: center;
-		min-width: 7.25rem;
-	}
-
 	.story-import-feedback {
-		min-height: 1.6rem;
+		margin-top: 8px;
+		min-height: 1.4rem;
 	}
-
 	.story-import-error {
-		color: #8c1c13;
+		color: oklch(0.45 0.15 25);
+		font-size: 13px;
 		margin: 0;
 		white-space: pre-line;
 	}
-
 	.story-import-hint {
-		color: #555;
+		color: var(--ink-mute);
+		font-size: 13px;
 		margin: 0;
 	}
 
-	@media (min-width: 700px) {
-		.choice-row {
-			align-items: start;
-			grid-template-columns: repeat(2, max-content);
-		}
-	}
 </style>

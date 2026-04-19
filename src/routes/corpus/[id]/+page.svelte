@@ -12,6 +12,17 @@
 	);
 	let lastIncomingTokenSignature = $state('');
 
+	function cloneSentenceToken(token: SentenceToken): SentenceToken {
+		return {
+			...token,
+			word: token.word ? { ...token.word } : token.word,
+			segments: token.segments.map((segment) => ({
+				...segment,
+				word: segment.word ? { ...segment.word } : segment.word
+			}))
+		};
+	}
+
 	$effect(() => {
 		const incomingSignature = JSON.stringify(
 			data.sentence.tokens.map((token) => ({
@@ -20,24 +31,25 @@
 				wordId: token.wordId,
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
-				wordTranslations: token.word?.translations ?? null
+				wordTranslations: token.word?.translations ?? null,
+				segments: token.segments.map((segment) => ({
+					id: segment.id,
+					surfaceForm: segment.surfaceForm,
+					wordId: segment.wordId,
+					wordKalenjin: segment.word?.kalenjin ?? null,
+					wordTranslations: segment.word?.translations ?? null
+				}))
 			}))
 		);
 
 		if (incomingSignature !== lastIncomingTokenSignature) {
-			sentenceTokens = data.sentence.tokens.map((token) => ({
-				...token,
-				word: token.word ? { ...token.word } : token.word
-			}));
+			sentenceTokens = data.sentence.tokens.map(cloneSentenceToken);
 			lastIncomingTokenSignature = incomingSignature;
 		}
 	});
 
 	function handleTokensChange(tokens: unknown[]): void {
-		sentenceTokens = (tokens as SentenceToken[]).map((token) => ({
-			...token,
-			word: token.word ? { ...token.word } : token.word
-		}));
+		sentenceTokens = (tokens as SentenceToken[]).map(cloneSentenceToken);
 	}
 </script>
 

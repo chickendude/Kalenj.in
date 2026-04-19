@@ -17,4 +17,8 @@ describe('normalizeLemma', () => {
 	it('returns an empty string when the input only contains punctuation', () => {
 		expect(normalizeLemma('..."?!')).toBe('');
 	});
+
+	it('returns an empty string when the input only contains whitespace', () => {
+		expect(normalizeLemma('   \t\n  ')).toBe('');
+	});
 });

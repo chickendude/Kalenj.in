@@ -1,3 +1,10 @@
-<h1>Kalenjin Language App</h1>
-<p>Start with the dictionary MVP.</p>
-<p><a href="/dictionary">Go to Dictionary</a></p>
+<section>
+	<h1>Kalenjin Language App</h1>
+	<p>Admin tools for dictionary, CEFR targets, and course lessons.</p>
+
+	<ul>
+		<li><a href="/dictionary">Dictionary</a></li>
+		<li><a href="/cefr">CEFR targets</a></li>
+		<li><a href="/lessons">Lessons</a></li>
+	</ul>
+</section>

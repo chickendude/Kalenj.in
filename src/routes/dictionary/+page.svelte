@@ -22,7 +22,7 @@
 	<title>Dictionary — Kalenj.in</title>
 </svelte:head>
 
-<main class="shell">
+<section>
 	<div class="page-head">
 		<div>
 			<div class="page-kicker">Kalenjin → English</div>
@@ -42,15 +42,16 @@
 				id="q"
 				name="q"
 				class="input"
-				placeholder={data.language === 'english' ? 'Search English…' : 'Search Kalenjin…'}
+				placeholder={data.language === 'translations' ? 'Search translations...' : 'Search Kalenjin...'}
 				value={data.query}
 			/>
 		</div>
 
 		<div class="field">
-			<label>Language</label>
+			<label for="language-kalenjin">Language</label>
 			<div class="toggle-lang">
 				<button
+					id="language-kalenjin"
 					type="submit"
 					name="lang"
 					value="kalenjin"
@@ -59,9 +60,15 @@
 				<button
 					type="submit"
 					name="lang"
-					value="english"
-					class:active={data.language === 'english'}
-				>English</button>
+					value="translations"
+					class:active={data.language === 'translations'}
+				>Translations</button>
+				<button
+					type="submit"
+					name="lang"
+					value="both"
+					class:active={data.language === 'both'}
+				>Both</button>
 			</div>
 		</div>
 
@@ -111,4 +118,4 @@
 			</tbody>
 		</table>
 	{/if}
-</main>
+</section>

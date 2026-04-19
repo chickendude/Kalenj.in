@@ -8,88 +8,52 @@ type TestToken = {
 };
 
 describe('groupSentenceTokens', () => {
-	it('groups multiple token segments back into each sentence word', () => {
+	it('returns each editable token as one visible word', () => {
 		const tokens: TestToken[] = [
-			{ id: 'a', tokenOrder: 0, surfaceForm: 'Chep' },
-			{ id: 'b', tokenOrder: 1, surfaceForm: 'too' },
-			{ id: 'c', tokenOrder: 2, surfaceForm: 'koi' },
-			{ id: 'd', tokenOrder: 3, surfaceForm: 't' }
+			{ id: 'a', tokenOrder: 0, surfaceForm: 'Oh eh' },
+			{ id: 'b', tokenOrder: 1, surfaceForm: 'kararan' }
 		];
 
 		expect(
 			groupSentenceTokens({
 				sentenceId: 'sentence-1',
-				sentenceText: 'Cheptoo koit',
 				tokens
 			})
 		).toEqual([
 			{
-				key: 'sentence-1:0:a:b',
-				wordIndex: 0,
-				fullSurface: 'Cheptoo',
-				tokens: [tokens[0], tokens[1]]
+				key: 'sentence-1:a',
+				fullSurface: 'Oh eh',
+				tokens: [tokens[0]]
 			},
 			{
-				key: 'sentence-1:1:c:d',
-				wordIndex: 1,
-				fullSurface: 'koit',
-				tokens: [tokens[2], tokens[3]]
+				key: 'sentence-1:b',
+				fullSurface: 'kararan',
+				tokens: [tokens[1]]
 			}
 		]);
 	});
 
-	it('creates fallback groups for leftover tokens beyond the sentence words', () => {
+	it('sorts visible words by token order', () => {
 		const tokens: TestToken[] = [
-			{ id: 'a', tokenOrder: 0, surfaceForm: 'hello' },
-			{ id: 'b', tokenOrder: 1, surfaceForm: 'extra' }
+			{ id: 'b', tokenOrder: 1, surfaceForm: 'beta' },
+			{ id: 'a', tokenOrder: 0, surfaceForm: 'alpha' }
 		];
 
 		expect(
 			groupSentenceTokens({
 				sentenceId: 'sentence-2',
-				sentenceText: 'hello',
 				tokens
 			})
 		).toEqual([
 			{
-				key: 'sentence-2:0:a',
-				wordIndex: 0,
-				fullSurface: 'hello',
-				tokens: [tokens[0]]
-			},
-			{
-				key: 'sentence-2:1:b',
-				wordIndex: 1,
-				fullSurface: 'extra',
-				tokens: [tokens[1]]
-			}
-		]);
-	});
-
-	it('falls back to token surfaces when the sentence text has no words', () => {
-		const tokens: TestToken[] = [
-			{ id: 'a', tokenOrder: 0, surfaceForm: 'alpha' },
-			{ id: 'b', tokenOrder: 1, surfaceForm: 'beta' }
-		];
-
-		expect(
-			groupSentenceTokens({
-				sentenceId: 'sentence-3',
-				sentenceText: '   ',
-				tokens
-			})
-		).toEqual([
-			{
-				key: 'sentence-3:0:a',
-				wordIndex: 0,
+				key: 'sentence-2:a',
 				fullSurface: 'alpha',
-				tokens: [tokens[0]]
+				tokens: [tokens[1]]
 			},
 			{
-				key: 'sentence-3:1:b',
-				wordIndex: 1,
+				key: 'sentence-2:b',
 				fullSurface: 'beta',
-				tokens: [tokens[1]]
+				tokens: [tokens[0]]
 			}
 		]);
 	});

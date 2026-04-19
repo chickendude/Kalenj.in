@@ -29,6 +29,15 @@
 		</label>
 
 		<label>
+			Alternative spellings
+			<textarea
+				name="alternativeSpellings"
+				rows="3"
+				placeholder="One spelling per line"
+			>{form?.values?.alternativeSpellings ?? ''}</textarea>
+		</label>
+
+		<label>
 			Notes
 			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
 		</label>

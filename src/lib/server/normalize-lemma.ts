@@ -1,13 +1,14 @@
-const STRIP_EDGE_PUNCTUATION = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+import { stripEdgePunctuation } from '$lib/server/punctuation';
+
 const COLLAPSE_WHITESPACE = /\s+/g;
 
 /**
  * Normalize a lemma for case-insensitive lookup fields in the database.
  */
 export function normalizeLemma(value: string): string {
-	return value
+	const normalizedWhitespace = value
 		.trim()
-		.replace(COLLAPSE_WHITESPACE, ' ')
-		.replace(STRIP_EDGE_PUNCTUATION, '')
-		.toLowerCase();
+		.replace(COLLAPSE_WHITESPACE, ' ');
+
+	return stripEdgePunctuation(normalizedWhitespace).toLowerCase();
 }

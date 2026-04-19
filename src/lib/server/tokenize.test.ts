@@ -16,21 +16,20 @@ describe('normalizeToken', () => {
 });
 
 describe('tokenizeSentence', () => {
+	it('returns no tokens for empty or whitespace-only input', () => {
+		expect(tokenizeSentence('')).toEqual([]);
+		expect(tokenizeSentence('   \t\n  ')).toEqual([]);
+	});
+
 	it('tokenizes each word with order and normalized values', () => {
 		expect(tokenizeSentence('Kalenjin ng\'olyot')).toEqual([
 			{
 				tokenOrder: 0,
-				wordIndex: 0,
-				segmentStart: 0,
-				segmentEnd: 8,
 				surfaceForm: 'Kalenjin',
 				normalizedForm: 'kalenjin'
 			},
 			{
 				tokenOrder: 1,
-				wordIndex: 1,
-				segmentStart: 0,
-				segmentEnd: 8,
 				surfaceForm: "ng'olyot",
 				normalizedForm: "ng'olyot"
 			}
@@ -41,17 +40,11 @@ describe('tokenizeSentence', () => {
 		expect(tokenizeSentence('hello ... world')).toEqual([
 			{
 				tokenOrder: 0,
-				wordIndex: 0,
-				segmentStart: 0,
-				segmentEnd: 5,
 				surfaceForm: 'hello',
 				normalizedForm: 'hello'
 			},
 			{
 				tokenOrder: 2,
-				wordIndex: 2,
-				segmentStart: 0,
-				segmentEnd: 5,
 				surfaceForm: 'world',
 				normalizedForm: 'world'
 			}
@@ -62,25 +55,16 @@ describe('tokenizeSentence', () => {
 		expect(tokenizeSentence('  one   two\tthree  ')).toEqual([
 			{
 				tokenOrder: 0,
-				wordIndex: 0,
-				segmentStart: 0,
-				segmentEnd: 3,
 				surfaceForm: 'one',
 				normalizedForm: 'one'
 			},
 			{
 				tokenOrder: 1,
-				wordIndex: 1,
-				segmentStart: 0,
-				segmentEnd: 3,
 				surfaceForm: 'two',
 				normalizedForm: 'two'
 			},
 			{
 				tokenOrder: 2,
-				wordIndex: 2,
-				segmentStart: 0,
-				segmentEnd: 5,
 				surfaceForm: 'three',
 				normalizedForm: 'three'
 			}

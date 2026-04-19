@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
+import { temporaryTokenOrderUpdates } from '$lib/server/token-order';
 import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
 
@@ -19,8 +20,7 @@ async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 			id: true,
 			exampleSentenceId: true,
 			tokenOrder: true,
-			surfaceForm: true,
-			wordIndex: true
+			surfaceForm: true
 		}
 	});
 
@@ -68,48 +68,88 @@ export const POST: RequestHandler = async ({ params, request }) => {
 	const segments = boundaries
 		.slice(0, -1)
 		.map((start, index) => ({
-			segmentStart: start,
-			segmentEnd: boundaries[index + 1],
 			surfaceForm: surface.slice(start, boundaries[index + 1])
 		}))
 		.filter((segment) => segment.surfaceForm.length > 0);
 
-	const shiftBy = segments.length - 1;
-	const createdTokens = await prisma.$transaction(async (tx) => {
-		await tx.exampleSentenceToken.updateMany({
-			where: {
-				exampleSentenceId: token.exampleSentenceId,
-				tokenOrder: { gt: token.tokenOrder }
-			},
-			data: { tokenOrder: { increment: shiftBy } }
-		});
+	const sentenceTokens = await prisma.exampleSentenceToken.findMany({
+		where: { exampleSentenceId: token.exampleSentenceId },
+		orderBy: { tokenOrder: 'asc' },
+		select: {
+			id: true,
+			tokenOrder: true
+		}
+	});
 
-		await tx.exampleSentenceToken.delete({ where: { id: token.id } });
-
-		const output: Array<Awaited<ReturnType<typeof tx.exampleSentenceToken.create>>> = [];
-		for (let index = 0; index < segments.length; index += 1) {
-			const segment = segments[index];
-			const created = await tx.exampleSentenceToken.create({
-				data: {
-					exampleSentenceId: token.exampleSentenceId,
-					tokenOrder: token.tokenOrder + index,
-					wordIndex: token.wordIndex,
-					segmentStart: segment.segmentStart,
-					segmentEnd: segment.segmentEnd,
-					surfaceForm: segment.surfaceForm,
-					normalizedForm: normalizeToken(segment.surfaceForm)
-				},
-				include: { word: true }
+	const { sentenceText, splitTokens } = await prisma.$transaction(async (tx) => {
+		for (const update of temporaryTokenOrderUpdates(sentenceTokens)) {
+			await tx.exampleSentenceToken.update({
+				where: { id: update.id },
+				data: { tokenOrder: update.tokenOrder }
 			});
-			output.push(created);
 		}
 
-		return output;
+		const output: Array<Awaited<ReturnType<typeof tx.exampleSentenceToken.create>>> = [];
+		const sentenceSurfaces: string[] = [];
+		let nextOrder = 0;
+
+		for (const existingToken of sentenceTokens) {
+			if (existingToken.id !== token.id) {
+				const updated = await tx.exampleSentenceToken.update({
+					where: { id: existingToken.id },
+					data: { tokenOrder: nextOrder },
+					select: { surfaceForm: true }
+				});
+				sentenceSurfaces.push(updated.surfaceForm);
+				nextOrder += 1;
+				continue;
+			}
+
+			for (let index = 0; index < segments.length; index += 1) {
+				const segment = segments[index];
+				if (index === 0) {
+					const updated = await tx.exampleSentenceToken.update({
+						where: { id: token.id },
+						data: {
+							tokenOrder: nextOrder,
+							surfaceForm: segment.surfaceForm,
+							normalizedForm: normalizeToken(segment.surfaceForm)
+						},
+						include: { word: true }
+					});
+					output.push(updated);
+					sentenceSurfaces.push(updated.surfaceForm);
+				} else {
+					const created = await tx.exampleSentenceToken.create({
+						data: {
+							exampleSentenceId: token.exampleSentenceId,
+							tokenOrder: nextOrder,
+							surfaceForm: segment.surfaceForm,
+							normalizedForm: normalizeToken(segment.surfaceForm)
+						},
+						include: { word: true }
+					});
+					output.push(created);
+					sentenceSurfaces.push(created.surfaceForm);
+				}
+				nextOrder += 1;
+			}
+		}
+
+		return {
+			sentenceText: sentenceSurfaces.join(' '),
+			splitTokens: output
+		};
+	});
+
+	await prisma.exampleSentence.update({
+		where: { id: token.exampleSentenceId },
+		data: { kalenjin: sentenceText }
 	});
 
 	return json({
 		success: 'Token split.',
 		tokenId: token.id,
-		tokens: createdTokens
+		tokens: splitTokens
 	});
 };

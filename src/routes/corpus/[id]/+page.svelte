@@ -1,307 +1,130 @@
 <script lang="ts">
+	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
-	import { groupSentenceTokens } from '$lib/word-groups';
-	import TokenCreateLemmaForm from './_components/token-create-lemma-form.svelte';
-	import TokenLinkManager from './_components/token-link-manager.svelte';
-	import WordSplitEditor from './_components/word-split-editor.svelte';
 
 	let { data, form } = $props();
 
-	/** Dictionary word shape available to this page from the server load payload. */
-	type CorpusWord = (typeof data.words)[number];
-	/** Token row for the current sentence, including optional linked dictionary word info. */
 	type SentenceToken = (typeof data.sentence.tokens)[number];
-	let localError = $state<string | null>(null);
-	let localSuccess = $state<string | null>(null);
-	let creatingByTokenId = $state<Record<string, boolean>>({});
-	let splittingByTokenId = $state<Record<string, boolean>>({});
-
-	/** Unsaved per-token create-lemma form values keyed by token id in `drafts`. */
-	type TokenDraft = {
-		/** Lemma text that will be saved to the dictionary. */
-		kalenjin: string;
-		/** Comma-separated or freeform English translations entered by the user. */
-		translations: string;
-		/** Optional notes for the new dictionary entry. */
-		notes: string;
-	};
 
 	let sentenceTokens = $state<SentenceToken[]>([]);
-	let dictionaryWords = $state<CorpusWord[]>([]);
-	let localSnapshotSentenceId = $state<string | null>(null);
 	const displayedSentenceTokens = $derived(
-		localSnapshotSentenceId === data.sentence.id ? sentenceTokens : data.sentence.tokens
+		sentenceTokens.length > 0 ? sentenceTokens : data.sentence.tokens
 	);
-	const displayedDictionaryWords = $derived(
-		localSnapshotSentenceId === data.sentence.id ? dictionaryWords : data.words
-	);
-
-	let drafts = $state<Record<string, TokenDraft>>({});
-	let previousSentenceId: string | null = null;
-	const groups = $derived(
-		groupSentenceTokens<SentenceToken>({
-			tokens: displayedSentenceTokens
-		})
-	);
+	let lastIncomingTokenSignature = $state('');
 
 	$effect(() => {
-		const nextSentenceId = data.sentence.id;
-		const sentenceChanged = previousSentenceId !== nextSentenceId;
-		previousSentenceId = nextSentenceId;
+		const incomingSignature = JSON.stringify(
+			data.sentence.tokens.map((token) => ({
+				id: token.id,
+				surfaceForm: token.surfaceForm,
+				wordId: token.wordId,
+				inContextTranslation: token.inContextTranslation ?? null,
+				wordKalenjin: token.word?.kalenjin ?? null,
+				wordTranslations: token.word?.translations ?? null
+			}))
+		);
 
-		localSnapshotSentenceId = nextSentenceId;
-		sentenceTokens = [...data.sentence.tokens];
-		dictionaryWords = [...data.words];
-
-		if (sentenceChanged) {
-			drafts = {};
-			creatingByTokenId = {};
-			splittingByTokenId = {};
-			localError = null;
-			localSuccess = null;
+		if (incomingSignature !== lastIncomingTokenSignature) {
+			sentenceTokens = data.sentence.tokens.map((token) => ({
+				...token,
+				word: token.word ? { ...token.word } : token.word
+			}));
+			lastIncomingTokenSignature = incomingSignature;
 		}
 	});
 
-	function ensureDraft(tokenId: string, defaultLemma: string): void {
-		if (!drafts[tokenId]) {
-			drafts[tokenId] = {
-				kalenjin: defaultLemma,
-				translations: '',
-				notes: ''
-			};
-		}
-	}
-
-	function readDraft(tokenId: string, defaultLemma: string): TokenDraft {
-		return drafts[tokenId] ?? { kalenjin: defaultLemma, translations: '', notes: '' };
-	}
-
-	function setDraft(
-		tokenId: string,
-		defaultLemma: string,
-		field: keyof TokenDraft,
-		value: string
-	): void {
-		ensureDraft(tokenId, defaultLemma);
-		drafts[tokenId][field] = value;
-	}
-
-	async function createWordAndLink(tokenId: string, defaultLemma: string): Promise<void> {
-		ensureDraft(tokenId, defaultLemma);
-		const draft = drafts[tokenId];
-
-		localError = null;
-		localSuccess = null;
-		creatingByTokenId[tokenId] = true;
-
-		try {
-			const response = await fetch(`/corpus/${data.sentence.id}/create-word-and-link`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					tokenId,
-					kalenjin: draft.kalenjin,
-					translations: draft.translations,
-					notes: draft.notes
-				})
-			});
-
-			const payload = (await response.json()) as
-				| {
-						error?: string;
-						success?: string;
-						tokenId?: string;
-						createdWord?: CorpusWord;
-				  }
-				| undefined;
-
-			if (!response.ok) {
-				localError = payload?.error ?? 'Could not save.';
-				return;
-			}
-
-			const createdWord = payload?.createdWord;
-			const linkedTokenId = payload?.tokenId ?? tokenId;
-
-			if (createdWord) {
-				if (!dictionaryWords.some((word) => word.id === createdWord.id)) {
-					dictionaryWords = [createdWord, ...dictionaryWords];
-				}
-
-				const token = sentenceTokens.find((item) => item.id === linkedTokenId);
-				if (token) {
-					token.wordId = createdWord.id;
-					token.word = createdWord;
-				}
-			}
-
-			localSuccess = payload?.success ?? 'Created dictionary word and linked token.';
-		} catch (err) {
-			console.error(err);
-			localError = 'Network error while creating dictionary word.';
-		} finally {
-			creatingByTokenId[tokenId] = false;
-		}
-	}
-
-	async function applySplit(tokenId: string, splitPoints: number[]): Promise<void> {
-		localError = null;
-		localSuccess = null;
-		splittingByTokenId[tokenId] = true;
-
-		try {
-			const response = await fetch(`/corpus/${data.sentence.id}/split-token`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({
-					tokenId,
-					splitPoints
-				})
-			});
-
-			const payload = (await response.json()) as
-				| {
-						error?: string;
-						success?: string;
-						tokenId?: string;
-						tokens?: SentenceToken[];
-				  }
-				| undefined;
-
-			if (!response.ok) {
-				localError = payload?.error ?? 'Could not split token.';
-				return;
-			}
-
-			const newTokens = payload?.tokens ?? [];
-			if (newTokens.length < 2) {
-				localError = 'Split response was incomplete.';
-				return;
-			}
-
-			const index = sentenceTokens.findIndex((item) => item.id === tokenId);
-			if (index >= 0) {
-				sentenceTokens.splice(index, 1, ...newTokens);
-			}
-
-			localSuccess = payload?.success ?? 'Token split.';
-		} catch (err) {
-			console.error(err);
-			localError = 'Network error while splitting token.';
-		} finally {
-			splittingByTokenId[tokenId] = false;
-		}
+	function handleTokensChange(tokens: unknown[]): void {
+		sentenceTokens = (tokens as SentenceToken[]).map((token) => ({
+			...token,
+			word: token.word ? { ...token.word } : token.word
+		}));
 	}
 </script>
 
+<svelte:head>
+	<title>Token mapping — Kalenj.in</title>
+</svelte:head>
+
 <section>
-	<h1>Corpus sentence</h1>
-	<p><a href="/corpus">Back to corpus</a></p>
+	<a href="/corpus" class="back-link">
+		<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+			<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>
+		Back to corpus
+	</a>
 
-	<p><strong>Kalenjin:</strong> {data.sentence.kalenjin}</p>
-	<p><strong>English:</strong> {data.sentence.english}</p>
-	{#if data.sentence.source}
-		<p><strong>Source:</strong> {data.sentence.source}</p>
+	<div class="entry-head">
+		<div class="entry-label">Corpus sentence</div>
+		<div class="sentence-display">
+			<TokenHoverPreview
+				sentenceId={data.sentence.id}
+				sentenceText={data.sentence.kalenjin}
+				tokens={displayedSentenceTokens}
+			/>
+		</div>
+		<div class="sentence-english">{data.sentence.english}</div>
+		{#if data.sentence.source}
+			<div class="sentence-source">{data.sentence.source}</div>
+		{/if}
+	</div>
+
+	{#if form?.error}
+		<div class="form-feedback error">{form.error}</div>
+	{:else if form?.updateCorpusSentenceTokenSuccess}
+		<div class="form-feedback success">Saved sentence annotation.</div>
+	{:else if form?.createCorpusSentenceWordSuccess}
+		<div class="form-feedback success">Created lemma and linked it.</div>
 	{/if}
 
-	{#if localError}
-		<p class="error">{localError}</p>
-	{:else if form?.error}
-		<p class="error">{form.error}</p>
-	{:else if localSuccess}
-		<p class="success">{localSuccess}</p>
-	{:else if form?.success}
-		<p class="success">{form.success}</p>
-	{/if}
+	<h2 class="section-title">Token mapping</h2>
+	<p class="hint">Click a word below to link a lemma, edit meaning, or split and combine words.</p>
 
-	<h2>Token mapping</h2>
-	<TokenHoverPreview
-		sentenceId={data.sentence.id}
-		sentenceText={data.sentence.kalenjin}
-		tokens={displayedSentenceTokens}
-	/>
-	<table>
-		<thead>
-			<tr>
-				<th>Word</th>
-				<th>Linked lemma(s)</th>
-				<th>Create/link lemmas</th>
-			</tr>
-		</thead>
-		<tbody>
-			{#each groups as group (group.key)}
-				<tr>
-					<td>
-						<strong>{group.fullSurface}</strong>
-							{#if group.tokens.length === 1 && group.fullSurface.length > 1}
-								{@const token = group.tokens[0]}
-								<WordSplitEditor
-									tokenId={token.id}
-									surface={group.fullSurface}
-									splitting={Boolean(splittingByTokenId[token.id])}
-									onApplySplit={applySplit}
-								/>
-							{:else}
-								<ul class="parts">
-									{#each group.tokens as token, partIndex}
-									<li>Part {partIndex + 1}: "{token.surfaceForm}"</li>
-								{/each}
-							</ul>
-						{/if}
-					</td>
-						<td>
-							{#each group.tokens as token, partIndex}
-								<TokenLinkManager {token} {partIndex} dictionaryWords={displayedDictionaryWords} />
-							{/each}
-						</td>
-					<td>
-						{#each group.tokens as token, partIndex}
-							{@const defaultLemma = token.word?.kalenjin ?? token.normalizedForm}
-							{@const currentDraft = readDraft(token.id, defaultLemma)}
-							<TokenCreateLemmaForm
-								{token}
-								{partIndex}
-								{defaultLemma}
-								draft={currentDraft}
-								creating={Boolean(creatingByTokenId[token.id])}
-								onDraftChange={setDraft}
-								onCreate={createWordAndLink}
-							/>
-						{/each}
-					</td>
-				</tr>
-			{/each}
-		</tbody>
-	</table>
+	<div class="sentence-annotation-panel">
+		<SentenceTokenAnnotations
+			entityId={data.sentence.id}
+			entityIdField="sentenceId"
+			entityKind="example"
+			sentenceId={data.sentence.id}
+			sentenceText={data.sentence.kalenjin}
+			tokens={displayedSentenceTokens}
+			dictionaryWords={data.words}
+			updateAction="?/updateCorpusSentenceToken"
+			createAction="?/createCorpusSentenceWord"
+			searchEndpoint={`/corpus/${data.sentence.id}/word-search`}
+			tokenGroupEndpoint={`/corpus/${data.sentence.id}/token-groups`}
+			onTokensChange={handleTokensChange}
+		/>
+	</div>
 </section>
 
 <style>
-	.error {
-		color: #8c1c13;
-		font-weight: 600;
+	.sentence-display {
+		font-family: var(--font-display);
+		font-size: 28px;
+		line-height: 1.4;
+		margin: 12px 0 6px;
 	}
 
-	.success {
-		color: #1a7f37;
-		font-weight: 600;
+	.sentence-english {
+		color: var(--ink-soft);
+		font-size: 15px;
+		margin-bottom: 4px;
 	}
 
-	table {
-		border-collapse: collapse;
-		width: 100%;
+	.sentence-source {
+		color: var(--ink-mute);
+		font-size: 13px;
+		font-style: italic;
 	}
 
-	th,
-	td {
-		border-bottom: 1px solid #e2e2e2;
-		padding: 0.5rem;
-		text-align: left;
-		vertical-align: top;
+	.hint {
+		color: var(--ink-mute);
+		font-size: 13px;
+		margin: -8px 0 16px;
 	}
 
-	.parts {
-		margin: 0.5rem 0 0;
-		padding-left: 1rem;
+	.sentence-annotation-panel {
+		border-top: 1px solid var(--line-soft);
+		padding-top: 16px;
 	}
-
 </style>

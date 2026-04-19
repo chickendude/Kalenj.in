@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
 	orderedEditableWords,
+	planTokenLexicalSegments,
 	planMergeTokenGroups,
 	planSplitTokenGroup,
 	planUpdateTokenGroupSurface,
@@ -127,6 +128,47 @@ describe('planSplitTokenGroup', () => {
 
 	it('rejects splitting words that do not contain spaces', () => {
 		expect(() => planSplitTokenGroup(TOKENS, 'a')).toThrow('Only words with spaces can be split.');
+	});
+});
+
+describe('planTokenLexicalSegments', () => {
+	it('marks lexical segments within a single written word', () => {
+		expect(
+			planTokenLexicalSegments(
+				[{ id: 'a', tokenOrder: 0, surfaceForm: 'Kotab', wordId: 'word-kotab' }],
+				'a',
+				[3]
+			)
+		).toEqual([
+			{
+				segmentOrder: 0,
+				segmentStart: 0,
+				segmentEnd: 3,
+				surfaceForm: 'Kot',
+				normalizedForm: 'kot',
+				wordId: null
+			},
+			{
+				segmentOrder: 1,
+				segmentStart: 3,
+				segmentEnd: 5,
+				surfaceForm: 'ab',
+				normalizedForm: 'ab',
+				wordId: null
+			}
+		]);
+	});
+
+	it('requires at least one split point for lexical segments', () => {
+		expect(() => planTokenLexicalSegments(TOKENS, 'a', [])).toThrow(
+			'Choose at least one split point in "Oh".'
+		);
+	});
+
+	it('rejects lexical segment points outside the written word', () => {
+		expect(() => planTokenLexicalSegments(TOKENS, 'a', [2])).toThrow(
+			'Split points must be between 1 and 1.'
+		);
 	});
 });
 

@@ -11,6 +11,17 @@
 		tokenOrder: number;
 		surfaceForm: string;
 		word?: TokenWord | null;
+		segments?: Array<{
+			id: string;
+			surfaceForm: string;
+			word?: TokenWord | null;
+		}>;
+	};
+
+	type PopupPart = {
+		key: string;
+		kalenjin: string;
+		english: string | null;
 	};
 
 	let { sentenceId = 'sentence', tokens, onTokenClick } = $props<{
@@ -23,9 +34,20 @@
 	let pinnedTooltipKey = $state<string | null>(null);
 	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, tokens }));
 
-	function tokenPopup(token: PreviewToken): { kalenjin: string; english: string | null } {
-		if (!token.word) return { kalenjin: token.surfaceForm, english: null };
-		return { kalenjin: token.word.kalenjin, english: token.word.translations };
+	function tokenPopupPart(token: PreviewToken): PopupPart {
+		return {
+			key: token.id,
+			kalenjin: token.word?.kalenjin ?? token.surfaceForm,
+			english: token.word?.translations ?? null
+		};
+	}
+
+	function segmentPopupPart(segment: NonNullable<PreviewToken['segments']>[number]): PopupPart {
+		return {
+			key: segment.id,
+			kalenjin: segment.word?.kalenjin ?? segment.surfaceForm,
+			english: segment.word?.translations ?? null
+		};
 	}
 </script>
 
@@ -33,22 +55,49 @@
 	{#each groups as group (group.key)}
 		<span class="word-group" aria-label={group.fullSurface}>
 			{#each group.tokens as token (token.id)}
-				{@const tooltipKey = `${sentenceId}:${token.id}`}
-				{@const popup = tokenPopup(token)}
-				<button
-					type="button"
-					class="token-part"
-					class:linked={Boolean(token.word)}
-					class:pinned={pinnedTooltipKey === tooltipKey}
-					onclick={() => {
-						pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
-						onTokenClick?.(token);
-					}}
-				>
-					{token.surfaceForm}<span class="token-tooltip" role="tooltip"
-						><em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}</span
+				{#if token.segments?.length}
+					<span class="token-split" aria-label={token.surfaceForm}>
+						{#each token.segments as segment (segment.id)}
+							{@const tooltipKey = `${sentenceId}:${token.id}:${segment.id}`}
+							{@const popup = segmentPopupPart(segment)}
+							<button
+								type="button"
+								class="token-part"
+								class:linked={Boolean(segment.word)}
+								class:pinned={pinnedTooltipKey === tooltipKey}
+								onclick={() => {
+									pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
+									onTokenClick?.(token);
+								}}
+							>
+								{segment.surfaceForm}<span class="token-tooltip" role="tooltip"
+									><span class="tooltip-part">
+										<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+									</span></span
+								>
+							</button>
+						{/each}
+					</span>
+				{:else}
+					{@const tooltipKey = `${sentenceId}:${token.id}`}
+					{@const popup = tokenPopupPart(token)}
+					<button
+						type="button"
+						class="token-part"
+						class:linked={Boolean(token.word)}
+						class:pinned={pinnedTooltipKey === tooltipKey}
+						onclick={() => {
+							pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
+							onTokenClick?.(token);
+						}}
 					>
-				</button>
+						{token.surfaceForm}<span class="token-tooltip" role="tooltip"
+							><span class="tooltip-part">
+								<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+							</span></span
+						>
+					</button>
+				{/if}
 			{/each}
 		</span>
 	{/each}
@@ -65,6 +114,12 @@
 	.word-group {
 		display: flex;
 		gap: 0;
+	}
+
+	.token-split {
+		display: inline-flex;
+		gap: 0;
+		white-space: nowrap;
 	}
 
 	.token-part {
@@ -106,6 +161,11 @@
 		padding: 0.4rem 0.5rem;
 		white-space: normal;
 		z-index: 10;
+	}
+
+	.tooltip-part {
+		display: grid;
+		gap: 0.08rem;
 	}
 
 	.token-part:hover .token-tooltip,

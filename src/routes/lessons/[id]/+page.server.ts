@@ -226,6 +226,28 @@ async function ensureStorySentenceToken(storySentenceId: string, tokenId: string
 	return tokenId;
 }
 
+async function ensureStorySentenceTokenSegment(
+	storySentenceId: string,
+	tokenId: string,
+	segmentId: string
+): Promise<string> {
+	const segment = await prisma.storySentenceTokenSegment.findUnique({
+		where: { id: segmentId },
+		select: {
+			tokenId: true,
+			token: {
+				select: { storySentenceId: true }
+			}
+		}
+	});
+
+	if (!segment || segment.tokenId !== tokenId || segment.token.storySentenceId !== storySentenceId) {
+		error(404, 'Token segment not found for this story sentence.');
+	}
+
+	return segmentId;
+}
+
 async function ensureExampleSentenceForLessonWord(
 	lessonWordId: string,
 	tokenId: string
@@ -266,6 +288,28 @@ async function ensureExampleSentenceToken(exampleSentenceId: string, tokenId: st
 	return tokenId;
 }
 
+async function ensureExampleSentenceTokenSegment(
+	exampleSentenceId: string,
+	tokenId: string,
+	segmentId: string
+): Promise<string> {
+	const segment = await prisma.exampleSentenceTokenSegment.findUnique({
+		where: { id: segmentId },
+		select: {
+			tokenId: true,
+			token: {
+				select: { exampleSentenceId: true }
+			}
+		}
+	});
+
+	if (!segment || segment.tokenId !== tokenId || segment.token.exampleSentenceId !== exampleSentenceId) {
+		error(404, 'Token segment not found for this lesson word.');
+	}
+
+	return segmentId;
+}
+
 async function getLessonDetail(lessonId: string) {
 	return prisma.lesson.findUnique({
 		where: { id: lessonId },
@@ -282,6 +326,18 @@ async function getLessonDetail(lessonId: string) {
 										include: {
 											spellings: {
 												orderBy: [{ spelling: 'asc' }]
+											}
+										}
+									},
+									segments: {
+										orderBy: { segmentOrder: 'asc' },
+										include: {
+											word: {
+												include: {
+													spellings: {
+														orderBy: [{ spelling: 'asc' }]
+													}
+												}
 											}
 										}
 									}
@@ -305,6 +361,18 @@ async function getLessonDetail(lessonId: string) {
 												include: {
 													spellings: {
 														orderBy: [{ spelling: 'asc' }]
+													}
+												}
+											},
+											segments: {
+												orderBy: { segmentOrder: 'asc' },
+												include: {
+													word: {
+														include: {
+															spellings: {
+																orderBy: [{ spelling: 'asc' }]
+															}
+														}
 													}
 												}
 											}
@@ -855,6 +923,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const storySentenceId = readText(formData, 'storySentenceId');
 		const tokenId = readText(formData, 'tokenId');
+		const segmentId = readOptionalText(formData, 'segmentId');
 		const wordId = readOptionalText(formData, 'wordId');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 
@@ -874,8 +943,40 @@ export const actions: Actions = {
 		await ensureStorySentence(story.storyId, storySentenceId);
 
 		const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
+		const checkedSegmentId = segmentId
+			? await ensureStorySentenceTokenSegment(storySentenceId, checkedTokenId, segmentId)
+			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
+			if (checkedSegmentId) {
+				const segment = await tx.storySentenceTokenSegment.update({
+					where: { id: checkedSegmentId },
+					data: { wordId },
+					include: {
+						word: {
+							select: buildWordSelect()
+						}
+					}
+				});
+
+				return tx.storySentenceToken.findUniqueOrThrow({
+					where: { id: checkedTokenId },
+					include: {
+						word: {
+							select: buildWordSelect()
+						},
+						segments: {
+							orderBy: { segmentOrder: 'asc' },
+							include: {
+								word: {
+									select: buildWordSelect()
+								}
+							}
+						}
+					}
+				}).then((token) => ({ ...token, updatedSegment: segment }));
+			}
+
 			return tx.storySentenceToken.update({
 				where: { id: checkedTokenId },
 				data: {
@@ -885,6 +986,14 @@ export const actions: Actions = {
 				include: {
 					word: {
 						select: buildWordSelect()
+					},
+					segments: {
+						orderBy: { segmentOrder: 'asc' },
+						include: {
+							word: {
+								select: buildWordSelect()
+							}
+						}
 					}
 				}
 			});
@@ -897,7 +1006,8 @@ export const actions: Actions = {
 					tokenId: updatedToken.id,
 					wordId: updatedToken.wordId,
 					inContextTranslation: updatedToken.inContextTranslation,
-					word: updatedToken.word
+					word: updatedToken.word,
+					segments: updatedToken.segments
 				}
 			]
 		};
@@ -906,6 +1016,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const storySentenceId = readText(formData, 'storySentenceId');
 		const tokenId = readText(formData, 'tokenId');
+		const segmentId = readOptionalText(formData, 'segmentId');
 		const wordId = readOptionalText(formData, 'wordId');
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
@@ -930,9 +1041,12 @@ export const actions: Actions = {
 
 		await ensureStorySentence(story.storyId, storySentenceId);
 		const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
+		const checkedSegmentId = segmentId
+			? await ensureStorySentenceTokenSegment(storySentenceId, checkedTokenId, segmentId)
+			: null;
 
 		try {
-			const word = await prisma.$transaction(async (tx) => {
+			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -941,15 +1055,39 @@ export const actions: Actions = {
 					alternativeSpellings
 				});
 
-				await tx.storySentenceToken.update({
+				if (checkedSegmentId) {
+					await tx.storySentenceTokenSegment.update({
+						where: { id: checkedSegmentId },
+						data: { wordId: word.id }
+					});
+				} else {
+					await tx.storySentenceToken.update({
+						where: { id: checkedTokenId },
+						data: {
+							wordId: word.id,
+							inContextTranslation
+						}
+					});
+				}
+
+				const token = await tx.storySentenceToken.findUniqueOrThrow({
 					where: { id: checkedTokenId },
-					data: {
-						wordId: word.id,
-						inContextTranslation
+					include: {
+						word: {
+							select: buildWordSelect()
+						},
+						segments: {
+							orderBy: { segmentOrder: 'asc' },
+							include: {
+								word: {
+									select: buildWordSelect()
+								}
+							}
+						}
 					}
 				});
 
-				return word;
+				return { word, token };
 			});
 
 			return {
@@ -957,9 +1095,10 @@ export const actions: Actions = {
 				tokenUpdates: [
 					{
 						tokenId: checkedTokenId,
-						wordId: word.id,
-						inContextTranslation,
-						word
+						wordId: token.wordId,
+						inContextTranslation: token.inContextTranslation,
+						word: token.word,
+						segments: token.segments
 					}
 				]
 			};
@@ -974,6 +1113,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
 		const tokenId = readText(formData, 'tokenId');
+		const segmentId = readOptionalText(formData, 'segmentId');
 		const wordId = readOptionalText(formData, 'wordId');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 
@@ -983,8 +1123,51 @@ export const actions: Actions = {
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
 		const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
+		const checkedSegmentId = segmentId
+			? await ensureExampleSentenceTokenSegment(sentenceId, checkedTokenId, segmentId)
+			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
+			if (checkedSegmentId) {
+				await tx.exampleSentenceTokenSegment.update({
+					where: { id: checkedSegmentId },
+					data: { wordId }
+				});
+
+				if (wordId) {
+					await tx.wordSentence.upsert({
+						where: {
+							wordId_exampleSentenceId: {
+								wordId,
+								exampleSentenceId: sentenceId
+							}
+						},
+						update: {},
+						create: {
+							wordId,
+							exampleSentenceId: sentenceId
+						}
+					});
+				}
+
+				return tx.exampleSentenceToken.findUniqueOrThrow({
+					where: { id: checkedTokenId },
+					include: {
+						word: {
+							select: buildWordSelect()
+						},
+						segments: {
+							orderBy: { segmentOrder: 'asc' },
+							include: {
+								word: {
+									select: buildWordSelect()
+								}
+							}
+						}
+					}
+				});
+			}
+
 			const updatedToken = await tx.exampleSentenceToken.update({
 				where: { id: checkedTokenId },
 				data: {
@@ -994,6 +1177,14 @@ export const actions: Actions = {
 				include: {
 					word: {
 						select: buildWordSelect()
+					},
+					segments: {
+						orderBy: { segmentOrder: 'asc' },
+						include: {
+							word: {
+								select: buildWordSelect()
+							}
+						}
 					}
 				}
 			});
@@ -1024,7 +1215,8 @@ export const actions: Actions = {
 					tokenId: updatedToken.id,
 					wordId: updatedToken.wordId,
 					inContextTranslation: updatedToken.inContextTranslation,
-					word: updatedToken.word
+					word: updatedToken.word,
+					segments: updatedToken.segments
 				}
 			]
 		};
@@ -1033,6 +1225,7 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
 		const tokenId = readText(formData, 'tokenId');
+		const segmentId = readOptionalText(formData, 'segmentId');
 		const wordId = readOptionalText(formData, 'wordId');
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
@@ -1048,9 +1241,12 @@ export const actions: Actions = {
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
 		const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
+		const checkedSegmentId = segmentId
+			? await ensureExampleSentenceTokenSegment(sentenceId, checkedTokenId, segmentId)
+			: null;
 
 		try {
-			const word = await prisma.$transaction(async (tx) => {
+			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -1059,13 +1255,20 @@ export const actions: Actions = {
 					alternativeSpellings
 				});
 
-				await tx.exampleSentenceToken.update({
-					where: { id: checkedTokenId },
-					data: {
-						wordId: word.id,
-						inContextTranslation
-					}
-				});
+				if (checkedSegmentId) {
+					await tx.exampleSentenceTokenSegment.update({
+						where: { id: checkedSegmentId },
+						data: { wordId: word.id }
+					});
+				} else {
+					await tx.exampleSentenceToken.update({
+						where: { id: checkedTokenId },
+						data: {
+							wordId: word.id,
+							inContextTranslation
+						}
+					});
+				}
 
 				await tx.wordSentence.upsert({
 					where: {
@@ -1081,7 +1284,24 @@ export const actions: Actions = {
 					}
 				});
 
-				return word;
+				const token = await tx.exampleSentenceToken.findUniqueOrThrow({
+					where: { id: checkedTokenId },
+					include: {
+						word: {
+							select: buildWordSelect()
+						},
+						segments: {
+							orderBy: { segmentOrder: 'asc' },
+							include: {
+								word: {
+									select: buildWordSelect()
+								}
+							}
+						}
+					}
+				});
+
+				return { word, token };
 			});
 
 			return {
@@ -1089,9 +1309,10 @@ export const actions: Actions = {
 				tokenUpdates: [
 					{
 						tokenId: checkedTokenId,
-						wordId: word.id,
-						inContextTranslation,
-						word
+						wordId: token.wordId,
+						inContextTranslation: token.inContextTranslation,
+						word: token.word,
+						segments: token.segments
 					}
 				]
 			};

@@ -13,6 +13,15 @@ export type EditableWord<T extends EditableToken = EditableToken> = {
 	fullSurface: string;
 };
 
+export type EditableTokenSegment = {
+	segmentOrder: number;
+	segmentStart: number;
+	segmentEnd: number;
+	surfaceForm: string;
+	normalizedForm: string;
+	wordId?: string | null;
+};
+
 export function orderedEditableWords<T extends EditableToken>(tokens: T[]): EditableWord<T>[] {
 	return [...tokens]
 		.sort((left, right) => left.tokenOrder - right.tokenOrder)
@@ -67,7 +76,30 @@ export function planMergeTokenGroups<T extends EditableToken>(
 	};
 }
 
-export function planSplitTokenGroup<T extends EditableToken>(tokens: T[], tokenId: string) {
+function splitSurfaceByPoints(surface: string, splitPoints: number[]): string[] {
+	const uniquePoints = [...new Set(splitPoints)].sort((a, b) => a - b);
+
+	if (uniquePoints.length === 0) {
+		throw new Error(`Choose at least one split point in "${surface}".`);
+	}
+
+	const invalidPoint = uniquePoints.find((point) => point <= 0 || point >= surface.length);
+	if (invalidPoint !== undefined) {
+		throw new Error(`Split points must be between 1 and ${Math.max(surface.length - 1, 1)}.`);
+	}
+
+	const boundaries = [0, ...uniquePoints, surface.length];
+	return boundaries
+		.slice(0, -1)
+		.map((start, index) => surface.slice(start, boundaries[index + 1]))
+		.filter((part) => part.length > 0);
+}
+
+export function planSplitTokenGroup<T extends EditableToken>(
+	tokens: T[],
+	tokenId: string,
+	splitPoints?: number[]
+) {
 	const words = orderedEditableWords(tokens);
 	const word = words.find((entry) => entry.token.id === tokenId);
 
@@ -75,10 +107,13 @@ export function planSplitTokenGroup<T extends EditableToken>(tokens: T[], tokenI
 		throw new Error('Word not found.');
 	}
 
-	const parts = word.token.surfaceForm
-		.trim()
-		.split(/\s+/)
-		.filter((part) => part.length > 0);
+	const parts = splitPoints
+		? splitSurfaceByPoints(word.token.surfaceForm, splitPoints)
+		: word.token.surfaceForm
+				.trim()
+				.split(/\s+/)
+				.filter((part) => part.length > 0);
+
 	if (parts.length < 2) {
 		throw new Error('Only words with spaces can be split.');
 	}
@@ -95,6 +130,36 @@ export function planSplitTokenGroup<T extends EditableToken>(tokens: T[], tokenI
 			inContextTranslation: shouldSplitMeaning ? meaningParts[index] : index === 0 ? word.token.inContextTranslation ?? null : null
 		}))
 	};
+}
+
+export function planTokenLexicalSegments<T extends EditableToken>(
+	tokens: T[],
+	tokenId: string,
+	splitPoints: number[]
+): EditableTokenSegment[] {
+	const token = tokens.find((entry) => entry.id === tokenId);
+
+	if (!token) {
+		throw new Error('Word not found.');
+	}
+
+	const parts = splitSurfaceByPoints(token.surfaceForm, splitPoints);
+	let cursor = 0;
+
+	return parts.map((surfaceForm, index) => {
+		const segmentStart = cursor;
+		const segmentEnd = segmentStart + surfaceForm.length;
+		cursor = segmentEnd;
+
+		return {
+			segmentOrder: index,
+			segmentStart,
+			segmentEnd,
+			surfaceForm,
+			normalizedForm: normalizeToken(surfaceForm),
+			wordId: null
+		};
+	});
 }
 
 export function planUpdateTokenGroupSurface<T extends EditableToken>(

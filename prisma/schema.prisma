@@ -64,6 +64,8 @@ model Word {
   sentences    WordSentence[]
   tokenLinks   ExampleSentenceToken[]
   storyTokenLinks StorySentenceToken[]
+  tokenSegments ExampleSentenceTokenSegment[]
+  storyTokenSegments StorySentenceTokenSegment[]
   lessonWords  LessonWord[]
   spellings    WordSpelling[]
 
@@ -112,9 +114,30 @@ model ExampleSentenceToken {
   updatedAt         DateTime        @updatedAt
   exampleSentence   ExampleSentence @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
   word              Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  segments          ExampleSentenceTokenSegment[]
 
   @@unique([exampleSentenceId, tokenOrder])
   @@index([exampleSentenceId])
+  @@index([wordId])
+  @@index([normalizedForm])
+}
+
+model ExampleSentenceTokenSegment {
+  id            String               @id @default(cuid())
+  tokenId       String
+  wordId        String?
+  segmentOrder  Int
+  segmentStart  Int
+  segmentEnd    Int
+  surfaceForm   String
+  normalizedForm String
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  token         ExampleSentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  word          Word?                @relation(fields: [wordId], references: [id], onDelete: SetNull)
+
+  @@unique([tokenId, segmentOrder])
+  @@index([tokenId])
   @@index([wordId])
   @@index([normalizedForm])
 }
@@ -170,9 +193,30 @@ model StorySentenceToken {
   updatedAt           DateTime      @updatedAt
   storySentence       StorySentence @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
   word                Word?         @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  segments            StorySentenceTokenSegment[]
 
   @@unique([storySentenceId, tokenOrder])
   @@index([storySentenceId])
+  @@index([wordId])
+  @@index([normalizedForm])
+}
+
+model StorySentenceTokenSegment {
+  id            String             @id @default(cuid())
+  tokenId       String
+  wordId        String?
+  segmentOrder  Int
+  segmentStart  Int
+  segmentEnd    Int
+  surfaceForm   String
+  normalizedForm String
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  token         StorySentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  word          Word?              @relation(fields: [wordId], references: [id], onDelete: SetNull)
+
+  @@unique([tokenId, segmentOrder])
+  @@index([tokenId])
   @@index([wordId])
   @@index([normalizedForm])
 }

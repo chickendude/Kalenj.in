@@ -26,6 +26,27 @@
 				spellingNormalized?: string;
 			}>;
 		} | null;
+		segments?: TokenSegment[];
+	};
+
+	type TokenSegment = {
+		id: string;
+		segmentOrder: number;
+		segmentStart: number;
+		segmentEnd: number;
+		surfaceForm: string;
+		wordId: string | null;
+		word?: {
+			id: string;
+			kalenjin: string;
+			translations?: string | null;
+			notes?: string | null;
+			spellings?: Array<{
+				id?: string;
+				spelling: string;
+				spellingNormalized?: string;
+			}>;
+		} | null;
 	};
 
 	type SearchResult = {
@@ -69,6 +90,7 @@
 				spellingNormalized?: string;
 			}>;
 		} | null;
+		segments?: TokenSegment[];
 	};
 
 	let {
@@ -82,7 +104,8 @@
 		updateAction,
 		createAction,
 		searchEndpoint,
-		tokenGroupEndpoint
+		tokenGroupEndpoint,
+		onTokensChange
 	}: {
 		entityId: string;
 		entityIdField: string;
@@ -95,13 +118,16 @@
 		createAction: string;
 		searchEndpoint: string;
 		tokenGroupEndpoint: string;
+		onTokensChange?: (tokens: SentenceToken[]) => void;
 	} = $props();
 
 	let openTokenId = $state<string | null>(null);
+	let activeSegmentId = $state<string | null>(null);
 	let searchQuery = $state('');
 	let searchResults = $state<SearchResult[]>([]);
 	let searchLoading = $state(false);
 	let searchError = $state<string | null>(null);
+	let searchResultCache = $state<Record<string, SearchResult[]>>({});
 	let saveState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	let createState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	let drafts = $state<Record<string, TokenDraft>>({});
@@ -118,6 +144,8 @@
 	let surfaceDraft = $state('');
 	let surfaceEditInput = $state<HTMLInputElement | null>(null);
 	let groupActionError = $state<string | null>(null);
+	let splitMarkers = $state<Record<string, number[]>>({});
+	let hoveredSplitMarker = $state<number | null>(null);
 	const autoSaveTimers = new Map<string, number>();
 
 		const groups = $derived(
@@ -128,6 +156,17 @@
 		);
 	const activeToken = $derived(localTokens.find((token) => token.id === openTokenId) ?? null);
 	const activeGroup = $derived(groups.find((group) => group.tokens[0]?.id === openTokenId) ?? null);
+	const activeSegment = $derived(
+		activeToken?.segments?.find((segment) => segment.id === activeSegmentId) ?? null
+	);
+	const splitTabSegments = $derived(activeToken?.segments ?? []);
+	const activeDraftKey = $derived(activeSegment?.id ?? activeToken?.id ?? '');
+	const activeSurface = $derived(activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '');
+	const activeWord = $derived(activeSegment?.word ?? activeToken?.word ?? null);
+	const activeWordId = $derived(activeSegment?.wordId ?? activeToken?.wordId ?? null);
+	const isFirstSegmentActive = $derived(
+		Boolean(activeToken?.segments?.[0]?.id && activeToken.segments[0].id === activeSegment?.id)
+	);
 
 	function normalizeSearchQuery(value: string): string {
 		return value.replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -151,7 +190,17 @@
 				wordKalenjin: token.word?.kalenjin ?? null,
 				wordTranslations: token.word?.translations ?? null,
 				wordNotes: token.word?.notes ?? null,
-				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? []
+				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? [],
+				segments:
+					token.segments?.map((segment) => ({
+						id: segment.id,
+						surfaceForm: segment.surfaceForm,
+						wordId: segment.wordId,
+						wordKalenjin: segment.word?.kalenjin ?? null,
+						wordTranslations: segment.word?.translations ?? null,
+						wordNotes: segment.word?.notes ?? null,
+						wordSpellings: segment.word?.spellings?.map((spelling) => spelling.spelling) ?? []
+					})) ?? []
 			}))
 		);
 
@@ -172,6 +221,17 @@
 				createNotes: token.word?.notes ?? '',
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings)
 			};
+
+			for (const segment of token.segments ?? []) {
+				drafts[segment.id] = {
+					inContextTranslation: '',
+					selectedWordId: segment.word?.id ?? '',
+					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
+					createTranslations: segment.word?.translations ?? '',
+					createNotes: segment.word?.notes ?? '',
+					createAlternativeSpellings: serializeSpellings(segment.word?.spellings)
+				};
+			}
 		}
 	});
 
@@ -191,6 +251,14 @@
 			searchError = null;
 			return;
 		}
+
+		if (Object.prototype.hasOwnProperty.call(searchResultCache, currentQuery)) {
+			searchResults = searchResultCache[currentQuery];
+			searchLoading = false;
+			searchError = null;
+			return;
+		}
+
 		const controller = new AbortController();
 		const timeout = window.setTimeout(async () => {
 			searchLoading = true;
@@ -208,6 +276,10 @@
 
 				const payload = (await response.json()) as { results?: SearchResult[] };
 				searchResults = payload.results ?? [];
+				searchResultCache = {
+					...searchResultCache,
+					[currentQuery]: searchResults
+				};
 			} catch (error) {
 				if (controller.signal.aborted) {
 					return;
@@ -291,12 +363,19 @@
 		return () => window.removeEventListener('keydown', handleWindowKeydown);
 	});
 
-	function openPicker(token: SentenceToken) {
+	function activatePickerToken(token: SentenceToken, segmentId: string | null = null) {
 		openTokenId = token.id;
-		searchQuery = normalizeSearchQuery(token.word?.kalenjin ?? token.surfaceForm);
+		const segment = token.segments?.find((entry) => entry.id === segmentId) ?? null;
+		activeSegmentId = segment?.id ?? null;
+		searchQuery = normalizeSearchQuery(segment?.word?.kalenjin ?? segment?.surfaceForm ?? token.word?.kalenjin ?? token.surfaceForm);
 		searchResults = [];
 		searchError = null;
 		groupActionError = null;
+		hoveredSplitMarker = null;
+	}
+
+	function openPicker(token: SentenceToken) {
+		activatePickerToken(token, token.segments?.[0]?.id ?? null);
 	}
 
 	function focusMeaningInput(tokenId: string | null) {
@@ -312,7 +391,9 @@
 
 	function closePicker(tokenId: string | null = openTokenId) {
 		openTokenId = null;
+		activeSegmentId = null;
 		groupActionError = null;
+		hoveredSplitMarker = null;
 		focusMeaningInput(tokenId);
 	}
 
@@ -352,10 +433,11 @@
 	}
 
 	function resetEditorToCreate(token: SentenceToken) {
-		drafts[token.id] = {
-			...drafts[token.id],
+		const draftKey = activeSegment?.id ?? token.id;
+		drafts[draftKey] = {
+			...drafts[draftKey],
 			selectedWordId: '',
-			createLemma: normalizeSearchQuery(token.surfaceForm),
+			createLemma: normalizeSearchQuery(activeSegment?.surfaceForm ?? token.surfaceForm),
 			createTranslations: '',
 			createNotes: '',
 			createAlternativeSpellings: ''
@@ -367,6 +449,7 @@
 			...token,
 			word: token.word ? { ...token.word } : token.word
 		}));
+		onTokensChange?.(localTokens);
 	}
 
 	function handleSearchInput(tokenId: string, value: string) {
@@ -497,25 +580,101 @@
 		}
 	}
 
-	async function splitActiveGroup() {
+	function defaultSplitMarkersFor(tokenId: string): number[] {
+		const token = localTokens.find((entry) => entry.id === tokenId);
+		const segments = token?.segments ?? [];
+		if (segments.length < 2) {
+			return [];
+		}
+
+		return segments.slice(0, -1).map((segment) => segment.segmentEnd);
+	}
+
+	function splitMarkersFor(tokenId: string): number[] {
+		return Object.prototype.hasOwnProperty.call(splitMarkers, tokenId)
+			? splitMarkers[tokenId]
+			: defaultSplitMarkersFor(tokenId);
+	}
+
+	function toggleSplitMarker(tokenId: string, boundary: number, surface: string): void {
+		if (boundary <= 0 || boundary >= surface.length) {
+			return;
+		}
+
+		const currentMarkers = splitMarkersFor(tokenId);
+		splitMarkers[tokenId] = currentMarkers.includes(boundary)
+			? currentMarkers.filter((value) => value !== boundary)
+			: [...currentMarkers, boundary].sort((a, b) => a - b);
+	}
+
+	function splitPreview(surface: string, tokenId: string): string {
+		const boundaries = [...splitMarkersFor(tokenId)];
+		if (
+			hoveredSplitMarker !== null &&
+			hoveredSplitMarker > 0 &&
+			hoveredSplitMarker < surface.length &&
+			!boundaries.includes(hoveredSplitMarker)
+		) {
+			boundaries.push(hoveredSplitMarker);
+		}
+
+		const points = boundaries.sort((a, b) => a - b);
+		let output = '';
+		for (let index = 0; index < surface.length; index += 1) {
+			output += surface[index];
+			if (points.includes(index + 1)) {
+				output += '|';
+			}
+		}
+
+		return output;
+	}
+
+	function nextSplitSegment(currentSegmentId: string | null): TokenSegment | null {
+		if (!openTokenId || !currentSegmentId) {
+			return null;
+		}
+
+		const currentToken = localTokens.find((token) => token.id === openTokenId);
+		return (
+			currentToken?.segments?.find(
+				(segment) => segment.id !== currentSegmentId && !segment.wordId
+			) ?? null
+		);
+	}
+
+	async function splitActiveGroup(splitPoints?: number[]) {
 		if (!activeGroup || !activeToken) {
 			return;
 		}
 
-		if (!window.confirm(`Split "${activeToken.surfaceForm}" into separate words?`)) {
+		if (!splitPoints && !window.confirm(`Split "${activeToken.surfaceForm}" into separate words?`)) {
 			return;
 		}
 
 		try {
+			const originalTokenId = activeToken.id;
+			const originalSurface = activeToken.surfaceForm;
+			const isLexicalSplit = Boolean(splitPoints);
 			const nextTokens = await requestGroupAction({
-				action: 'split',
-				tokenId: activeToken.id
+				action: isLexicalSplit ? 'segments' : 'split',
+				tokenId: originalTokenId,
+				...(splitPoints ? { splitPoints } : {})
 			});
-			closePicker();
+			const nextSplitMarkers = { ...splitMarkers };
+			delete nextSplitMarkers[originalTokenId];
+			splitMarkers = nextSplitMarkers;
+			hoveredSplitMarker = null;
 			editingSurfaceTokenId = null;
 			surfaceDraft = '';
-			if (nextTokens.length > 0) {
-				focusMeaningInput(nextTokens[0].id);
+			const updatedToken = nextTokens.find((token) => token.id === originalTokenId);
+			if (isLexicalSplit && updatedToken?.segments?.[0]) {
+				activatePickerToken(updatedToken, updatedToken.segments[0].id);
+			} else if (!isLexicalSplit) {
+				closePicker();
+				if (nextTokens.length > 0) {
+					focusMeaningInput(nextTokens[0].id);
+				}
 			}
 		} catch (splitError) {
 			groupActionError =
@@ -617,7 +776,13 @@
 						applyTokenUpdates(tokenUpdates);
 					}
 					createState[tokenId] = 'saved';
-					closePicker();
+					const nextSegment = nextSplitSegment(activeSegmentId);
+					const updatedActiveToken = localTokens.find((token) => token.id === tokenId);
+					if (nextSegment && updatedActiveToken) {
+						activatePickerToken(updatedActiveToken, nextSegment.id);
+					} else {
+						closePicker();
+					}
 					window.setTimeout(() => {
 						if (createState[tokenId] === 'saved') {
 							createState[tokenId] = 'idle';
@@ -640,7 +805,8 @@
 							surfaceForm: tokenUpdate.surfaceForm ?? token.surfaceForm,
 							wordId: tokenUpdate.wordId,
 							inContextTranslation: tokenUpdate.inContextTranslation ?? null,
-							word: tokenUpdate.word ?? null
+							word: tokenUpdate.word ?? null,
+							segments: tokenUpdate.segments ?? token.segments
 						}
 					: token
 			);
@@ -663,7 +829,25 @@
 						? serializeSpellings(tokenUpdate.word.spellings)
 						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? ''
 			};
+
+			for (const segment of tokenUpdate.segments ?? []) {
+				drafts[segment.id] = {
+					...drafts[segment.id],
+					inContextTranslation: '',
+					selectedWordId: segment.word?.id ?? '',
+					createLemma:
+						segment.word?.kalenjin ??
+						drafts[segment.id]?.createLemma ??
+						normalizeSearchQuery(segment.surfaceForm),
+					createTranslations: segment.word?.translations ?? drafts[segment.id]?.createTranslations ?? '',
+					createNotes: segment.word?.notes ?? drafts[segment.id]?.createNotes ?? '',
+					createAlternativeSpellings: segment.word?.spellings
+						? serializeSpellings(segment.word.spellings)
+						: drafts[segment.id]?.createAlternativeSpellings ?? ''
+				};
+			}
 		}
+		onTokensChange?.(localTokens);
 	}
 </script>
 
@@ -674,11 +858,17 @@
 		{#each groups as group (group.key)}
 			{@const primaryToken = group.tokens[0]}
 			{@const sharedWord = primaryToken.word}
+			{@const lexicalSegments = primaryToken.segments ?? []}
 			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
 			<div class="token-group">
 				<div class="token-card">
-					<div class:unlinked-lemma={!sharedWord} class="lemma-label">
-						{#if sharedWord}
+					<div class:unlinked-lemma={!sharedWord && lexicalSegments.length === 0} class="lemma-label">
+						{#if lexicalSegments.length > 0}
+							{#each lexicalSegments as segment, segmentIndex}
+								{#if segmentIndex > 0}<span class="segment-divider">+</span>{/if}
+								<span class:unlinked-segment={!segment.word}>{segment.word?.kalenjin ?? segment.surfaceForm}</span>
+							{/each}
+						{:else if sharedWord}
 							{sharedWord.kalenjin}
 						{:else}
 							<span class="unlinked-marker" aria-hidden="true"></span>
@@ -780,6 +970,24 @@
 					<button type="button" class="secondary-button" onclick={() => closePicker()}>Close</button>
 				</div>
 
+				{#if splitTabSegments.length > 1}
+					<div class="split-tabs" role="tablist" aria-label="Split word parts">
+						{#each splitTabSegments as tabSegment, tabIndex}
+							<button
+								type="button"
+								role="tab"
+								class="split-tab"
+								class:active={tabSegment.id === activeSegment?.id}
+								aria-selected={tabSegment.id === activeSegment?.id}
+								onclick={() => activatePickerToken(activeToken, tabSegment.id)}
+							>
+								<span>{tabSegment.surfaceForm}</span>
+								<small>{tabSegment.word?.kalenjin ?? `Part ${tabIndex + 1}`}</small>
+							</button>
+						{/each}
+					</div>
+				{/if}
+
 				{#if groupActionError}
 					<p class="status-text error-text">{groupActionError}</p>
 				{/if}
@@ -791,13 +999,17 @@
 						value={searchQuery}
 						placeholder="Search lemma"
 						oninput={(event) =>
-							handleSearchInput(activeToken.id, (event.currentTarget as HTMLInputElement).value)}
+							handleSearchInput(activeDraftKey, (event.currentTarget as HTMLInputElement).value)}
 					/>
 				</label>
 
 				<div class="results-list">
 					{#if searchError}
 						<p class="status-text error-text">{searchError}</p>
+					{:else if searchLoading}
+						<div class="loading-placeholder" aria-live="polite" aria-label="Searching">
+							<span class="loading-spinner" aria-hidden="true"></span>
+						</div>
 					{:else if !searchLoading && searchResults.length === 0}
 						<p class="status-text">No search results yet.</p>
 					{:else}
@@ -809,6 +1021,9 @@
 							>
 								<input type="hidden" name={entityIdField} value={entityId} />
 								<input type="hidden" name="tokenId" value={activeToken.id} />
+								{#if activeSegment}
+									<input type="hidden" name="segmentId" value={activeSegment.id} />
+								{/if}
 								<input type="hidden" name="wordId" value={result.id} />
 								<input
 									type="hidden"
@@ -818,7 +1033,7 @@
 								<button
 									type="submit"
 									class="result-button"
-									class:selected-result={activeToken.wordId === result.id}
+									class:selected-result={activeWordId === result.id}
 									title={`${result.kalenjin} — ${result.translations}`}
 								>
 									<span class="result-lemma">{result.kalenjin}</span>
@@ -831,19 +1046,22 @@
 
 				<div class="create-box">
 					<div class="editor-header">
-						<strong>{drafts[activeToken.id]?.selectedWordId ? 'Update lemma' : 'Create new lemma'}</strong>
+						<strong>{drafts[activeDraftKey]?.selectedWordId ? 'Update lemma' : 'Create new lemma'}</strong>
 						<div class="editor-actions">
-							{#if activeToken.wordId}
+							{#if activeWordId}
 								<form
 									method="POST"
 									action={updateAction}
 									use:enhance={enhanceUpdateForm(activeToken.id, {
-										closeOnSuccess: true,
+										closeOnSuccess: !activeSegment,
 										invalidateOnSuccess: true
 									})}
 								>
 									<input type="hidden" name={entityIdField} value={entityId} />
 									<input type="hidden" name="tokenId" value={activeToken.id} />
+									{#if activeSegment}
+										<input type="hidden" name="segmentId" value={activeSegment.id} />
+									{/if}
 									<input type="hidden" name="wordId" value="" />
 									<input
 										type="hidden"
@@ -854,7 +1072,7 @@
 								</form>
 							{/if}
 
-							{#if drafts[activeToken.id]?.selectedWordId}
+							{#if drafts[activeDraftKey]?.selectedWordId}
 								<button
 									type="button"
 									class="secondary-button"
@@ -864,13 +1082,61 @@
 								</button>
 							{/if}
 
-							{#if activeToken.surfaceForm.trim().includes(' ')}
+							{#if !activeSegment && activeToken.surfaceForm.trim().includes(' ')}
 								<button type="button" class="secondary-button" onclick={() => void splitActiveGroup()}>
-									Split words
+									Split spaces
 								</button>
 							{/if}
 						</div>
 					</div>
+
+					{#if (!activeSegment || isFirstSegmentActive) && activeToken.surfaceForm.length > 1}
+						<div class="split-box">
+							<div class="editor-header">
+								<strong>{activeToken.segments?.length ? 'Edit split' : 'Split written word'}</strong>
+								<button
+									type="button"
+									class="secondary-button"
+									disabled={splitMarkersFor(activeToken.id).length === 0}
+									onclick={() => void splitActiveGroup([...splitMarkersFor(activeToken.id)])}
+								>
+									Apply split
+								</button>
+							</div>
+							<div class="word-editor" aria-label={`Split ${activeToken.surfaceForm}`}>
+								{#each Array.from(activeToken.surfaceForm) as char, index}
+									<button
+										type="button"
+										class="letter-char"
+										onclick={() =>
+											index < activeToken.surfaceForm.length - 1
+												? toggleSplitMarker(activeToken.id, index + 1, activeToken.surfaceForm)
+												: null}
+										onmouseenter={() =>
+											(hoveredSplitMarker =
+												index < activeToken.surfaceForm.length - 1 ? index + 1 : null)}
+										onmouseleave={() => (hoveredSplitMarker = null)}
+										aria-label={`Split after ${char}`}
+									>
+										{char}
+									</button>
+									{#if index < activeToken.surfaceForm.length - 1}
+										<span
+											class="marker-inline"
+											class:active={splitMarkersFor(activeToken.id).includes(index + 1)}
+											class:hovered={hoveredSplitMarker === index + 1}
+										>
+											|
+										</span>
+									{/if}
+								{/each}
+							</div>
+							<small class="status-text split-preview">
+								{splitPreview(activeToken.surfaceForm, activeToken.id)}
+							</small>
+						</div>
+					{/if}
+
 					<form
 						method="POST"
 						action={createAction}
@@ -879,7 +1145,10 @@
 					>
 						<input type="hidden" name={entityIdField} value={entityId} />
 						<input type="hidden" name="tokenId" value={activeToken.id} />
-						<input type="hidden" name="wordId" value={drafts[activeToken.id]?.selectedWordId ?? ''} />
+						{#if activeSegment}
+							<input type="hidden" name="segmentId" value={activeSegment.id} />
+						{/if}
+						<input type="hidden" name="wordId" value={drafts[activeDraftKey]?.selectedWordId ?? ''} />
 						<input
 							type="hidden"
 							name="inContextTranslation"
@@ -892,9 +1161,9 @@
 								<input
 									name="kalenjin"
 									required
-									value={drafts[activeToken.id]?.createLemma ?? activeToken.surfaceForm}
+									value={drafts[activeDraftKey]?.createLemma ?? activeSurface}
 									oninput={(event) =>
-										updateDraft(activeToken.id, 'createLemma', (event.currentTarget as HTMLInputElement).value)}
+										updateDraft(activeDraftKey, 'createLemma', (event.currentTarget as HTMLInputElement).value)}
 								/>
 							</label>
 
@@ -903,10 +1172,10 @@
 								<input
 									name="alternativeSpellings"
 									placeholder="alt1, alt2"
-									value={drafts[activeToken.id]?.createAlternativeSpellings ?? ''}
+									value={drafts[activeDraftKey]?.createAlternativeSpellings ?? ''}
 									oninput={(event) =>
 										updateDraft(
-											activeToken.id,
+											activeDraftKey,
 											'createAlternativeSpellings',
 											(event.currentTarget as HTMLInputElement).value
 										)}
@@ -920,9 +1189,9 @@
 								name="translations"
 								required
 								placeholder="translations"
-								value={drafts[activeToken.id]?.createTranslations ?? ''}
+								value={drafts[activeDraftKey]?.createTranslations ?? ''}
 								oninput={(event) =>
-									updateDraft(activeToken.id, 'createTranslations', (event.currentTarget as HTMLInputElement).value)}
+									updateDraft(activeDraftKey, 'createTranslations', (event.currentTarget as HTMLInputElement).value)}
 							/>
 						</label>
 
@@ -931,16 +1200,16 @@
 							<input
 								name="notes"
 								placeholder="notes (optional)"
-								value={drafts[activeToken.id]?.createNotes ?? ''}
+								value={drafts[activeDraftKey]?.createNotes ?? ''}
 								oninput={(event) =>
-									updateDraft(activeToken.id, 'createNotes', (event.currentTarget as HTMLInputElement).value)}
+									updateDraft(activeDraftKey, 'createNotes', (event.currentTarget as HTMLInputElement).value)}
 							/>
 						</label>
 
 						<button type="submit" disabled={createState[activeToken.id] === 'saving'}>
 							{#if createState[activeToken.id] === 'saving'}
 								Saving...
-							{:else if drafts[activeToken.id]?.selectedWordId}
+							{:else if drafts[activeDraftKey]?.selectedWordId}
 								Update + link
 							{:else}
 								Create + link
@@ -1019,6 +1288,15 @@
 		border-top: 2px solid #c2410c;
 		display: inline-block;
 		width: 10px;
+	}
+
+	.segment-divider {
+		color: #999;
+		margin: 0 0.15rem;
+	}
+
+	.unlinked-segment {
+		color: #c2410c;
 	}
 
 	.token-button {
@@ -1111,10 +1389,44 @@
 		gap: 0.75rem;
 	}
 
-	.results-list {
+	.split-tabs {
+		border-bottom: 1px solid #eee;
 		display: flex;
 		gap: 0.35rem;
-		max-height: 240px;
+		overflow-x: auto;
+		padding-bottom: 0.5rem;
+	}
+
+	.split-tab {
+		align-items: start;
+		background: #fff;
+		border: 1px solid #e2e2e2;
+		display: grid;
+		gap: 0.1rem;
+		min-width: 78px;
+		padding: 0.35rem 0.45rem;
+		text-align: left;
+	}
+
+	.split-tab.active {
+		border-color: #2563eb;
+		box-shadow: 0 0 0 1px #2563eb;
+	}
+
+	.split-tab span {
+		font-weight: 700;
+	}
+
+	.split-tab small {
+		color: #666;
+		line-height: 1.15;
+	}
+
+	.results-list {
+		align-items: stretch;
+		display: flex;
+		gap: 0.35rem;
+		height: 76px;
 		overflow-x: auto;
 		overflow-y: hidden;
 	}
@@ -1122,6 +1434,34 @@
 	.results-list form {
 		flex: 0 0 auto;
 		margin: 0;
+	}
+
+	.results-list > .status-text {
+		align-self: center;
+	}
+
+	.loading-placeholder {
+		align-items: center;
+		display: flex;
+		height: 100%;
+		justify-content: center;
+		min-width: 42px;
+	}
+
+	.loading-spinner {
+		animation: spin 720ms linear infinite;
+		border: 2px solid #dbeafe;
+		border-top-color: #2563eb;
+		border-radius: 999px;
+		display: inline-block;
+		height: 18px;
+		width: 18px;
+	}
+
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.result-button {
@@ -1178,6 +1518,46 @@
 	.create-form {
 		display: grid;
 		gap: 0.5rem;
+	}
+
+	.split-box {
+		border-top: 1px solid #eee;
+		display: grid;
+		gap: 0.35rem;
+		padding-top: 0.5rem;
+	}
+
+	.word-editor {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+	}
+
+	.letter-char {
+		background: none;
+		border: none;
+		cursor: pointer;
+		font-size: 1rem;
+		font-weight: 600;
+		padding: 0;
+	}
+
+	.marker-inline {
+		color: #bbb;
+		font-weight: 700;
+		margin: 0 0.1rem;
+	}
+
+	.marker-inline.active {
+		color: #1a7f37;
+	}
+
+	.marker-inline.hovered {
+		color: #0a66c2;
+	}
+
+	.split-preview {
+		font-family: var(--font-display, inherit);
 	}
 
 	.lemma-row {

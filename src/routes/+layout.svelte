@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
+	import '../app.css';
 
 	let { children } = $props();
+
+	const navItems = [
+		{ href: '/', label: 'Home' },
+		{ href: '/dictionary', label: 'Dictionary' },
+		{ href: '/corpus', label: 'Corpus' },
+		{ href: '/cefr', label: 'CEFR' },
+		{ href: '/lessons', label: 'Lessons' }
+	];
 
 	function isActive(href: string): boolean {
 		if (href === '/') {
@@ -17,76 +26,27 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<header>
-	<nav>
-		<a href="/" class:active={isActive('/')} aria-current={isActive('/') ? 'page' : undefined}>Home</a>
-		<a
-			href="/dictionary"
-			class:active={isActive('/dictionary')}
-			aria-current={isActive('/dictionary') ? 'page' : undefined}
-		>
-			Dictionary
+<header class="topbar">
+	<div class="topbar-inner">
+		<a href="/" class="brand">
+			<span class="brand-dot"></span>
+			<span>Kalenj<span style="color: var(--accent)">.</span>in</span>
+			<span class="brand-sub">Dictionary, Corpus &amp; Course</span>
 		</a>
-		<a
-			href="/corpus"
-			class:active={isActive('/corpus')}
-			aria-current={isActive('/corpus') ? 'page' : undefined}
-		>
-			Corpus
-		</a>
-		<a
-			href="/cefr"
-			class:active={isActive('/cefr')}
-			aria-current={isActive('/cefr') ? 'page' : undefined}
-		>
-			CEFR
-		</a>
-		<a
-			href="/lessons"
-			class:active={isActive('/lessons')}
-			aria-current={isActive('/lessons') ? 'page' : undefined}
-		>
-			Lessons
-		</a>
-	</nav>
+		<nav class="topbar-nav" aria-label="Primary navigation">
+			{#each navItems as item}
+				<a
+					href={item.href}
+					class:active={isActive(item.href)}
+					aria-current={isActive(item.href) ? 'page' : undefined}
+				>
+					{item.label}
+				</a>
+			{/each}
+		</nav>
+	</div>
 </header>
 
-<main>
+<main class="shell">
 	{@render children()}
 </main>
-
-<style>
-	header {
-		border-bottom: 1px solid #ddd;
-		padding: 0.75rem 1rem;
-	}
-
-	nav {
-		display: flex;
-		gap: 1rem;
-		font-size: 0.95rem;
-	}
-
-	a {
-		border-bottom: 2px solid transparent;
-		color: #334155;
-		padding-bottom: 0.15rem;
-		text-decoration: none;
-	}
-
-	a:hover {
-		color: #0f172a;
-	}
-
-	a.active {
-		border-bottom-color: #2563eb;
-		color: #0f172a;
-		font-weight: 600;
-	}
-
-	main {
-		margin: 0 auto;
-		max-width: 960px;
-		padding: 1.5rem 1rem;
-	}
-</style>

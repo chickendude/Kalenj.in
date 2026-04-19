@@ -19,7 +19,7 @@
 		</label>
 
 		<label>
-			Translations *
+			Translations (English) *
 			<input
 				name="translations"
 				required
@@ -38,6 +38,11 @@
 		</label>
 
 		<label>
+			Notes
+			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
+		</label>
+
+		<label>
 			Part of speech
 			<select name="partOfSpeech" value={form?.values?.partOfSpeech ?? ''}>
 				<option value="">Select...</option>
@@ -47,10 +52,6 @@
 			</select>
 		</label>
 
-		<label>
-			Notes
-			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
-		</label>
 		<button type="submit">Create word</button>
 	</form>
 </section>

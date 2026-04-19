@@ -1,142 +1,175 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import type { PartOfSpeech } from '@prisma/client';
 
 	let { data, form } = $props();
+
+	const POS_LABELS: Record<PartOfSpeech, string> = {
+		NOUN: 'Noun',
+		VERB: 'Verb',
+		ADJECTIVE: 'Adjective',
+		ADVERB: 'Adverb',
+		PRONOUN: 'Pronoun',
+		PREPOSITION: 'Preposition',
+		CONJUNCTION: 'Conjunction',
+		INTERJECTION: 'Interjection',
+		PHRASE: 'Phrase',
+		OTHER: 'Other'
+	};
+
 	const values = $derived(form?.values ?? data.word);
 	const alternativeSpellingsValue = $derived.by(() =>
 		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
 	);
+	const translations = $derived(
+		data.word.translations
+			.split(',')
+			.map((translation: string) => translation.trim())
+			.filter(Boolean)
+	);
 </script>
 
+<svelte:head>
+	<title>{data.word.kalenjin} — Kalenj.in</title>
+</svelte:head>
+
 <section>
-	<h1>Dictionary entry</h1>
-	<p><a href="/dictionary">Back to dictionary</a></p>
+	<a href="/dictionary" class="back-link">
+		<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+			<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+		</svg>
+		Back to dictionary
+	</a>
 
-	{#if form?.error}
-		<p class="error">{form.error}</p>
-	{:else if form?.success}
-		<p class="success">Saved changes.</p>
-	{/if}
+	<div class="detail-shell">
+		<div>
+			<div class="entry-head">
+				<div class="entry-label">Kalenjin entry</div>
+				<div class="entry-title">
+					<h1>{data.word.kalenjin}</h1>
+				</div>
+				<div class="entry-meta">
+					{#if data.word.partOfSpeech}
+						<span class="pos-chip">{POS_LABELS[data.word.partOfSpeech]}</span>
+					{/if}
+				</div>
+			</div>
 
-	<form method="POST" action="?/update" class="editor-form">
-		<label>
-			Kalenjin *
-			<input name="kalenjin" required value={values.kalenjin ?? ''} />
-		</label>
-
-		<label>
-			Translations (English) *
-			<input
-				name="translations"
-				required
-				value={values.translations ?? ''}
-				placeholder="comma-separated translations"
-			/>
-		</label>
-
-		<label>
-			Alternative spellings
-			<textarea
-				name="alternativeSpellings"
-				rows="3"
-				placeholder="One spelling per line"
-			>{alternativeSpellingsValue}</textarea>
-		</label>
-
-		<label>
-			Notes
-			<textarea name="notes" rows="3">{values.notes ?? ''}</textarea>
-		</label>
-
-		<label>
-			Part of speech
-			<select name="partOfSpeech" value={values.partOfSpeech ?? ''}>
-				<option value="">Select...</option>
-				{#each PARTS_OF_SPEECH as pos}
-					<option value={pos}>{pos}</option>
+			<h2 class="section-title">Translations</h2>
+			<ol class="translations-list">
+				{#each translations as translation, index}
+					<li>
+						<span class="num">{index + 1}.</span>
+						{translation}
+					</li>
 				{/each}
-			</select>
-		</label>
+			</ol>
 
-		<button type="submit">Save changes</button>
-	</form>
+			{#if data.word.notes}
+				<h2 class="section-title">Notes</h2>
+				<p class="muted" style="font-size: 15px; margin: 0;">{data.word.notes}</p>
+			{/if}
 
-	<form method="POST" action="?/delete" class="delete-form">
-		<button type="submit">Delete word</button>
-	</form>
+			<h2 class="section-title">Examples from the corpus</h2>
+			{#if data.word.sentences.length === 0}
+				<p class="muted" style="font-size: 15px; margin: 0;">No corpus examples yet.</p>
+			{:else}
+				{#each data.word.sentences as link}
+					<div class="example">
+						<div class="kal">
+							<TokenHoverPreview
+								sentenceId={link.exampleSentence.id}
+								sentenceText={link.exampleSentence.kalenjin}
+								tokens={link.exampleSentence.tokens}
+							/>
+						</div>
+						<div class="en">{link.exampleSentence.english}</div>
+					</div>
+				{/each}
+			{/if}
+		</div>
 
-	<h2>Example sentences</h2>
-	{#if data.word.sentences.length === 0}
-		<p>No linked sentences yet.</p>
-	{:else}
-		<ul class="examples-list">
-			{#each data.word.sentences as link}
-				<li>
-					<TokenHoverPreview
-						sentenceId={link.exampleSentence.id}
-						sentenceText={link.exampleSentence.kalenjin}
-						tokens={link.exampleSentence.tokens}
-					/>
-					<small class="example-english">{link.exampleSentence.english}</small>
-				</li>
-			{/each}
-		</ul>
-	{/if}
+		<aside>
+			<div class="side-card">
+				<h3>At a glance</h3>
+				<table class="glance-table">
+					<tbody>
+						<tr>
+							<td>Part of speech</td>
+							<td>{data.word.partOfSpeech ? POS_LABELS[data.word.partOfSpeech] : '—'}</td>
+						</tr>
+						<tr>
+							<td>Translations</td>
+							<td>{translations.length}</td>
+						</tr>
+						<tr>
+							<td>Examples</td>
+							<td>{data.word.sentences.length}</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+
+			<div class="side-card">
+				<h3>Edit entry</h3>
+
+				{#if form?.error}
+					<div class="form-feedback error">{form.error}</div>
+				{:else if form?.success}
+					<div class="form-feedback success">Saved.</div>
+				{/if}
+
+				<form method="POST" action="?/update">
+					<div class="side-field">
+						<label for="kalenjin">Kalenjin</label>
+						<input id="kalenjin" name="kalenjin" class="side-input" required value={values.kalenjin ?? ''} />
+					</div>
+					<div class="side-field">
+						<label for="translations">Translations</label>
+						<input
+							id="translations"
+							name="translations"
+							class="side-input"
+							required
+							value={values.translations ?? ''}
+							placeholder="comma-separated"
+						/>
+					</div>
+					<div class="side-field">
+						<label for="alternativeSpellings">Alternative spellings</label>
+						<textarea
+							id="alternativeSpellings"
+							name="alternativeSpellings"
+							class="side-textarea"
+							placeholder="One spelling per line"
+						>{alternativeSpellingsValue}</textarea>
+					</div>
+					<div class="side-field">
+						<label for="partOfSpeech">Part of speech</label>
+						<select id="partOfSpeech" name="partOfSpeech" class="side-select">
+							<option value="">—</option>
+							{#each PARTS_OF_SPEECH as pos}
+								<option value={pos} selected={values.partOfSpeech === pos}>{POS_LABELS[pos]}</option>
+							{/each}
+						</select>
+					</div>
+					<div class="side-field">
+						<label for="notes">Notes</label>
+						<textarea id="notes" name="notes" class="side-textarea">{values.notes ?? ''}</textarea>
+					</div>
+					<div style="display: flex; gap: 8px; margin-top: 4px;">
+						<button type="submit" class="btn-sm">Save</button>
+					</div>
+				</form>
+			</div>
+
+			<div class="side-card">
+				<h3>Danger zone</h3>
+				<form method="POST" action="?/delete">
+					<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
+				</form>
+			</div>
+		</aside>
+	</div>
 </section>
-
-<style>
-	.error {
-		color: #8c1c13;
-		font-weight: 600;
-	}
-
-	.success {
-		color: #1a7f37;
-		font-weight: 600;
-	}
-
-	.editor-form {
-		display: grid;
-		gap: 0.75rem;
-		margin-bottom: 1rem;
-		max-width: 620px;
-	}
-
-	label {
-		display: grid;
-		gap: 0.25rem;
-	}
-
-	input,
-	textarea,
-	select,
-	button {
-		font: inherit;
-		padding: 0.45rem 0.5rem;
-	}
-
-	.delete-form {
-		margin: 0.5rem 0 1.5rem;
-	}
-
-	.examples-list {
-		margin: 0;
-		padding: 0;
-	}
-
-	.examples-list li {
-		list-style: none;
-		margin: 0 0 0.75rem;
-		padding: 0;
-	}
-
-	.examples-list li:last-child {
-		margin-bottom: 0;
-	}
-
-	.example-english {
-		display: block;
-		margin-top: 0.2rem;
-	}
-</style>

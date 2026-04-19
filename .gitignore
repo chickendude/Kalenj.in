@@ -6,6 +6,7 @@ node_modules
 .netlify
 .wrangler
 /.claude
+/docs
 /.svelte-kit
 /build
 /coverage

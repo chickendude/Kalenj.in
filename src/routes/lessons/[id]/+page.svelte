@@ -2,6 +2,7 @@
 	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
@@ -52,6 +53,11 @@
 	let dropTargetLessonWordId = $state<string | null>(null);
 	let reorderWordsForm = $state<HTMLFormElement | null>(null);
 	let reorderWordsError = $state<string | null>(null);
+
+	type PendingDelete =
+		| { kind: 'word'; form: HTMLFormElement; wordLabel: string }
+		| { kind: 'lesson'; form: HTMLFormElement };
+	let pendingDelete = $state<PendingDelete | null>(null);
 
 	let cefrLocalTargets = $state(new Map<string, string[]>());
 	let cefrDismissed = $state(new Map<string, Set<string>>());
@@ -670,6 +676,40 @@
 		};
 	}
 
+	function requestDeleteWord(event: SubmitEvent, wordLabel: string) {
+		if (pendingDelete?.kind === 'word' && pendingDelete.form === event.currentTarget) {
+			return;
+		}
+		event.preventDefault();
+		pendingDelete = {
+			kind: 'word',
+			form: event.currentTarget as HTMLFormElement,
+			wordLabel
+		};
+	}
+
+	function requestDeleteLesson(event: SubmitEvent) {
+		if (pendingDelete?.kind === 'lesson' && pendingDelete.form === event.currentTarget) {
+			return;
+		}
+		event.preventDefault();
+		pendingDelete = {
+			kind: 'lesson',
+			form: event.currentTarget as HTMLFormElement
+		};
+	}
+
+	function cancelPendingDelete() {
+		pendingDelete = null;
+	}
+
+	function confirmPendingDelete() {
+		if (!pendingDelete) return;
+		const form = pendingDelete.form;
+		pendingDelete = null;
+		form.submit();
+	}
+
 	function handleLessonWordDragStart(event: DragEvent, lessonWordId: string) {
 		draggedLessonWordId = lessonWordId;
 		dropTargetLessonWordId = null;
@@ -793,7 +833,17 @@
 				<p class="error-text">{vocabularyTypeError}</p>
 			{/if}
 		</div>
-		<a href="/lessons" class="back-link">← Back to lessons</a>
+		<div class="lesson-head-actions">
+			<a href="/lessons" class="back-link">← Back to lessons</a>
+			<form
+				method="POST"
+				action="?/deleteLesson"
+				class="lesson-delete-form"
+				onsubmit={requestDeleteLesson}
+			>
+				<button type="submit" class="btn-sm danger">Delete lesson</button>
+			</form>
+		</div>
 	</div>
 
 	{#if lessonType === 'VOCABULARY'}
@@ -1147,7 +1197,16 @@
 								</div>
 							</div>
 							<div class="row-action">
-								<form method="POST" action="?/deleteWord" class="inline-delete">
+								<form
+									method="POST"
+									action="?/deleteWord"
+									class="inline-delete"
+									onsubmit={(event) =>
+										requestDeleteWord(
+											event,
+											getWordLocal(lessonWord).kalenjin || lessonWord.kalenjin
+										)}
+								>
 									<input type="hidden" name="id" value={lessonWord.id} />
 									<button type="submit" class="btn ghost btn-sm">Delete</button>
 								</form>
@@ -1269,6 +1328,20 @@
 	{/if}
 </section>
 
+<ConfirmDialog
+	open={pendingDelete !== null}
+	title={pendingDelete?.kind === 'lesson' ? 'Delete lesson?' : 'Delete word?'}
+	message={pendingDelete?.kind === 'lesson'
+		? `"${lessonTitle}" will be removed along with its words and sentences. Dictionary entries stay.`
+		: pendingDelete?.kind === 'word'
+			? `Remove "${pendingDelete.wordLabel}" from this lesson?`
+			: ''}
+	confirmLabel={pendingDelete?.kind === 'lesson' ? 'Delete lesson' : 'Delete word'}
+	variant="danger"
+	onconfirm={confirmPendingDelete}
+	oncancel={cancelPendingDelete}
+/>
+
 <style>
 	.lesson-page {
 		display: grid;
@@ -1286,6 +1359,17 @@
 		display: grid;
 		gap: 0.2rem;
 		min-width: 0;
+	}
+
+	.lesson-head-actions {
+		align-items: flex-end;
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+
+	.lesson-delete-form {
+		margin: 0;
 	}
 
 	.kicker {
@@ -1839,6 +1923,7 @@
 		display: flex;
 		gap: 0.4rem;
 		justify-content: end;
+		padding-right: 0.5rem;
 	}
 
 	.cefr-row {
@@ -2026,6 +2111,18 @@
 
 	.inline-delete {
 		margin: 0;
+	}
+
+	.inline-delete button {
+		transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+	}
+
+	.inline-delete button:hover,
+	.inline-delete button:focus-visible {
+		background: oklch(0.96 0.02 25);
+		border-color: oklch(0.85 0.06 25);
+		color: oklch(0.45 0.15 25);
+		outline: none;
 	}
 
 	.inline-edit-button {

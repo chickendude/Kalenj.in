@@ -193,6 +193,16 @@
 							>
 								Account
 							</a>
+							{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
+								<a
+									href="/admin/word-of-day"
+									role="menuitem"
+									class:active={isActive('/admin/word-of-day')}
+									onclick={closeMenu}
+								>
+									Word of the day
+								</a>
+							{/if}
 							{#if data.user.role === 'ADMIN'}
 								<a
 									href="/admin/users"

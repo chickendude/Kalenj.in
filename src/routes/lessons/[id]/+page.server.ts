@@ -792,7 +792,7 @@ export const actions: Actions = {
 		const translations = readText(formData, 'translations');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
-		const sentenceSource = readOptionalText(formData, 'sentenceSource');
+		const sentenceNotes = readOptionalText(formData, 'sentenceNotes');
 		const sentenceTranslation = readOptionalText(formData, 'sentenceTranslation');
 		const wordForWordTranslation = readOptionalText(formData, 'wordForWordTranslation');
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
@@ -813,7 +813,7 @@ export const actions: Actions = {
 					data: {
 						kalenjin: sentenceKalenjin,
 						english: sentenceEnglish,
-						source: sentenceSource
+						notes: sentenceNotes
 					}
 				});
 

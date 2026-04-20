@@ -1259,7 +1259,7 @@
 
 	.token-card {
 		align-items: stretch;
-		background: #fff;
+		background: var(--paper);
 		border: 0;
 		display: grid;
 		gap: 0.15rem;
@@ -1271,7 +1271,7 @@
 
 	.lemma-label {
 		border-radius: 4px;
-		color: #555;
+		color: var(--ink-soft);
 		font-size: 0.75rem;
 		line-height: 1.1;
 		min-height: 0.9rem;
@@ -1280,29 +1280,29 @@
 	}
 
 	.unlinked-lemma {
-		background: #fff1f2;
+		background: var(--danger-soft);
 	}
 
 	.unlinked-marker {
 		align-self: center;
-		border-top: 2px solid #c2410c;
+		border-top: 2px solid var(--danger-strong);
 		display: inline-block;
 		width: 10px;
 	}
 
 	.segment-divider {
-		color: #999;
+		color: var(--ink-mute);
 		margin: 0 0.15rem;
 	}
 
 	.unlinked-segment {
-		color: #c2410c;
+		color: var(--danger-strong);
 	}
 
 	.token-button {
 		background: transparent;
 		border: 0;
-		border-bottom: 1px solid #f4c88a;
+		border-bottom: 1px solid var(--warning);
 		border-radius: 0;
 		font: inherit;
 		font-weight: 600;
@@ -1316,7 +1316,7 @@
 	}
 
 	.token-edit-input {
-		border: 1px solid #d0d7de;
+		border: 1px solid var(--line);
 		font: inherit;
 		font-weight: 600;
 		padding: 0.15rem 0.25rem;
@@ -1343,23 +1343,23 @@
 	}
 
 	.meaning-input--empty {
-		background: #e5e7eb;
+		background: var(--surface);
 		border-radius: 4px;
 	}
 
 	.meaning-input--saving {
-		background: #fef3c7;
+		background: var(--warning-soft);
 		border-radius: 4px;
 	}
 
 	.meaning-input--saved {
-		background: #dcfce7;
+		background: var(--success-soft);
 		border-radius: 4px;
 	}
 
 	.modal-backdrop {
 		align-items: center;
-		background: rgba(15, 23, 42, 0.3);
+		background: var(--scrim);
 		display: flex;
 		inset: 0;
 		justify-content: center;
@@ -1369,9 +1369,9 @@
 	}
 
 	.picker-modal {
-		background: white;
-		border: 1px solid #d0d7de;
-		box-shadow: 0 10px 30px rgba(15, 23, 42, 0.15);
+		background: var(--paper);
+		border: 1px solid var(--line);
+		box-shadow: var(--shadow-md);
 		display: grid;
 		gap: 0.75rem;
 		padding: 0.75rem;
@@ -1390,7 +1390,7 @@
 	}
 
 	.split-tabs {
-		border-bottom: 1px solid #eee;
+		border-bottom: 1px solid var(--line-soft);
 		display: flex;
 		gap: 0.35rem;
 		overflow-x: auto;
@@ -1399,8 +1399,8 @@
 
 	.split-tab {
 		align-items: start;
-		background: #fff;
-		border: 1px solid #e2e2e2;
+		background: var(--paper);
+		border: 1px solid var(--line);
 		display: grid;
 		gap: 0.1rem;
 		min-width: 78px;
@@ -1409,8 +1409,8 @@
 	}
 
 	.split-tab.active {
-		border-color: #2563eb;
-		box-shadow: 0 0 0 1px #2563eb;
+		border-color: var(--info);
+		box-shadow: 0 0 0 1px var(--info);
 	}
 
 	.split-tab span {
@@ -1418,7 +1418,7 @@
 	}
 
 	.split-tab small {
-		color: #666;
+		color: var(--ink-soft);
 		line-height: 1.15;
 	}
 
@@ -1450,8 +1450,8 @@
 
 	.loading-spinner {
 		animation: spin 720ms linear infinite;
-		border: 2px solid #dbeafe;
-		border-top-color: #2563eb;
+		border: 2px solid var(--info-soft);
+		border-top-color: var(--info);
 		border-radius: 999px;
 		display: inline-block;
 		height: 18px;
@@ -1466,8 +1466,8 @@
 
 	.result-button {
 		align-items: start;
-		background: #fff;
-		border: 1px solid #e2e2e2;
+		background: var(--paper);
+		border: 1px solid var(--line);
 		display: grid;
 		gap: 0.15rem;
 		grid-template-columns: 1fr;
@@ -1486,7 +1486,7 @@
 	}
 
 	.result-translations {
-		color: #666;
+		color: var(--ink-soft);
 		display: block;
 		line-height: 1.2;
 		overflow: hidden;
@@ -1495,12 +1495,12 @@
 	}
 
 	.selected-result {
-		border-color: #2563eb;
-		box-shadow: 0 0 0 1px #2563eb;
+		border-color: var(--info);
+		box-shadow: 0 0 0 1px var(--info);
 	}
 
 	.create-box {
-		border-top: 1px solid #eee;
+		border-top: 1px solid var(--line-soft);
 		display: grid;
 		gap: 0.35rem;
 		padding-top: 0.5rem;
@@ -1521,7 +1521,7 @@
 	}
 
 	.split-box {
-		border-top: 1px solid #eee;
+		border-top: 1px solid var(--line-soft);
 		display: grid;
 		gap: 0.35rem;
 		padding-top: 0.5rem;
@@ -1543,17 +1543,17 @@
 	}
 
 	.marker-inline {
-		color: #bbb;
+		color: var(--ink-mute);
 		font-weight: 700;
 		margin: 0 0.1rem;
 	}
 
 	.marker-inline.active {
-		color: #1a7f37;
+		color: var(--success);
 	}
 
 	.marker-inline.hovered {
-		color: #0a66c2;
+		color: var(--info);
 	}
 
 	.split-preview {
@@ -1567,7 +1567,7 @@
 	}
 
 	.status-text {
-		color: #555;
+		color: var(--ink-soft);
 		margin: 0;
 	}
 
@@ -1583,11 +1583,11 @@
 	}
 
 	.secondary-button {
-		background: #fff;
-		border: 1px solid #d0d0d0;
+		background: var(--paper);
+		border: 1px solid var(--border-strong);
 	}
 
 	.error-text {
-		color: #8c1c13;
+		color: var(--danger);
 	}
 </style>

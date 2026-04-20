@@ -59,7 +59,7 @@
 	}
 
 	.segment-block {
-		border-bottom: 1px dashed #ddd;
+		border-bottom: 1px dashed var(--line-soft);
 		margin-bottom: 0.6rem;
 		padding-bottom: 0.6rem;
 	}

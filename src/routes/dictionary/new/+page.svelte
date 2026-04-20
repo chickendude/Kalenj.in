@@ -58,7 +58,7 @@
 
 <style>
 	.error {
-		color: #8c1c13;
+		color: var(--danger);
 		font-weight: 600;
 	}
 

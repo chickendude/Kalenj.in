@@ -194,7 +194,7 @@
 	}
 
 	.pane-label {
-		color: #555;
+		color: var(--ink-soft);
 		font-size: 0.8rem;
 		font-weight: 600;
 		letter-spacing: 0.06em;
@@ -263,7 +263,7 @@
 	}
 
 	.error-text {
-		color: oklch(0.45 0.15 25);
+		color: var(--danger);
 		font-weight: 600;
 		margin: 0;
 	}
@@ -311,14 +311,14 @@
 	}
 
 	:global(.markdown-body blockquote) {
-		border-left: 3px solid #ccc;
-		color: #555;
+		border-left: 3px solid var(--border-strong);
+		color: var(--ink-soft);
 		margin: 0.5em 0;
 		padding: 0.1em 0.9em;
 	}
 
 	:global(.markdown-body code) {
-		background: rgba(0, 0, 0, 0.05);
+		background: var(--surface);
 		border-radius: 3px;
 		font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 		font-size: 0.9em;
@@ -326,7 +326,7 @@
 	}
 
 	:global(.markdown-body pre) {
-		background: #f5f5f5;
+		background: var(--surface);
 		border-radius: 4px;
 		overflow-x: auto;
 		padding: 0.75em 0.9em;
@@ -338,13 +338,13 @@
 	}
 
 	:global(.markdown-body a) {
-		color: #2563eb;
+		color: var(--info);
 		text-decoration: underline;
 	}
 
 	:global(.markdown-body hr) {
 		border: 0;
-		border-top: 1px solid #ddd;
+		border-top: 1px solid var(--line);
 		margin: 1em 0;
 	}
 

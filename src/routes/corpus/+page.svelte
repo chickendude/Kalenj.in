@@ -65,7 +65,7 @@
 
 <style>
 	.error {
-		color: #8c1c13;
+		color: var(--danger);
 		font-weight: 600;
 	}
 
@@ -97,7 +97,7 @@
 
 	.sentence-list li {
 		list-style: none;
-		border-bottom: 1px solid #e2e2e2;
+		border-bottom: 1px solid var(--line);
 		padding-bottom: 0.5rem;
 	}
 </style>

@@ -1087,19 +1087,18 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .mono { font-family: var(--font-mono); font-feature-settings: "ss01"; }
 
 /* ==================== HOME ==================== */
-.home { padding-top: 8px; }
+.home { padding-top: 0; margin-top: -20px; }
 
 .home-mast {
-  padding-bottom: 36px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 28px;
+  padding-bottom: 0;
+  margin-bottom: 0;
   position: relative;
 }
 .home-greeting {
   font-family: var(--font-display);
-  font-size: 84px;
+  font-size: 68px;
   line-height: 0.98;
-  letter-spacing: -0.032em;
+  letter-spacing: -0.028em;
   font-weight: 500;
   margin: 0 0 10px;
   color: var(--ink);
@@ -1112,7 +1111,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   font-style: italic;
   font-size: 22px;
   color: var(--ink-soft);
-  margin-bottom: 22px;
+  margin-bottom: 0;
 }
 .home-lede {
   font-family: var(--font-display);
@@ -1131,6 +1130,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   max-width: 520px;
+  margin-bottom: 32px;
 }
 .home-stat {
   padding: 18px 20px;
@@ -1167,7 +1167,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 /* ---- Home search ---- */
 .home-search {
   position: relative;
-  margin: 28px 0 56px;
+  margin: 20px 0 36px;
 }
 .home-search-field {
   display: flex;

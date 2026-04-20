@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { tokenizeSentence } from '$lib/server/tokenize';
+import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -37,7 +38,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	createSentence: async ({ request }) => {
+	createSentence: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const english = readText(formData, 'english');

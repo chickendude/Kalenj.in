@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { isVocabularyLessonType } from '$lib/course';
 import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 type Field = 'title' | 'vocabularyType' | 'grammarMarkdown';
 
@@ -16,7 +17,8 @@ function clean(value: unknown): string {
 	return String(value ?? '').trim();
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+	requireEditor(locals);
 	const payload = (await request.json()) as Payload;
 	const field = payload.field;
 	const value = clean(payload.value);

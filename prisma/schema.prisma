@@ -50,6 +50,33 @@ enum VocabularyLessonType {
   EXPRESSION
 }
 
+enum UserRole {
+  ADMIN
+  MANAGER
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  displayName  String?
+  passwordHash String
+  role         UserRole
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  sessions     Session[]
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
 model Word {
   id           String           @id @default(cuid())
   kalenjin     String

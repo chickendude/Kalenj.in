@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 type Payload = {
 	sentenceId?: string;
@@ -12,7 +13,8 @@ function clean(value: unknown): string {
 	return String(value ?? '').trim();
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+	requireEditor(locals);
 	const payload = (await request.json()) as Payload;
 	const sentenceId = clean(payload.sentenceId);
 	const field = payload.field;

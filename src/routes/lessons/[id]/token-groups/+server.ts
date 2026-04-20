@@ -14,6 +14,7 @@ import {
 } from '$lib/server/token-group-edit';
 import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 type SentenceKind = 'story' | 'example';
 type EditableToken = OrderedToken & {
@@ -417,7 +418,8 @@ async function applySegments(
 	});
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+	requireEditor(locals);
 	const payload = (await request.json()) as Payload;
 	const kind = payload.kind;
 	const action = payload.action;

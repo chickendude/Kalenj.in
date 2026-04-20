@@ -7,6 +7,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 100;
@@ -32,7 +33,8 @@ function buildBrowseUrl(level: string, query: string, sort: SortOption): string 
 	return `/cefr?${params.toString()}`;
 }
 
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	requireEditor(locals);
 	const selectedLevel =
 		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];
 	const query = (url.searchParams.get('q') ?? '').trim();
@@ -112,7 +114,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	create: async ({ request }) => {
+	create: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const level = parseCefrLevelValue(readText(formData, 'level'));
 		const returnQuery = readText(formData, 'returnQuery');
@@ -215,7 +218,8 @@ export const actions: Actions = {
 
 		redirect(303, buildBrowseUrl(level, returnQuery, returnSort));
 	},
-	update: async ({ request }) => {
+	update: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 		const english = readText(formData, 'english');
@@ -245,7 +249,8 @@ export const actions: Actions = {
 
 		redirect(303, buildBrowseUrl(level, returnQuery, returnSort));
 	},
-	delete: async ({ request }) => {
+	delete: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 		const level = parseCefrLevelValue(readText(formData, 'level'));

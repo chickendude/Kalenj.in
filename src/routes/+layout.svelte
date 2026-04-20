@@ -3,16 +3,23 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { theme, toggleTheme } from '$lib/stores/theme';
 	import '../app.css';
+	import type { Snippet } from 'svelte';
+	import type { LayoutData } from './$types';
 
-	let { children } = $props();
+	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 
-	const navItems = [
-		{ href: '/', label: 'Home' },
-		{ href: '/dictionary', label: 'Dictionary' },
-		{ href: '/corpus', label: 'Corpus' },
-		{ href: '/cefr', label: 'CEFR' },
-		{ href: '/lessons', label: 'Lessons' }
-	];
+	const navItems = $derived.by(() => {
+		const items = [
+			{ href: '/', label: 'Home' },
+			{ href: '/dictionary', label: 'Dictionary' },
+			{ href: '/corpus', label: 'Corpus' }
+		];
+		if (data.user) {
+			items.push({ href: '/cefr', label: 'CEFR' });
+			items.push({ href: '/lessons', label: 'Lessons' });
+		}
+		return items;
+	});
 
 	function isActive(href: string): boolean {
 		if (href === '/') {
@@ -21,11 +28,43 @@
 
 		return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
 	}
+
+	let menuOpen = $state(false);
+	let menuRoot: HTMLDivElement | undefined = $state();
+
+	function toggleMenu() {
+		menuOpen = !menuOpen;
+	}
+
+	function closeMenu() {
+		menuOpen = false;
+	}
+
+	$effect(() => {
+		if (!menuOpen) return;
+
+		function onPointerDown(event: PointerEvent) {
+			if (menuRoot && !menuRoot.contains(event.target as Node)) {
+				menuOpen = false;
+			}
+		}
+		function onKey(event: KeyboardEvent) {
+			if (event.key === 'Escape') menuOpen = false;
+		}
+
+		document.addEventListener('pointerdown', onPointerDown);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown);
+			document.removeEventListener('keydown', onKey);
+		};
+	});
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
+
 
 <header class="topbar">
 	<div class="topbar-inner">
@@ -91,6 +130,49 @@
 				</svg>
 			{/if}
 		</button>
+		<div class="topbar-user">
+			{#if data.user}
+				<div class="user-menu" bind:this={menuRoot}>
+					<button
+						type="button"
+						class="user-menu-trigger"
+						aria-haspopup="menu"
+						aria-expanded={menuOpen}
+						onclick={toggleMenu}
+					>
+						<span class="who">{data.user.username}</span>
+						<span class="caret" aria-hidden="true">▾</span>
+					</button>
+					{#if menuOpen}
+						<div class="user-menu-panel" role="menu">
+							<a
+								href="/account"
+								role="menuitem"
+								class:active={isActive('/account')}
+								onclick={closeMenu}
+							>
+								Account
+							</a>
+							{#if data.user.role === 'ADMIN'}
+								<a
+									href="/admin/users"
+									role="menuitem"
+									class:active={isActive('/admin/users')}
+									onclick={closeMenu}
+								>
+									Admin
+								</a>
+							{/if}
+							<form method="POST" action="/logout">
+								<button type="submit" role="menuitem" class="user-menu-item">Sign out</button>
+							</form>
+						</div>
+					{/if}
+				</div>
+			{:else if page.url.pathname !== '/login'}
+				<a href="/login">Sign in</a>
+			{/if}
+		</div>
 	</div>
 </header>
 

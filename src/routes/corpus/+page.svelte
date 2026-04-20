@@ -12,24 +12,26 @@
 		<p class="error">{form.error}</p>
 	{/if}
 
-	<form method="POST" action="?/createSentence" class="editor-form">
-		<label>
-			Kalenjin sentence *
-			<textarea name="kalenjin" rows="3" required>{form?.values?.kalenjin ?? ''}</textarea>
-		</label>
+	{#if data.user}
+		<form method="POST" action="?/createSentence" class="editor-form">
+			<label>
+				Kalenjin sentence *
+				<textarea name="kalenjin" rows="3" required>{form?.values?.kalenjin ?? ''}</textarea>
+			</label>
 
-		<label>
-			English translation *
-			<textarea name="english" rows="3" required>{form?.values?.english ?? ''}</textarea>
-		</label>
+			<label>
+				English translation *
+				<textarea name="english" rows="3" required>{form?.values?.english ?? ''}</textarea>
+			</label>
 
-		<label>
-			Source (optional)
-			<input name="source" value={form?.values?.source ?? ''} />
-		</label>
+			<label>
+				Source (optional)
+				<input name="source" value={form?.values?.source ?? ''} />
+			</label>
 
-		<button type="submit">Create sentence and tokens</button>
-	</form>
+			<button type="submit">Create sentence and tokens</button>
+		</form>
+	{/if}
 
 	<form method="GET" class="search-form">
 		<label>

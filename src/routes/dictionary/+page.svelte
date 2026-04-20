@@ -85,7 +85,9 @@
 
 	<div class="result-meta">
 		<div class="result-count">{data.words.length} of {data.totalCount} entries</div>
-		<a href="/dictionary/new" class="btn ghost">+ Add new word</a>
+		{#if data.user}
+			<a href="/dictionary/new" class="btn ghost">+ Add new word</a>
+		{/if}
 	</div>
 
 	{#if data.words.length === 0}

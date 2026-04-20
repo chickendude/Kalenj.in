@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 type CreateWordPayload = {
 	tokenId?: string;
@@ -27,7 +28,8 @@ function clean(value: unknown): string {
 	return String(value ?? '').trim();
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+	requireEditor(locals);
 	const payload = (await request.json()) as CreateWordPayload;
 
 	const tokenId = clean(payload.tokenId);

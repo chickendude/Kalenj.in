@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens } from '$lib/server/sentence-annotations';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 const ALLOWED_FIELDS = [
 	'kalenjin',
@@ -12,7 +13,8 @@ const ALLOWED_FIELDS = [
 ] as const;
 type InlineField = (typeof ALLOWED_FIELDS)[number];
 
-export const POST: RequestHandler = async ({ request, params }) => {
+export const POST: RequestHandler = async ({ request, params, locals }) => {
+	requireEditor(locals);
 	const body = (await request.json()) as { lessonWordId?: string; field?: string; value?: string };
 	const { lessonWordId, field, value } = body;
 

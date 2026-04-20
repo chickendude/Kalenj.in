@@ -3,6 +3,7 @@ import { prisma } from '$lib/server/prisma';
 import { temporaryTokenOrderUpdates } from '$lib/server/token-order';
 import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 type SplitPayload = {
 	tokenId?: string;
@@ -31,7 +32,8 @@ async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 	return token;
 }
 
-export const POST: RequestHandler = async ({ params, request }) => {
+export const POST: RequestHandler = async ({ params, request, locals }) => {
+	requireEditor(locals);
 	const payload = (await request.json()) as SplitPayload;
 	const tokenId = clean(payload.tokenId);
 	const splitPoints = Array.isArray(payload.splitPoints)

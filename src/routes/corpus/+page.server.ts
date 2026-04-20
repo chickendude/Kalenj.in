@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import { tokenizeSentence } from '$lib/server/tokenize';
 import { requireEditor } from '$lib/server/guards';
+import { backfillMissingStoryCorpusEntries } from '$lib/server/story-sync';
 import type { Actions, PageServerLoad } from './$types';
 
 type SearchLanguage = 'both' | 'kalenjin' | 'english';
@@ -19,6 +20,8 @@ function parseLanguage(value: string | null): SearchLanguage {
 }
 
 export const load: PageServerLoad = async ({ url }) => {
+	await backfillMissingStoryCorpusEntries();
+
 	const query = (url.searchParams.get('q') ?? '').trim();
 	const language = parseLanguage(url.searchParams.get('lang'));
 

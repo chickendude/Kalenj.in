@@ -13,6 +13,7 @@ import {
 	planUpdateTokenGroupSurface
 } from '$lib/server/token-group-edit';
 import { normalizeToken } from '$lib/server/tokenize';
+import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -475,6 +476,9 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const nextTokens = await loadTokensWithWords(kind, sentenceId);
 	await updateSentenceText(kind, sentenceId, buildSentenceText(nextTokens));
+	if (kind === 'story') {
+		await prisma.$transaction((tx) => syncStorySentenceToCorpus(tx, sentenceId));
+	}
 
 	return json({
 		tokens: nextTokens

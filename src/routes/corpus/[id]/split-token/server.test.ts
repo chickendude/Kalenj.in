@@ -43,6 +43,7 @@ function resetMocks() {
 async function post(sentenceId: string, payload: Record<string, unknown>) {
 	return POST({
 		params: { id: sentenceId },
+		locals: { user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' }, sessionToken: 't' },
 		request: new Request(`http://localhost/corpus/${sentenceId}/split-token`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },

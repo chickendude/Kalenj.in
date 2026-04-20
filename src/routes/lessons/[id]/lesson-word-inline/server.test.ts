@@ -49,6 +49,7 @@ function resetMocks() {
 async function post(payload: Record<string, unknown>, lessonId = 'lesson-1') {
 	return POST({
 		params: { id: lessonId },
+		locals: { user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' }, sessionToken: 't' },
 		request: new Request('http://localhost/lessons/lesson-1/lesson-word-inline', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },

@@ -42,6 +42,7 @@ async function reorderWords(orderedIds: unknown, lessonId = 'lesson-1') {
 
 	return actions.reorderWords?.({
 		params: { id: lessonId },
+		locals: { user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' }, sessionToken: 't' },
 		request: new Request('http://localhost/lessons/lesson-1', {
 			method: 'POST',
 			body: formData

@@ -4,18 +4,21 @@ import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
 }
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ locals }) => {
+	requireEditor(locals);
 	return {};
 };
 
 export const actions: Actions = {
-	default: async ({ request }) => {
+	default: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');

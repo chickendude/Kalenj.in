@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prisma } from '$lib/server/prisma';
+import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -157,7 +158,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-	updateCorpusSentenceToken: async ({ request, params }) => {
+	updateCorpusSentenceToken: async ({ request, params, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const sentenceId = readText(formData, 'sentenceId');
 		const tokenId = readText(formData, 'tokenId');
@@ -272,7 +274,8 @@ export const actions: Actions = {
 			]
 		};
 	},
-	createCorpusSentenceWord: async ({ request, params }) => {
+	createCorpusSentenceWord: async ({ request, params, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const sentenceId = readText(formData, 'sentenceId');
 		const tokenId = readText(formData, 'tokenId');

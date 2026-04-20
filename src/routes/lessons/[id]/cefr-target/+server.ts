@@ -1,8 +1,10 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
-export const POST: RequestHandler = async ({ request, params }) => {
+export const POST: RequestHandler = async ({ request, params, locals }) => {
+	requireEditor(locals);
 	const body = (await request.json()) as {
 		lessonWordId?: string;
 		targetId?: string;

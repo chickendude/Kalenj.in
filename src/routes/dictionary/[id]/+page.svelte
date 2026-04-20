@@ -111,65 +111,67 @@
 				</table>
 			</div>
 
-			<div class="side-card">
-				<h3>Edit entry</h3>
+			{#if data.user}
+				<div class="side-card">
+					<h3>Edit entry</h3>
 
-				{#if form?.error}
-					<div class="form-feedback error">{form.error}</div>
-				{:else if form?.success}
-					<div class="form-feedback success">Saved.</div>
-				{/if}
+					{#if form?.error}
+						<div class="form-feedback error">{form.error}</div>
+					{:else if form?.success}
+						<div class="form-feedback success">Saved.</div>
+					{/if}
 
-				<form method="POST" action="?/update">
-					<div class="side-field">
-						<label for="kalenjin">Kalenjin</label>
-						<input id="kalenjin" name="kalenjin" class="side-input" required value={values.kalenjin ?? ''} />
-					</div>
-					<div class="side-field">
-						<label for="translations">Translations</label>
-						<input
-							id="translations"
-							name="translations"
-							class="side-input"
-							required
-							value={values.translations ?? ''}
-							placeholder="comma-separated"
-						/>
-					</div>
-					<div class="side-field">
-						<label for="alternativeSpellings">Alternative spellings</label>
-						<textarea
-							id="alternativeSpellings"
-							name="alternativeSpellings"
-							class="side-textarea"
-							placeholder="One spelling per line"
-						>{alternativeSpellingsValue}</textarea>
-					</div>
-					<div class="side-field">
-						<label for="partOfSpeech">Part of speech</label>
-						<select id="partOfSpeech" name="partOfSpeech" class="side-select">
-							<option value="">—</option>
-							{#each PARTS_OF_SPEECH as pos}
-								<option value={pos} selected={values.partOfSpeech === pos}>{POS_LABELS[pos]}</option>
-							{/each}
-						</select>
-					</div>
-					<div class="side-field">
-						<label for="notes">Notes</label>
-						<textarea id="notes" name="notes" class="side-textarea">{values.notes ?? ''}</textarea>
-					</div>
-					<div style="display: flex; gap: 8px; margin-top: 4px;">
-						<button type="submit" class="btn-sm">Save</button>
-					</div>
-				</form>
-			</div>
+					<form method="POST" action="?/update">
+						<div class="side-field">
+							<label for="kalenjin">Kalenjin</label>
+							<input id="kalenjin" name="kalenjin" class="side-input" required value={values.kalenjin ?? ''} />
+						</div>
+						<div class="side-field">
+							<label for="translations">Translations</label>
+							<input
+								id="translations"
+								name="translations"
+								class="side-input"
+								required
+								value={values.translations ?? ''}
+								placeholder="comma-separated"
+							/>
+						</div>
+						<div class="side-field">
+							<label for="alternativeSpellings">Alternative spellings</label>
+							<textarea
+								id="alternativeSpellings"
+								name="alternativeSpellings"
+								class="side-textarea"
+								placeholder="One spelling per line"
+							>{alternativeSpellingsValue}</textarea>
+						</div>
+						<div class="side-field">
+							<label for="partOfSpeech">Part of speech</label>
+							<select id="partOfSpeech" name="partOfSpeech" class="side-select">
+								<option value="">—</option>
+								{#each PARTS_OF_SPEECH as pos}
+									<option value={pos} selected={values.partOfSpeech === pos}>{POS_LABELS[pos]}</option>
+								{/each}
+							</select>
+						</div>
+						<div class="side-field">
+							<label for="notes">Notes</label>
+							<textarea id="notes" name="notes" class="side-textarea">{values.notes ?? ''}</textarea>
+						</div>
+						<div style="display: flex; gap: 8px; margin-top: 4px;">
+							<button type="submit" class="btn-sm">Save</button>
+						</div>
+					</form>
+				</div>
 
-			<div class="side-card">
-				<h3>Danger zone</h3>
-				<form method="POST" action="?/delete">
-					<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
-				</form>
-			</div>
+				<div class="side-card">
+					<h3>Danger zone</h3>
+					<form method="POST" action="?/delete">
+						<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
+					</form>
+				</div>
+			{/if}
 		</aside>
 	</div>
 </section>

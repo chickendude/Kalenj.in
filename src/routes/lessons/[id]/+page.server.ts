@@ -12,6 +12,7 @@ import { prisma } from '$lib/server/prisma';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { requireEditor } from '$lib/server/guards';
 import { Prisma, type CefrLevel } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -552,7 +553,8 @@ async function getVocabWordCoverage(lesson: {
 	};
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, locals }) => {
+	requireEditor(locals);
 	await backfillMissingStoryTokens(params.id);
 
 	const [lesson, words, cefrTargets] = await Promise.all([
@@ -587,7 +589,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-	updateLesson: async ({ request, params }) => {
+	updateLesson: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const lessonOrder = readInteger(formData, 'lessonOrder');
@@ -655,7 +658,8 @@ export const actions: Actions = {
 
 		return { updateLessonSuccess: true };
 	},
-	deleteLesson: async ({ params }) => {
+	deleteLesson: async ({ params, locals }) => {
+		requireEditor(locals);
 		const lesson = await prisma.lesson.findUnique({
 			where: { id: params.id },
 			select: {
@@ -710,7 +714,8 @@ export const actions: Actions = {
 
 		redirect(303, '/lessons');
 	},
-	createSection: async ({ request, params }) => {
+	createSection: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const title = readOptionalText(formData, 'title');
 		const sectionOrder = readInteger(formData, 'sectionOrder');
@@ -737,7 +742,8 @@ export const actions: Actions = {
 
 		return { createSectionSuccess: true };
 	},
-	updateSection: async ({ request }) => {
+	updateSection: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 		const title = readOptionalText(formData, 'title');
@@ -763,7 +769,8 @@ export const actions: Actions = {
 
 		return { updateSectionSuccess: true };
 	},
-	deleteSection: async ({ request }) => {
+	deleteSection: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 
@@ -777,7 +784,8 @@ export const actions: Actions = {
 
 		return { deleteSectionSuccess: true };
 	},
-	createWord: async ({ request }) => {
+	createWord: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
 		const kalenjin = readText(formData, 'kalenjin');
@@ -838,7 +846,8 @@ export const actions: Actions = {
 			});
 		}
 	},
-	deleteWord: async ({ request }) => {
+	deleteWord: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 
@@ -852,7 +861,8 @@ export const actions: Actions = {
 
 		return { deleteWordSuccess: true };
 	},
-	reorderWords: async ({ request, params }) => {
+	reorderWords: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const orderedIdsRaw = readText(formData, 'orderedIds');
 		let orderedIds: string[] = [];
@@ -921,7 +931,8 @@ export const actions: Actions = {
 
 		return { reorderWordsSuccess: true };
 	},
-	updateStorySentence: async ({ request }) => {
+	updateStorySentence: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const id = readText(formData, 'id');
 		const speaker = readOptionalText(formData, 'speaker');
@@ -967,7 +978,8 @@ export const actions: Actions = {
 
 		return { updateStorySentenceSuccess: true };
 	},
-	updateStorySentenceToken: async ({ request, params }) => {
+	updateStorySentenceToken: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const storySentenceId = readText(formData, 'storySentenceId');
 		const tokenId = readText(formData, 'tokenId');
@@ -1060,7 +1072,8 @@ export const actions: Actions = {
 			]
 		};
 	},
-	createStorySentenceWord: async ({ request, params }) => {
+	createStorySentenceWord: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const storySentenceId = readText(formData, 'storySentenceId');
 		const tokenId = readText(formData, 'tokenId');
@@ -1157,7 +1170,8 @@ export const actions: Actions = {
 			});
 		}
 	},
-	updateExampleSentenceToken: async ({ request }) => {
+	updateExampleSentenceToken: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
 		const tokenId = readText(formData, 'tokenId');
@@ -1269,7 +1283,8 @@ export const actions: Actions = {
 			]
 		};
 	},
-	createExampleSentenceWord: async ({ request }) => {
+	createExampleSentenceWord: async ({ request, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
 		const tokenId = readText(formData, 'tokenId');
@@ -1371,7 +1386,8 @@ export const actions: Actions = {
 			});
 		}
 	},
-	quickAddWord: async ({ request, params }) => {
+	quickAddWord: async ({ request, params, locals}) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const wordId = readText(formData, 'wordId');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');

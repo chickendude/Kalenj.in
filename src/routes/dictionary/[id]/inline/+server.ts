@@ -1,11 +1,13 @@
 import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
 
-export const POST: RequestHandler = async ({ request, params }) => {
+export const POST: RequestHandler = async ({ request, params, locals }) => {
+	requireEditor(locals);
 	const body = (await request.json()) as { field?: string; value?: string };
 	const { field, value } = body;
 

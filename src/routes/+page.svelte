@@ -4,7 +4,5 @@
 
 	<ul>
 		<li><a href="/dictionary">Dictionary</a></li>
-		<li><a href="/cefr">CEFR targets</a></li>
-		<li><a href="/lessons">Lessons</a></li>
 	</ul>
 </section>

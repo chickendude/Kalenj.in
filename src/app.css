@@ -863,3 +863,211 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 @media (max-width: 900px) {
   .level-tabs { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ---------- Topbar user widget ---------- */
+.topbar-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 16px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+}
+.topbar-user .who {
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-family: var(--font-mono);
+}
+.topbar-user form { margin: 0; }
+.topbar-user .link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.topbar-user .link-btn:hover { color: var(--ink); text-decoration: underline; }
+
+.user-menu { position: relative; }
+.user-menu-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 1px solid transparent;
+  padding: 6px 10px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink-soft);
+}
+.user-menu-trigger:hover {
+  background: var(--surface);
+  color: var(--ink);
+}
+.user-menu-trigger[aria-expanded='true'] {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--line);
+}
+.user-menu-trigger .caret {
+  font-size: 10px;
+  color: var(--ink-mute);
+}
+.user-menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 160px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.08);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  z-index: 20;
+}
+.user-menu-panel a,
+.user-menu-panel .user-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  text-decoration: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  white-space: nowrap;
+}
+.user-menu-panel a:hover,
+.user-menu-panel .user-menu-item:hover {
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+.user-menu-panel a.active {
+  background: var(--accent-soft);
+  color: var(--brand-ink);
+}
+.user-menu-panel form { margin: 0; }
+
+/* ---------- Auth / form card ---------- */
+.auth-shell {
+  max-width: 420px;
+  margin: 80px auto;
+  padding: 0 24px;
+}
+.auth-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 36px 32px;
+}
+.auth-card h1 {
+  font-family: var(--font-display);
+  font-size: 32px;
+  letter-spacing: -0.02em;
+  margin: 0 0 6px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.auth-card .auth-sub {
+  margin: 0 0 24px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form .actions { margin-top: 8px; display: flex; gap: 10px; }
+.auth-form .actions .btn { flex: 1; }
+
+/* ---------- Form section card (admin/account) ---------- */
+.form-card {
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+.form-card h2 {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin: 0 0 16px;
+  font-weight: 500;
+}
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+  align-items: end;
+}
+.form-grid .actions {
+  display: flex;
+  gap: 10px;
+  align-items: end;
+}
+
+/* ---------- Users table ---------- */
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  font-size: 14px;
+}
+.users-table th, .users-table td {
+  text-align: left;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+.users-table th {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  font-weight: 600;
+  background: var(--surface);
+}
+.users-table tr:last-child td { border-bottom: 0; }
+.role-pill {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+}
+.role-pill.admin { background: var(--accent-soft); color: var(--brand-ink); }
+.role-pill.manager { background: var(--surface); color: var(--ink-soft); }
+.users-table .row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.inline-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+}
+.inline-form .input {
+  padding: 7px 10px;
+  font-size: 13px;
+  min-width: 0;
+  width: 180px;
+}

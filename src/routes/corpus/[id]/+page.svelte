@@ -88,25 +88,27 @@
 		<div class="form-feedback success">Created lemma and linked it.</div>
 	{/if}
 
-	<h2 class="section-title">Token mapping</h2>
-	<p class="hint">Click a word below to link a lemma, edit meaning, or split and combine words.</p>
+	{#if data.user}
+		<h2 class="section-title">Token mapping</h2>
+		<p class="hint">Click a word below to link a lemma, edit meaning, or split and combine words.</p>
 
-	<div class="sentence-annotation-panel">
-		<SentenceTokenAnnotations
-			entityId={data.sentence.id}
-			entityIdField="sentenceId"
-			entityKind="example"
-			sentenceId={data.sentence.id}
-			sentenceText={data.sentence.kalenjin}
-			tokens={displayedSentenceTokens}
-			dictionaryWords={data.words}
-			updateAction="?/updateCorpusSentenceToken"
-			createAction="?/createCorpusSentenceWord"
-			searchEndpoint={`/corpus/${data.sentence.id}/word-search`}
-			tokenGroupEndpoint={`/corpus/${data.sentence.id}/token-groups`}
-			onTokensChange={handleTokensChange}
-		/>
-	</div>
+		<div class="sentence-annotation-panel">
+			<SentenceTokenAnnotations
+				entityId={data.sentence.id}
+				entityIdField="sentenceId"
+				entityKind="example"
+				sentenceId={data.sentence.id}
+				sentenceText={data.sentence.kalenjin}
+				tokens={displayedSentenceTokens}
+				dictionaryWords={data.words}
+				updateAction="?/updateCorpusSentenceToken"
+				createAction="?/createCorpusSentenceWord"
+				searchEndpoint={`/corpus/${data.sentence.id}/word-search`}
+				tokenGroupEndpoint={`/corpus/${data.sentence.id}/token-groups`}
+				onTokensChange={handleTokensChange}
+			/>
+		</div>
+	{/if}
 </section>
 
 <style>

@@ -16,6 +16,7 @@ import {
 import { prisma } from '$lib/server/prisma';
 import { validateStoryImportText } from '$lib/story-import';
 import { syncStorySentences } from '$lib/server/story-sync';
+import { requireEditor } from '$lib/server/guards';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -168,7 +169,8 @@ async function getUninstructedWordsByLessonId(
 
 	return result;
 }
-export const load: PageServerLoad = async ({ url }) => {
+export const load: PageServerLoad = async ({ url, locals }) => {
+	requireEditor(locals);
 	const selectedLevel =
 		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];
 
@@ -207,7 +209,8 @@ export const load: PageServerLoad = async ({ url }) => {
 };
 
 export const actions: Actions = {
-	create: async ({ request }) => {
+	create: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const level = parseCefrLevelValue(readText(formData, 'level'));
@@ -299,7 +302,8 @@ export const actions: Actions = {
 
 		redirect(303, `/lessons/${lessonId}`);
 	},
-	createAdjacent: async ({ request }) => {
+	createAdjacent: async ({ request, locals }) => {
+		requireEditor(locals);
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const anchorLessonId = readText(formData, 'anchorLessonId');

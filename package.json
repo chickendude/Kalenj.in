@@ -15,6 +15,7 @@
 		"db:generate": "prisma generate",
 		"db:migrate": "prisma migrate dev",
 		"db:studio": "prisma studio",
+		"create-admin": "tsx scripts/create-admin.ts",
 		"check": "npm run lint",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
@@ -28,6 +29,7 @@
 		"prisma": "^7.4.0",
 		"svelte": "^5.49.2",
 		"svelte-check": "^4.3.6",
+		"tsx": "^4.21.0",
 		"typescript": "^5.9.3",
 		"vite": "^7.3.1",
 		"vitest": "^4.1.4"
@@ -35,6 +37,7 @@
 	"dependencies": {
 		"@prisma/adapter-pg": "^7.4.0",
 		"@prisma/client": "^7.4.0",
+		"argon2": "^0.44.0",
 		"pg": "^8.18.0"
 	}
 }

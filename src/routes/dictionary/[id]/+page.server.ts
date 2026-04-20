@@ -4,6 +4,7 @@ import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -42,7 +43,8 @@ export const load: PageServerLoad = async ({ params }) => {
 };
 
 export const actions: Actions = {
-	update: async ({ request, params }) => {
+	update: async ({ request, params, locals }) => {
+		requireEditor(locals);
 		const currentWord = await prisma.word.findUnique({ where: { id: params.id } });
 		if (!currentWord) {
 			error(404, 'Word not found');
@@ -93,7 +95,8 @@ export const actions: Actions = {
 
 		return { success: true };
 	},
-	delete: async ({ params }) => {
+	delete: async ({ params, locals }) => {
+		requireEditor(locals);
 		await prisma.word.delete({ where: { id: params.id } });
 		redirect(303, '/dictionary');
 	}

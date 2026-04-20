@@ -2,8 +2,10 @@ import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { normalizeKalenjinSearchQuery, searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import type { RequestHandler } from './$types';
+import { requireEditor } from '$lib/server/guards';
 
-export const GET: RequestHandler = async ({ url }) => {
+export const GET: RequestHandler = async ({ url, locals }) => {
+	requireEditor(locals);
 	const query = normalizeKalenjinSearchQuery(url.searchParams.get('q') ?? '');
 	const words = await searchWordsByKalenjin(prisma, query, query ? 12 : 8);
 

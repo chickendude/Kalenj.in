@@ -108,8 +108,10 @@
 					/>
 				</g>
 			</svg>
-			<span>Kalenj<span style="color: var(--accent)">.</span>in</span>
-			<span class="brand-sub">Dictionary &amp; Corpus</span>
+			<span class="brand-text">
+				<span class="brand-name">alenj<span style="color: var(--accent)">.</span>in</span>
+				<span class="brand-sub">Dictionary &amp; Corpus</span>
+			</span>
 		</a>
 		<nav class="topbar-nav" aria-label="Primary navigation">
 			{#each navItems as item}

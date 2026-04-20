@@ -3,6 +3,7 @@
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { firstTranslation } from '$lib/translations';
 	import type { WordSearchHit } from './search/+server';
 	import type { ActionData, PageData } from './$types';
 
@@ -90,10 +91,6 @@
 		searchResults = null;
 		searchQuery = '';
 		searchLoading = false;
-	}
-
-	function firstTranslation(text: string): string {
-		return text.split(';')[0]?.trim() ?? '';
 	}
 
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;

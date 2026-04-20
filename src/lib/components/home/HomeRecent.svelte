@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import { firstTranslation } from '$lib/translations';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type RecentWord = {
@@ -33,11 +34,6 @@
 		words,
 		sentences
 	}: { words: RecentWord[]; sentences: RecentSentence[] } = $props();
-
-	function firstTranslation(translations: string): string {
-		const first = translations.split(/[,;]+/)[0]?.trim();
-		return first ?? translations;
-	}
 </script>
 
 <section class="home-section recent">

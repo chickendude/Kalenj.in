@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import HomeWordOfDay from '$lib/components/home/HomeWordOfDay.svelte';
+	import { firstTranslation } from '$lib/translations';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -19,9 +20,6 @@
 		timeZone: 'UTC'
 	});
 
-	function firstTranslation(text: string): string {
-		return text.split(/[,;]+/)[0]?.trim() ?? '';
-	}
 </script>
 
 <svelte:head>

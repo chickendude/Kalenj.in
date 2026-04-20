@@ -1087,7 +1087,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .mono { font-family: var(--font-mono); font-feature-settings: "ss01"; }
 
 /* ==================== HOME ==================== */
-.home { padding-top: 0; margin-top: -20px; }
+.home { padding-top: 0; margin-top: -20px; margin-bottom: -72px; }
 
 .home-mast {
   padding-bottom: 0;
@@ -1489,7 +1489,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 
 /* ---- Footer ---- */
 .home-foot {
-  margin-top: 48px;
+  margin-top: 24px;
   padding-top: 20px;
   border-top: 1px dotted var(--line);
   text-align: center;

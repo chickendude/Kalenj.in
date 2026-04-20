@@ -20,8 +20,9 @@
 		OTHER: 'Other'
 	};
 
-	let searchQuery = $state(data.query);
-	let lastNavTarget = data.query;
+	const initialQuery = untrack(() => data.query);
+	let searchQuery = $state(initialQuery);
+	let lastNavTarget = initialQuery;
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	$effect(() => {

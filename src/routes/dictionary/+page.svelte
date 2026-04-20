@@ -89,7 +89,10 @@
 		<div>
 			<div class="page-kicker">Kalenjin → English</div>
 			<h1>Dictionary</h1>
-			<p>A growing reference of everyday Kalenjin words, phrases, and forms — built with and for the community.</p>
+			<p>
+				This is our project to document the vocabulary used by native Kalenjin speakers today,
+				with a focus on the Kipsigis dialect.
+			</p>
 		</div>
 		<div class="page-stat">
 			<b>{data.totalCount}</b>

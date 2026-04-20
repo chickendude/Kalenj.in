@@ -70,8 +70,8 @@
 			<div class="page-kicker">Sentence bank</div>
 			<h1>Corpus</h1>
 			<p>
-				Capture Kalenjin sentences, translate them, and link each token to its dictionary entry.
-				Every mapping strengthens the dictionary.
+				A collection of translated sentences in Kalenjin to see how vocabulary is used in
+				context.
 			</p>
 		</div>
 		<div class="page-stat">

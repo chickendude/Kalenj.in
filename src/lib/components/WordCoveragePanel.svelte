@@ -91,8 +91,6 @@
 							{:else if quickAddAction}
 								<form method="POST" action={quickAddAction} use:enhance={enhanceQuickAdd(entry.word.id)}>
 									<input type="hidden" name="wordId" value={entry.word.id} />
-									<input type="hidden" name="sentenceKalenjin" value={entry.sentences[0]?.kalenjin ?? ''} />
-									<input type="hidden" name="sentenceEnglish" value={entry.sentences[0]?.english ?? entry.word.translations} />
 									<button type="submit" class="add-button">+ Add to lesson</button>
 								</form>
 							{:else}

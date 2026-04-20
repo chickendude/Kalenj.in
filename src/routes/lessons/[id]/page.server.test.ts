@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => {
 			create: vi.fn()
 		},
 		lessonWord: {
+			findMany: vi.fn(),
+			create: vi.fn(),
 			update: vi.fn()
 		}
 	};
@@ -15,6 +17,9 @@ const mocks = vi.hoisted(() => {
 	const prisma = {
 		lessonWord: {
 			findMany: vi.fn()
+		},
+		word: {
+			findUnique: vi.fn()
 		},
 		$transaction: vi.fn()
 	};
@@ -25,7 +30,7 @@ const mocks = vi.hoisted(() => {
 vi.mock('$lib/server/prisma', () => ({ prisma: mocks.prisma }));
 
 function resetMocks() {
-	for (const model of [mocks.prisma.lessonWord, mocks.tx.lessonSection, mocks.tx.lessonWord]) {
+	for (const model of [mocks.prisma.lessonWord, mocks.prisma.word, mocks.tx.lessonSection, mocks.tx.lessonWord]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
 		}
@@ -34,6 +39,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.lessonSection.findFirst.mockResolvedValue({ id: 'section-1' });
+	mocks.tx.lessonWord.findMany.mockResolvedValue([]);
 }
 
 async function reorderWords(orderedIds: unknown, lessonId = 'lesson-1') {
@@ -41,6 +47,22 @@ async function reorderWords(orderedIds: unknown, lessonId = 'lesson-1') {
 	formData.set('orderedIds', typeof orderedIds === 'string' ? orderedIds : JSON.stringify(orderedIds));
 
 	return actions.reorderWords?.({
+		params: { id: lessonId },
+		locals: { user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' }, sessionToken: 't' },
+		request: new Request('http://localhost/lessons/lesson-1', {
+			method: 'POST',
+			body: formData
+		})
+	} as never);
+}
+
+async function quickAddWord(wordId = 'word-1', lessonId = 'lesson-1') {
+	const formData = new FormData();
+	formData.set('wordId', wordId);
+	formData.set('sentenceKalenjin', 'Ignored story sentence');
+	formData.set('sentenceEnglish', 'Ignored story translation');
+
+	return actions.quickAddWord?.({
 		params: { id: lessonId },
 		locals: { user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' }, sessionToken: 't' },
 		request: new Request('http://localhost/lessons/lesson-1', {
@@ -145,5 +167,27 @@ describe('reorderWords action', () => {
 		});
 
 		expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
+	});
+});
+
+describe('quickAddWord action', () => {
+	it('adds the word without creating or attaching an example sentence', async () => {
+		mocks.prisma.word.findUnique.mockResolvedValue({
+			id: 'word-1',
+			kalenjin: 'chamgei',
+			translations: 'hello'
+		});
+
+		await expect(quickAddWord()).resolves.toEqual({ quickAddWordSuccess: true });
+
+		expect(mocks.tx.lessonWord.create).toHaveBeenCalledWith({
+			data: {
+				lessonSectionId: 'section-1',
+				wordId: 'word-1',
+				kalenjin: 'chamgei',
+				translations: 'hello',
+				itemOrder: 1
+			}
+		});
 	});
 });

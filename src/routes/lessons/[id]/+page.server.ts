@@ -9,6 +9,10 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import {
+	findMatchingExampleSentence,
+	formatSentenceInUseError
+} from '$lib/server/example-sentence-dedupe';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
@@ -809,16 +813,23 @@ export const actions: Actions = {
 				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
 				const itemOrder = await getNextLessonWordOrder(tx, lessonId);
 
-				const sentence = await tx.exampleSentence.create({
-					data: {
-						kalenjin: sentenceKalenjin,
-						english: sentenceEnglish,
-						source: sentenceSource
+				const match = await findMatchingExampleSentence(tx, sentenceKalenjin, sentenceEnglish);
+				let sentenceId: string;
+				if (match) {
+					if (match.lessonWord) {
+						throw new Error(formatSentenceInUseError(match.lessonWord));
 					}
-				});
-
-				if (sentenceKalenjin) {
+					sentenceId = match.id;
+				} else {
+					const sentence = await tx.exampleSentence.create({
+						data: {
+							kalenjin: sentenceKalenjin,
+							english: sentenceEnglish,
+							source: sentenceSource
+						}
+					});
 					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+					sentenceId = sentence.id;
 				}
 
 				const createdLessonWord = await tx.lessonWord.create({
@@ -827,7 +838,7 @@ export const actions: Actions = {
 						kalenjin,
 						translations,
 						itemOrder,
-						sentenceId: sentence.id,
+						sentenceId,
 						sentenceTranslation,
 						wordForWordTranslation,
 						notesMarkdown
@@ -1414,10 +1425,22 @@ export const actions: Actions = {
 			await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
 				const itemOrder = await getNextLessonWordOrder(tx, params.id);
-				const sentence = await tx.exampleSentence.create({
-					data: { kalenjin: sentenceKalenjin, english: sentenceEnglish }
-				});
-				await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+
+				const match = await findMatchingExampleSentence(tx, sentenceKalenjin, sentenceEnglish);
+				let sentenceId: string;
+				if (match) {
+					if (match.lessonWord) {
+						throw new Error(formatSentenceInUseError(match.lessonWord));
+					}
+					sentenceId = match.id;
+				} else {
+					const sentence = await tx.exampleSentence.create({
+						data: { kalenjin: sentenceKalenjin, english: sentenceEnglish }
+					});
+					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
+					sentenceId = sentence.id;
+				}
+
 				await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
@@ -1425,7 +1448,7 @@ export const actions: Actions = {
 						kalenjin: word.kalenjin,
 						translations: word.translations,
 						itemOrder,
-						sentenceId: sentence.id
+						sentenceId
 					}
 				});
 			});

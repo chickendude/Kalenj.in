@@ -1,5 +1,6 @@
 import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
+import { findMatchingExampleSentence } from '$lib/server/example-sentence-dedupe';
 import { tokenizeSentence } from '$lib/server/tokenize';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
@@ -50,6 +51,11 @@ export const actions: Actions = {
 				error: 'Kalenjin sentence and English translation are required.',
 				values: { kalenjin, english, source }
 			});
+		}
+
+		const existing = await findMatchingExampleSentence(prisma, kalenjin, english);
+		if (existing) {
+			redirect(303, `/corpus/${existing.id}`);
 		}
 
 		const tokenData = tokenizeSentence(kalenjin);

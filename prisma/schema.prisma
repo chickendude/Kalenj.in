@@ -305,7 +305,7 @@ model LessonWord {
   kalenjin               String
   translations           String
   itemOrder              Int
-  sentenceId             String
+  sentenceId             String          @unique
   sentenceTranslation    String?
   wordForWordTranslation String?
   notesMarkdown          String?
@@ -320,5 +320,4 @@ model LessonWord {
   @@unique([lessonSectionId, wordId])
   @@index([lessonSectionId])
   @@index([wordId])
-  @@index([sentenceId])
 }

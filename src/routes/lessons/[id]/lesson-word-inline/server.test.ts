@@ -19,6 +19,7 @@ const mocks = vi.hoisted(() => {
 			update: vi.fn()
 		},
 		exampleSentence: {
+			findFirst: vi.fn(),
 			update: vi.fn()
 		},
 		$transaction: vi.fn()
@@ -44,6 +45,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([]);
+	mocks.prisma.exampleSentence.findFirst.mockResolvedValue(null);
 }
 
 async function post(payload: Record<string, unknown>, lessonId = 'lesson-1') {
@@ -70,7 +72,7 @@ beforeEach(() => {
 	resetMocks();
 	mocks.prisma.lessonWord.findUnique.mockResolvedValue({
 		sentenceId: 'sentence-1',
-		sentence: { kalenjin: 'Oh eh' },
+		sentence: { kalenjin: 'Oh eh', english: 'Hey you' },
 		lessonSection: { lessonId: 'lesson-1' }
 	});
 });

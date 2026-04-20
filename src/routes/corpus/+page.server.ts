@@ -1,39 +1,70 @@
 import { fail, redirect } from '@sveltejs/kit';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import { tokenizeSentence } from '$lib/server/tokenize';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
+type SearchLanguage = 'both' | 'kalenjin' | 'english';
+
 function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
 }
 
+function parseLanguage(value: string | null): SearchLanguage {
+	if (value === 'both' || value === 'kalenjin' || value === 'english') {
+		return value;
+	}
+	return 'kalenjin';
+}
+
 export const load: PageServerLoad = async ({ url }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
+	const language = parseLanguage(url.searchParams.get('lang'));
 
-	const sentences = await prisma.exampleSentence.findMany({
-		where: query
-			? {
-					OR: [
-						{ kalenjin: { contains: query, mode: 'insensitive' } },
-						{ english: { contains: query, mode: 'insensitive' } }
-					]
-				}
-			: undefined,
-		orderBy: { createdAt: 'desc' },
-		include: {
-			tokens: {
-				orderBy: { tokenOrder: 'asc' },
-				include: { word: true }
+	let where: Prisma.ExampleSentenceWhereInput | undefined;
+	if (query) {
+		if (language === 'kalenjin') {
+			where = { kalenjin: { contains: query, mode: 'insensitive' } };
+		} else if (language === 'english') {
+			where = { english: { contains: query, mode: 'insensitive' } };
+		} else {
+			where = {
+				OR: [
+					{ kalenjin: { contains: query, mode: 'insensitive' } },
+					{ english: { contains: query, mode: 'insensitive' } }
+				]
+			};
+		}
+	}
+
+	const [sentences, totalCount] = await Promise.all([
+		prisma.exampleSentence.findMany({
+			where,
+			orderBy: { createdAt: 'desc' },
+			include: {
+				tokens: {
+					orderBy: { tokenOrder: 'asc' },
+					include: {
+						word: true,
+						segments: {
+							orderBy: { segmentOrder: 'asc' },
+							include: { word: true }
+						}
+					}
+				},
+				_count: { select: { tokens: true } }
 			},
-			_count: { select: { tokens: true } }
-		},
-		take: 100
-	});
+			take: 100
+		}),
+		prisma.exampleSentence.count()
+	]);
 
 	return {
 		query,
-		sentences
+		language,
+		sentences,
+		totalCount
 	};
 };
 
@@ -43,12 +74,12 @@ export const actions: Actions = {
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const english = readText(formData, 'english');
-		const source = readText(formData, 'source');
+		const notes = readText(formData, 'notes');
 
 		if (!kalenjin || !english) {
 			return fail(400, {
 				error: 'Kalenjin sentence and English translation are required.',
-				values: { kalenjin, english, source }
+				values: { kalenjin, english, notes }
 			});
 		}
 
@@ -56,7 +87,7 @@ export const actions: Actions = {
 		if (tokenData.length === 0) {
 			return fail(400, {
 				error: 'Could not extract tokens from this sentence.',
-				values: { kalenjin, english, source }
+				values: { kalenjin, english, notes }
 			});
 		}
 
@@ -64,7 +95,7 @@ export const actions: Actions = {
 			data: {
 				kalenjin,
 				english,
-				source: source || null,
+				notes: notes || null,
 				tokens: {
 					createMany: {
 						data: tokenData

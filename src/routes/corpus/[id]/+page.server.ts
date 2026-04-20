@@ -1,4 +1,4 @@
-import { error, fail } from '@sveltejs/kit';
+import { error, fail, redirect } from '@sveltejs/kit';
 import { Prisma } from '@prisma/client';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
@@ -379,5 +379,31 @@ export const actions: Actions = {
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
 			});
 		}
+	},
+	deleteSentence: async ({ params, locals }) => {
+		requireEditor(locals);
+
+		const existing = await prisma.exampleSentence.findUnique({
+			where: { id: params.id },
+			select: {
+				id: true,
+				_count: { select: { lessonWords: true } }
+			}
+		});
+
+		if (!existing) {
+			error(404, 'Sentence not found');
+		}
+
+		if (existing._count.lessonWords > 0) {
+			return fail(409, {
+				error:
+					'This sentence is used in a lesson. Remove it from the lesson before deleting.'
+			});
+		}
+
+		await prisma.exampleSentence.delete({ where: { id: params.id } });
+
+		redirect(303, '/corpus');
 	}
 };

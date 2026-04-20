@@ -1,10 +1,15 @@
 <script lang="ts">
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
 	let { data, form } = $props();
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
+
+	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
+
+	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
 
 	let sentenceTokens = $state<SentenceToken[]>([]);
 	const displayedSentenceTokens = $derived(
@@ -51,6 +56,25 @@
 	function handleTokensChange(tokens: unknown[]): void {
 		sentenceTokens = (tokens as SentenceToken[]).map(cloneSentenceToken);
 	}
+
+	function requestDeleteSentence(event: SubmitEvent) {
+		if (pendingDeleteForm === event.currentTarget) {
+			return;
+		}
+		event.preventDefault();
+		pendingDeleteForm = event.currentTarget as HTMLFormElement;
+	}
+
+	function cancelPendingDelete() {
+		pendingDeleteForm = null;
+	}
+
+	function confirmPendingDelete() {
+		if (!pendingDeleteForm) return;
+		const form = pendingDeleteForm;
+		pendingDeleteForm = null;
+		form.submit();
+	}
 </script>
 
 <svelte:head>
@@ -58,12 +82,24 @@
 </svelte:head>
 
 <section>
-	<a href="/corpus" class="back-link">
-		<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-			<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-		</svg>
-		Back to corpus
-	</a>
+	<div class="entry-head-row">
+		<a href="/corpus" class="back-link">
+			<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+				<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+			Back to corpus
+		</a>
+		{#if canEdit}
+			<form
+				method="POST"
+				action="?/deleteSentence"
+				class="sentence-delete-form"
+				onsubmit={requestDeleteSentence}
+			>
+				<button type="submit" class="btn-sm danger">Delete sentence</button>
+			</form>
+		{/if}
+	</div>
 
 	<div class="entry-head">
 		<div class="entry-label">Corpus sentence</div>
@@ -75,8 +111,8 @@
 			/>
 		</div>
 		<div class="sentence-english">{data.sentence.english}</div>
-		{#if data.sentence.source}
-			<div class="sentence-source">{data.sentence.source}</div>
+		{#if data.sentence.notes}
+			<div class="sentence-notes">{data.sentence.notes}</div>
 		{/if}
 	</div>
 
@@ -111,7 +147,29 @@
 	{/if}
 </section>
 
+<ConfirmDialog
+	open={pendingDeleteForm !== null}
+	title="Delete sentence?"
+	message="This sentence, its token mappings, and its lemma links will be removed. Dictionary entries stay."
+	confirmLabel="Delete sentence"
+	variant="danger"
+	onconfirm={confirmPendingDelete}
+	oncancel={cancelPendingDelete}
+/>
+
 <style>
+	.entry-head-row {
+		align-items: center;
+		display: flex;
+		gap: 12px;
+		justify-content: space-between;
+		margin-bottom: 8px;
+	}
+
+	.sentence-delete-form {
+		margin: 0;
+	}
+
 	.sentence-display {
 		font-family: var(--font-display);
 		font-size: 28px;
@@ -125,7 +183,7 @@
 		margin-bottom: 4px;
 	}
 
-	.sentence-source {
+	.sentence-notes {
 		color: var(--ink-mute);
 		font-size: 13px;
 		font-style: italic;

@@ -1,4 +1,7 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import type { PartOfSpeech } from '@prisma/client';
 
@@ -16,6 +19,64 @@
 		PHRASE: 'Phrase',
 		OTHER: 'Other'
 	};
+
+	let searchQuery = $state(data.query);
+	let lastNavTarget = data.query;
+	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+	$effect(() => {
+		const nextQuery = data.query;
+		untrack(() => {
+			if (nextQuery !== lastNavTarget.trim()) {
+				searchQuery = nextQuery;
+				lastNavTarget = nextQuery;
+			}
+		});
+	});
+
+	function navigateTo(nextQuery: string, nextLanguage: string, nextPos: string) {
+		if (debounceTimer) {
+			clearTimeout(debounceTimer);
+			debounceTimer = null;
+		}
+		lastNavTarget = nextQuery;
+		const params = new URLSearchParams(page.url.searchParams);
+		if (nextQuery) {
+			params.set('q', nextQuery);
+		} else {
+			params.delete('q');
+		}
+		params.set('lang', nextLanguage);
+		if (nextPos) {
+			params.set('pos', nextPos);
+		} else {
+			params.delete('pos');
+		}
+		const search = params.toString();
+		goto(`/dictionary${search ? `?${search}` : ''}`, {
+			keepFocus: true,
+			noScroll: true,
+			replaceState: true
+		});
+	}
+
+	function handleSearchInput(event: Event) {
+		const value = (event.currentTarget as HTMLInputElement).value;
+		searchQuery = value;
+		if (debounceTimer) clearTimeout(debounceTimer);
+		debounceTimer = setTimeout(() => {
+			navigateTo(value, data.language, data.pos);
+		}, 180);
+	}
+
+	function selectLanguage(nextLanguage: 'kalenjin' | 'translations' | 'both') {
+		navigateTo(searchQuery, nextLanguage, data.pos);
+	}
+
+	function handlePosChange(event: Event) {
+		const value = (event.currentTarget as HTMLSelectElement).value;
+		navigateTo(searchQuery, data.language, value);
+	}
 </script>
 
 <svelte:head>
@@ -35,15 +96,16 @@
 		</div>
 	</div>
 
-	<form method="GET" class="controls">
+	<div class="controls">
 		<div class="field" style="flex: 1">
 			<label for="q">Search</label>
 			<input
 				id="q"
-				name="q"
+				type="search"
 				class="input"
 				placeholder={data.language === 'translations' ? 'Search translations...' : 'Search Kalenjin...'}
-				value={data.query}
+				value={searchQuery}
+				oninput={handleSearchInput}
 			/>
 		</div>
 
@@ -52,36 +114,33 @@
 			<div class="toggle-lang">
 				<button
 					id="language-kalenjin"
-					type="submit"
-					name="lang"
-					value="kalenjin"
+					type="button"
 					class:active={data.language === 'kalenjin'}
+					onclick={() => selectLanguage('kalenjin')}
 				>Kalenjin</button>
 				<button
-					type="submit"
-					name="lang"
-					value="translations"
+					type="button"
 					class:active={data.language === 'translations'}
+					onclick={() => selectLanguage('translations')}
 				>Translations</button>
 				<button
-					type="submit"
-					name="lang"
-					value="both"
+					type="button"
 					class:active={data.language === 'both'}
+					onclick={() => selectLanguage('both')}
 				>Both</button>
 			</div>
 		</div>
 
 		<div class="field">
 			<label for="pos">Part of speech</label>
-			<select id="pos" name="pos" class="select" onchange={(e) => (e.currentTarget as HTMLSelectElement).form?.requestSubmit()}>
+			<select id="pos" class="select" onchange={handlePosChange}>
 				<option value="" selected={!data.pos}>All</option>
 				{#each PARTS_OF_SPEECH as p}
 					<option value={p} selected={data.pos === p}>{POS_LABELS[p]}</option>
 				{/each}
 			</select>
 		</div>
-	</form>
+	</div>
 
 	<div class="result-meta">
 		<div class="result-count">{data.words.length} of {data.totalCount} entries</div>

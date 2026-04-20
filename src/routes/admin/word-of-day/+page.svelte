@@ -23,6 +23,11 @@
 	let toast = $state<string | null>(null);
 	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
+	type PendingAssign = { kalenjin: string; lastShownOn: string; formEl: HTMLFormElement };
+	let pendingAssign = $state<PendingAssign | null>(null);
+	let bypassConfirm = false;
+	let confirmButton: HTMLButtonElement | undefined = $state();
+
 	function dateKey(d: Date): string {
 		return d.toISOString().slice(0, 10);
 	}
@@ -130,9 +135,12 @@
 		if (editingDayKey === null) return;
 
 		function onKey(event: KeyboardEvent) {
-			if (event.key === 'Escape') closeEditor();
+			if (event.key !== 'Escape') return;
+			if (pendingAssign) return;
+			closeEditor();
 		}
 		function onPointerDown(event: PointerEvent) {
+			if (pendingAssign) return;
 			if (editorRoot && !editorRoot.contains(event.target as Node)) {
 				closeEditor();
 			}
@@ -145,6 +153,31 @@
 			document.removeEventListener('pointerdown', onPointerDown);
 		};
 	});
+
+	$effect(() => {
+		if (!pendingAssign) return;
+
+		function onKey(event: KeyboardEvent) {
+			if (event.key === 'Escape') cancelConfirm();
+		}
+		document.addEventListener('keydown', onKey);
+		queueMicrotask(() => confirmButton?.focus());
+		return () => {
+			document.removeEventListener('keydown', onKey);
+		};
+	});
+
+	function cancelConfirm() {
+		pendingAssign = null;
+	}
+
+	function confirmAssign() {
+		if (!pendingAssign) return;
+		const formEl = pendingAssign.formEl;
+		pendingAssign = null;
+		bypassConfirm = true;
+		formEl.requestSubmit();
+	}
 
 	$effect(() => {
 		if (editingDayKey !== null) {
@@ -301,16 +334,17 @@
 														<form
 															method="POST"
 															action="?/assign"
-															use:enhance={({ cancel }) => {
-																if (hit.lastShownOn) {
-																	const ok = window.confirm(
-																		`“${hit.kalenjin}” was already the Word of the Day on ${hit.lastShownOn}. Use it again?`
-																	);
-																	if (!ok) {
-																		cancel();
-																		return;
-																	}
+															use:enhance={({ cancel, formElement }) => {
+																if (hit.lastShownOn && !bypassConfirm) {
+																	cancel();
+																	pendingAssign = {
+																		kalenjin: hit.kalenjin,
+																		lastShownOn: hit.lastShownOn,
+																		formEl: formElement
+																	};
+																	return;
 																}
+																bypassConfirm = false;
 																return async ({ result }) => {
 																	if (result.type === 'success') {
 																		const payload = result.data?.assignSuccess as
@@ -355,6 +389,32 @@
 		{/each}
 	</tbody>
 </table>
+
+{#if pendingAssign}
+	<div
+		class="wod-confirm-backdrop"
+		role="dialog"
+		aria-modal="true"
+		aria-labelledby="wod-confirm-title"
+		onclick={(e) => {
+			if (e.target === e.currentTarget) cancelConfirm();
+		}}
+	>
+		<div class="wod-confirm-dialog">
+			<h2 id="wod-confirm-title">Word already used</h2>
+			<p>
+				<strong>{pendingAssign.kalenjin}</strong> was the Word of the Day on
+				<span class="mono">{pendingAssign.lastShownOn}</span>. Use it again?
+			</p>
+			<div class="wod-confirm-actions">
+				<button type="button" class="btn ghost" onclick={cancelConfirm}>Cancel</button>
+				<button type="button" class="btn" bind:this={confirmButton} onclick={confirmAssign}>
+					Use again
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 {#if toast}
 	<div class="wod-toast" role="status" aria-live="polite">

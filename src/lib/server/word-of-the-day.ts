@@ -179,19 +179,22 @@ export async function getLastUsedMap(
 		select: { wordId: true, date: true },
 		orderBy: { date: 'desc' }
 	});
-	const out = new Map<string, { date: Date; isFuture: boolean; lastShownDate: Date | null }>();
+
+	const grouped = new Map<string, Date[]>();
 	for (const row of rows) {
-		const isFuture = row.date.getTime() > today.getTime();
-		const isShown = !isFuture;
-		const existing = out.get(row.wordId);
-		if (!existing) {
-			out.set(row.wordId, {
-				date: row.date,
-				isFuture,
-				lastShownDate: isShown ? row.date : null
-			});
-		} else if (!existing.lastShownDate && isShown) {
-			existing.lastShownDate = row.date;
+		const list = grouped.get(row.wordId);
+		if (list) list.push(row.date);
+		else grouped.set(row.wordId, [row.date]);
+	}
+
+	const out = new Map<string, { date: Date; isFuture: boolean; lastShownDate: Date | null }>();
+	for (const [wordId, dates] of grouped) {
+		const lastShownDate = dates.find((d) => d.getTime() <= today.getTime()) ?? null;
+		const earliestFuture = [...dates].reverse().find((d) => d.getTime() > today.getTime()) ?? null;
+		if (lastShownDate) {
+			out.set(wordId, { date: lastShownDate, isFuture: false, lastShownDate });
+		} else if (earliestFuture) {
+			out.set(wordId, { date: earliestFuture, isFuture: true, lastShownDate: null });
 		}
 	}
 	return out;

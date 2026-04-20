@@ -18,19 +18,20 @@
 			Chamgei<span class="g-dot">,</span> chorwenyun<span class="g-bang">!</span>
 		</h1>
 		<div class="home-greeting-en">Hello, my friend.</div>
-		<div class="home-stats">
-			<a class="home-stat" href="/dictionary">
-				<b>{data.wordCount.toLocaleString()}</b>
-				<span>headword{data.wordCount === 1 ? '' : 's'}</span>
-			</a>
-			<a class="home-stat" href="/corpus">
-				<b>{data.sentenceCount.toLocaleString()}</b>
-				<span>sentence{data.sentenceCount === 1 ? '' : 's'}</span>
-			</a>
-		</div>
 	</section>
 
 	<HomeSearch totalCount={data.wordCount} />
+
+	<div class="home-stats">
+		<a class="home-stat" href="/dictionary">
+			<b>{data.wordCount.toLocaleString()}</b>
+			<span>headword{data.wordCount === 1 ? '' : 's'}</span>
+		</a>
+		<a class="home-stat" href="/corpus">
+			<b>{data.sentenceCount.toLocaleString()}</b>
+			<span>sentence{data.sentenceCount === 1 ? '' : 's'}</span>
+		</a>
+	</div>
 
 	{#if data.wordOfDay}
 		<HomeWordOfDay word={data.wordOfDay} />

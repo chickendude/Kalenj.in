@@ -125,7 +125,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   font-family: var(--font-display);
   font-weight: 500;
@@ -135,13 +135,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   text-decoration: none;
 }
 .brand:hover { text-decoration: none; }
-.brand-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--brand);
-  display: inline-block;
-  transform: translateY(-1px);
+.brand-logo {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: 6px;
 }
 .brand-sub {
   font-family: var(--font-body);

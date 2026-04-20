@@ -69,7 +69,45 @@
 <header class="topbar">
 	<div class="topbar-inner">
 		<a href="/" class="brand">
-			<span class="brand-dot"></span>
+			<svg
+				class="brand-logo"
+				width="28"
+				height="28"
+				viewBox="0 0 64 64"
+				xmlns="http://www.w3.org/2000/svg"
+				aria-hidden="true"
+			>
+				<defs>
+					<clipPath id="brand-clip"><rect width="64" height="64" rx="10" /></clipPath>
+					<linearGradient id="brand-sky" x1="0" y1="0" x2="0" y2="1">
+						<stop offset="0" stop-color="#6b8a7a" />
+						<stop offset="1" stop-color="#365e4a" />
+					</linearGradient>
+				</defs>
+				<g clip-path="url(#brand-clip)">
+					<rect width="64" height="64" fill="url(#brand-sky)" />
+					<circle cx="48" cy="20" r="5" fill="#c47a3a" />
+					<path
+						d="M-2 40 L8 32 L16 36 L26 30 L36 34 L48 28 L56 32 L66 30 L66 48 L-2 48 Z"
+						fill="#1e3a2c"
+						opacity="0.65"
+					/>
+					<g fill="#ffffff">
+						<rect x="14" y="10" width="6" height="30" />
+						<polygon points="20,25 34,10 40,10 24,27" />
+						<polygon points="20,25 24,24 40,40 34,40" />
+					</g>
+					<path
+						d="M-2 48 L10 40 L22 46 L34 38 L46 44 L58 38 L66 42 L66 66 L-2 66 Z"
+						fill="#1e3a2c"
+					/>
+					<path
+						d="M-2 56 L18 48 L34 54 L52 46 L66 52 L66 66 L-2 66 Z"
+						fill="#c47a3a"
+						opacity="0.9"
+					/>
+				</g>
+			</svg>
 			<span>Kalenj<span style="color: var(--accent)">.</span>in</span>
 			<span class="brand-sub">Dictionary, Corpus &amp; Course</span>
 		</a>

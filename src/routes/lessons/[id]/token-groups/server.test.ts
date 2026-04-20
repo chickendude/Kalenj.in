@@ -3,15 +3,26 @@ import { POST } from './+server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
+		storySentence: {
+			findUnique: vi.fn()
+		},
 		storySentenceToken: {
 			update: vi.fn(),
 			delete: vi.fn(),
 			create: vi.fn()
 		},
+		exampleSentence: {
+			upsert: vi.fn()
+		},
+		wordSentence: {
+			deleteMany: vi.fn(),
+			createMany: vi.fn()
+		},
 		exampleSentenceToken: {
 			update: vi.fn(),
 			delete: vi.fn(),
-			create: vi.fn()
+			create: vi.fn(),
+			deleteMany: vi.fn()
 		}
 	};
 
@@ -53,7 +64,10 @@ function resetMocks() {
 		mocks.prisma.exampleSentence,
 		mocks.prisma.storySentenceToken,
 		mocks.prisma.exampleSentenceToken,
+		mocks.tx.storySentence,
 		mocks.tx.storySentenceToken,
+		mocks.tx.exampleSentence,
+		mocks.tx.wordSentence,
 		mocks.tx.exampleSentenceToken
 	]) {
 		for (const mock of Object.values(model)) {
@@ -63,6 +77,7 @@ function resetMocks() {
 
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+	mocks.tx.exampleSentence.upsert.mockResolvedValue({ id: 'corpus-sentence-1' });
 }
 
 async function post(payload: Record<string, unknown>, lessonId = 'lesson-1') {
@@ -128,7 +143,8 @@ describe('POST /lessons/[id]/token-groups', () => {
 					surfaceForm: 'Oh eh',
 					wordId: 'word-b',
 					inContextTranslation: 'wow hey',
-					word: null
+					word: null,
+					segments: []
 				},
 				{
 					id: 'token-c',
@@ -136,9 +152,33 @@ describe('POST /lessons/[id]/token-groups', () => {
 					surfaceForm: 'kararan',
 					wordId: null,
 					inContextTranslation: null,
-					word: null
+					word: null,
+					segments: []
 				}
 			]);
+		mocks.tx.storySentence.findUnique.mockResolvedValue({
+			id: 'story-sentence-1',
+			kalenjin: 'Oh eh kararan',
+			english: 'Hello hey beautiful',
+			tokens: [
+				{
+					tokenOrder: 0,
+					surfaceForm: 'Oh eh',
+					normalizedForm: 'oh eh',
+					wordId: 'word-b',
+					inContextTranslation: 'wow hey',
+					segments: []
+				},
+				{
+					tokenOrder: 1,
+					surfaceForm: 'kararan',
+					normalizedForm: 'kararan',
+					wordId: null,
+					inContextTranslation: null,
+					segments: []
+				}
+			]
+		});
 
 		const response = await post({
 			kind: 'story',
@@ -166,6 +206,15 @@ describe('POST /lessons/[id]/token-groups', () => {
 			where: { id: 'story-sentence-1' },
 			data: { kalenjin: 'Oh eh kararan' }
 		});
+		expect(mocks.tx.exampleSentence.upsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { storySentenceId: 'story-sentence-1' },
+				update: {
+					kalenjin: 'Oh eh kararan',
+					english: 'Hello hey beautiful'
+				}
+			})
+		);
 		await expect(response.json()).resolves.toEqual({
 			tokens: expect.arrayContaining([
 				expect.objectContaining({ id: 'token-a', surfaceForm: 'Oh eh' })

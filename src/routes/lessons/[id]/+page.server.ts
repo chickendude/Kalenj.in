@@ -16,6 +16,7 @@ import {
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
 import { Prisma, type CefrLevel } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
@@ -431,6 +432,7 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	await prisma.$transaction(async (tx) => {
 		for (const sentence of sentencesToBackfill) {
 			await syncStorySentenceTokens(tx, sentence.id, sentence.kalenjin);
+			await syncStorySentenceToCorpus(tx, sentence.id);
 		}
 	});
 }
@@ -979,6 +981,8 @@ export const actions: Actions = {
 				if (existingSentence.kalenjin !== kalenjin) {
 					await syncStorySentenceTokens(tx, id, kalenjin);
 				}
+
+				await syncStorySentenceToCorpus(tx, id);
 			});
 		} catch (updateError) {
 			return fail(400, {
@@ -1020,7 +1024,7 @@ export const actions: Actions = {
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
 			if (checkedSegmentId) {
-				const segment = await tx.storySentenceTokenSegment.update({
+				await tx.storySentenceTokenSegment.update({
 					where: { id: checkedSegmentId },
 					data: { wordId },
 					include: {
@@ -1030,7 +1034,7 @@ export const actions: Actions = {
 					}
 				});
 
-				return tx.storySentenceToken.findUniqueOrThrow({
+				const token = await tx.storySentenceToken.findUniqueOrThrow({
 					where: { id: checkedTokenId },
 					include: {
 						word: {
@@ -1045,10 +1049,13 @@ export const actions: Actions = {
 							}
 						}
 					}
-				}).then((token) => ({ ...token, updatedSegment: segment }));
+				});
+
+				await syncStorySentenceToCorpus(tx, storySentenceId);
+				return token;
 			}
 
-			return tx.storySentenceToken.update({
+			const token = await tx.storySentenceToken.update({
 				where: { id: checkedTokenId },
 				data: {
 					wordId,
@@ -1068,6 +1075,9 @@ export const actions: Actions = {
 					}
 				}
 			});
+
+			await syncStorySentenceToCorpus(tx, storySentenceId);
+			return token;
 		});
 
 		return {
@@ -1158,6 +1168,8 @@ export const actions: Actions = {
 						}
 					}
 				});
+
+				await syncStorySentenceToCorpus(tx, storySentenceId);
 
 				return { word, token };
 			});

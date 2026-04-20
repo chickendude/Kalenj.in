@@ -116,15 +116,17 @@ model WordSpelling {
 }
 
 model ExampleSentence {
-  id          String               @id @default(cuid())
-  kalenjin    String
-  english     String
-  notes       String?
-  createdAt   DateTime             @default(now())
-  updatedAt   DateTime             @updatedAt
-  words       WordSentence[]
-  tokens      ExampleSentenceToken[]
-  lessonWords LessonWord[]
+  id              String               @id @default(cuid())
+  storySentenceId String?              @unique
+  kalenjin        String
+  english         String
+  notes           String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  storySentence   StorySentence?       @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
+  words           WordSentence[]
+  tokens          ExampleSentenceToken[]
+  lessonWords     LessonWord[]
 
   @@index([kalenjin])
 }
@@ -202,6 +204,7 @@ model StorySentence {
   updatedAt     DateTime @updatedAt
   story         Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
   tokens        StorySentenceToken[]
+  corpusSentence ExampleSentence?
 
   @@unique([storyId, sentenceOrder])
   @@index([storyId])

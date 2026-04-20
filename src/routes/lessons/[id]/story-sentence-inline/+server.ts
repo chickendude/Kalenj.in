@@ -1,5 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
+import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -46,20 +47,28 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		return json({ error: 'Translation is required.' }, { status: 400 });
 	}
 
-	const updatedSentence = await prisma.storySentence.update({
-		where: { id: sentenceId },
-		data:
-			field === 'speaker'
-				? { speaker: value || null }
-				: field === 'grammarNotes'
-					? { grammarNotes: value || null }
-					: { english: value },
-		select: {
-			id: true,
-			speaker: true,
-			english: true,
-			grammarNotes: true
+	const updatedSentence = await prisma.$transaction(async (tx) => {
+		const updated = await tx.storySentence.update({
+			where: { id: sentenceId },
+			data:
+				field === 'speaker'
+					? { speaker: value || null }
+					: field === 'grammarNotes'
+						? { grammarNotes: value || null }
+						: { english: value },
+			select: {
+				id: true,
+				speaker: true,
+				english: true,
+				grammarNotes: true
+			}
+		});
+
+		if (field === 'english') {
+			await syncStorySentenceToCorpus(tx, sentenceId);
 		}
+
+		return updated;
 	});
 
 	return json({

@@ -58,7 +58,9 @@
 <section class="home-section wod">
 	<div class="home-section-head">
 		<div class="home-kicker">Word of the day</div>
-		<div class="home-section-sub mono">{todayLabel}</div>
+		<a class="home-section-sub mono wod-archive-link" href="/word-of-the-day">
+			{todayLabel} · archive
+		</a>
 	</div>
 
 	<div class="wod-body">

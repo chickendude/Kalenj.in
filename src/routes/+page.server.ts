@@ -1,6 +1,10 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
-import { pickWordOfTheDayIndex, wordOfTheDayKey } from '$lib/word-of-the-day';
+import {
+	ensureWordOfTheDayForToday,
+	getWordOfTheDayForDate
+} from '$lib/server/word-of-the-day';
+import { startOfLocalDay } from '$lib/word-of-the-day';
 import type { PageServerLoad } from './$types';
 
 const recentSentenceInclude = {
@@ -19,35 +23,9 @@ const recentSentenceInclude = {
 } satisfies Prisma.ExampleSentenceInclude;
 
 async function loadWordOfTheDay() {
-	const [countWithExample, totalCount] = await Promise.all([
-		prisma.word.count({ where: { sentences: { some: {} } } }),
-		prisma.word.count()
-	]);
-
-	if (totalCount === 0) {
-		return null;
-	}
-
-	const usePool = countWithExample > 0;
-	const poolSize = usePool ? countWithExample : totalCount;
-	const index = pickWordOfTheDayIndex(wordOfTheDayKey(), poolSize);
-
-	const word = await prisma.word.findFirst({
-		where: usePool ? { sentences: { some: {} } } : undefined,
-		orderBy: { id: 'asc' },
-		skip: index,
-		include: {
-			spellings: { orderBy: { spelling: 'asc' } },
-			sentences: {
-				take: 1,
-				include: {
-					exampleSentence: { include: recentSentenceInclude }
-				}
-			}
-		}
-	});
-
-	return word;
+	await ensureWordOfTheDayForToday();
+	const entry = await getWordOfTheDayForDate(startOfLocalDay());
+	return entry?.word ?? null;
 }
 
 export const load: PageServerLoad = async () => {

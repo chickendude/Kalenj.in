@@ -95,11 +95,24 @@ model Word {
   storyTokenSegments StorySentenceTokenSegment[]
   lessonWords  LessonWord[]
   spellings    WordSpelling[]
+  wordOfDayEntries WordOfTheDay[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
   @@index([translations])
+}
+
+model WordOfTheDay {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  wordId    String
+  word      Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([wordId])
+  @@index([date])
 }
 
 model WordSpelling {

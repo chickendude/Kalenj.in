@@ -1,3 +1,5 @@
+import { parseTranslationList } from './translations';
+
 export type CefrTargetBase = {
 	id: string;
 	english: string;
@@ -33,15 +35,14 @@ function normalizeTerm(value: string): string {
 
 /**
  * Parse a word's translations string into individual search terms.
- * Splits by comma, removes parenthetical content, trims and lowercases.
+ * Splits by semicolon, removes parenthetical content, trims and lowercases.
  *
- * "hello, hi (informal)" -> ["hello", "hi"]
- * "run (fast), walk"     -> ["run", "walk"]
- * "(something), hello"   -> ["hello"]
+ * "hello; hi (informal)" -> ["hello", "hi"]
+ * "run (fast); walk"     -> ["run", "walk"]
+ * "(something); hello"   -> ["hello"]
  */
 export function parseTranslationTerms(translations: string): string[] {
-	return translations
-		.split(',')
+	return parseTranslationList(translations)
 		.map(normalizeTerm)
 		.filter((t) => t.length > 0);
 }

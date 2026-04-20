@@ -1035,7 +1035,7 @@
 
 						<label>
 							Translation
-							<input name="translations" required placeholder="comma-separated translations" />
+							<input name="translations" required placeholder="semicolon-separated translations" />
 						</label>
 					</div>
 

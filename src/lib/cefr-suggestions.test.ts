@@ -2,8 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { parseTranslationTerms, suggestCefrTargets } from './cefr-suggestions';
 
 describe('parseTranslationTerms', () => {
-	it('splits by comma', () => {
-		expect(parseTranslationTerms('hello, world')).toEqual(['hello', 'world']);
+	it('splits by semicolon', () => {
+		expect(parseTranslationTerms('hello; world')).toEqual(['hello', 'world']);
+	});
+
+	it('keeps commas inside a term', () => {
+		expect(parseTranslationTerms('hello, world')).toEqual(['hello, world']);
 	});
 
 	it('handles a single term', () => {
@@ -14,8 +18,8 @@ describe('parseTranslationTerms', () => {
 		expect(parseTranslationTerms('hi (informal)')).toEqual(['hi']);
 	});
 
-	it('removes parenthetical content from each comma-separated term', () => {
-		expect(parseTranslationTerms('hi (informal), goodbye (farewell), run')).toEqual([
+	it('removes parenthetical content from each semicolon-separated term', () => {
+		expect(parseTranslationTerms('hi (informal); goodbye (farewell); run')).toEqual([
 			'hi',
 			'goodbye',
 			'run'
@@ -23,30 +27,30 @@ describe('parseTranslationTerms', () => {
 	});
 
 	it('removes nested parenthetical content', () => {
-		expect(parseTranslationTerms('hello (greeting (casual)), world')).toEqual(['hello', 'world']);
+		expect(parseTranslationTerms('hello (greeting (casual)); world')).toEqual(['hello', 'world']);
 	});
 
 	it('filters term that becomes empty after removing parentheticals', () => {
-		expect(parseTranslationTerms('(something), hello')).toEqual(['hello']);
+		expect(parseTranslationTerms('(something); hello')).toEqual(['hello']);
 	});
 
 	it('trims surrounding whitespace', () => {
-		expect(parseTranslationTerms('  hello ,  world  ')).toEqual(['hello', 'world']);
+		expect(parseTranslationTerms('  hello ;  world  ')).toEqual(['hello', 'world']);
 	});
 
 	it('normalizes whitespace left behind by parentheticals', () => {
-		expect(parseTranslationTerms('look (carefully) up,  good   morning')).toEqual([
+		expect(parseTranslationTerms('look (carefully) up;  good   morning')).toEqual([
 			'look up',
 			'good morning'
 		]);
 	});
 
 	it('lowercases terms', () => {
-		expect(parseTranslationTerms('Hello, WORLD')).toEqual(['hello', 'world']);
+		expect(parseTranslationTerms('Hello; WORLD')).toEqual(['hello', 'world']);
 	});
 
-	it('handles double commas (filters empty strings)', () => {
-		expect(parseTranslationTerms('hello,,world')).toEqual(['hello', 'world']);
+	it('handles double semicolons (filters empty strings)', () => {
+		expect(parseTranslationTerms('hello;;world')).toEqual(['hello', 'world']);
 	});
 
 	it('returns empty array for empty input', () => {
@@ -67,9 +71,9 @@ describe('suggestCefrTargets', () => {
 		expect(result).toEqual([makeTarget('1', 'hello')]);
 	});
 
-	it('matches multiple comma-separated terms', () => {
+	it('matches multiple semicolon-separated terms', () => {
 		const targets = [makeTarget('1', 'hello'), makeTarget('2', 'world'), makeTarget('3', 'foo')];
-		const result = suggestCefrTargets('hello, world', targets, new Set());
+		const result = suggestCefrTargets('hello; world', targets, new Set());
 		expect(result).toHaveLength(2);
 		expect(result.map((t) => t.id)).toContain('1');
 		expect(result.map((t) => t.id)).toContain('2');

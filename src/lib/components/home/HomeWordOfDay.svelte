@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import { parseTranslationList } from '$lib/translations';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type ExampleToken = {
@@ -39,12 +40,7 @@
 		day: 'numeric'
 	});
 
-	const translationList = $derived(
-		word.translations
-			.split(/[,;]+/)
-			.map((entry) => entry.trim())
-			.filter((entry) => entry.length > 0)
-	);
+	const translationList = $derived(parseTranslationList(word.translations));
 
 	const altSpellings = $derived(
 		word.spellings

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import { parseTranslationList } from '$lib/translations';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	let { data, form } = $props();
@@ -22,12 +23,7 @@
 	const alternativeSpellingsValue = $derived.by(() =>
 		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
 	);
-	const translations = $derived(
-		data.word.translations
-			.split(',')
-			.map((translation: string) => translation.trim())
-			.filter(Boolean)
-	);
+	const translations = $derived(parseTranslationList(data.word.translations));
 </script>
 
 <svelte:head>
@@ -134,7 +130,7 @@
 								class="side-input"
 								required
 								value={values.translations ?? ''}
-								placeholder="comma-separated"
+								placeholder="semicolon-separated"
 							/>
 						</div>
 						<div class="side-field">

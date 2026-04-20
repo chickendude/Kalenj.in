@@ -24,7 +24,7 @@
 				name="translations"
 				required
 				value={form?.values?.translations ?? ''}
-				placeholder="comma-separated translations"
+				placeholder="semicolon-separated translations"
 			/>
 		</label>
 

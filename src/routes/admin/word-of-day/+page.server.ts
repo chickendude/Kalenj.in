@@ -81,6 +81,10 @@ export const actions: Actions = {
 		if (!date) return fail(400, { assignError: 'Invalid date.' });
 		if (!wordId) return fail(400, { assignError: 'Choose a word.' });
 
+		if (date.getTime() < startOfLocalDay().getTime()) {
+			return fail(400, { assignError: 'Past days are locked.' });
+		}
+
 		const word = await prisma.word.findUnique({ where: { id: wordId } });
 		if (!word) return fail(400, { assignError: 'Word not found.' });
 

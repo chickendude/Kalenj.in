@@ -151,7 +151,7 @@ export async function setWordOfTheDay(
 	const duplicates = await prisma.wordOfTheDay.findMany({
 		where: {
 			wordId,
-			date: { gte: today, not: day }
+			date: { gt: today, not: day }
 		},
 		select: { id: true, date: true },
 		orderBy: { date: 'asc' }

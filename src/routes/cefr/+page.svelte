@@ -253,7 +253,7 @@
 
 <style>
 	.error {
-		color: #8c1c13;
+		color: var(--danger);
 		font-weight: 600;
 	}
 
@@ -289,7 +289,7 @@
 	}
 
 	.level-summary-card {
-		border: 1px solid #e2e2e2;
+		border: 1px solid var(--line);
 		color: inherit;
 		display: grid;
 		gap: 0.2rem;
@@ -298,12 +298,12 @@
 	}
 
 	.level-summary-card.selected {
-		border-color: #1d4ed8;
-		background: #eff6ff;
+		border-color: var(--info);
+		background: var(--info-soft);
 	}
 
 	.replace-form {
-		border: 1px solid #e2e2e2;
+		border: 1px solid var(--line);
 		margin-bottom: 1rem;
 		padding: 1rem;
 	}
@@ -332,7 +332,7 @@
 
 	.target-list li {
 		list-style: none;
-		border: 1px solid #e2e2e2;
+		border: 1px solid var(--line);
 		display: grid;
 		gap: 0.75rem;
 		padding: 1rem;
@@ -351,21 +351,21 @@
 	}
 
 	.secondary-button {
-		background: #fff;
-		border: 1px solid #d0d0d0;
+		background: var(--paper);
+		border: 1px solid var(--border-strong);
 	}
 
 	small {
-		color: #555;
+		color: var(--ink-soft);
 	}
 
 	.results-summary {
-		color: #555;
+		color: var(--ink-soft);
 	}
 
 	.coverage {
 		margin: 0;
-		color: #555;
+		color: var(--ink-soft);
 	}
 
 	.delete-form {
@@ -412,6 +412,6 @@
 	}
 
 	.disabled {
-		color: #777;
+		color: var(--ink-mute);
 	}
 </style>

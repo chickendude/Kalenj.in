@@ -98,17 +98,17 @@
 	}
 
 	.marker-inline {
-		color: #bbb;
+		color: var(--ink-mute);
 		font-weight: 700;
 		margin: 0 0.1rem;
 	}
 
 	.marker-inline.active {
-		color: #1a7f37;
+		color: var(--success);
 	}
 
 	.marker-inline.hovered {
-		color: #0a66c2;
+		color: var(--info);
 	}
 
 	.preview {

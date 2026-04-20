@@ -1,18 +1,43 @@
 /* Kalenjin app — global theme + shared styles */
 
 :root {
-  --bg:          oklch(0.97 0.015 85);
-  --bg-raised:   oklch(0.99 0.012 85);
-  --surface:     oklch(0.94 0.02 85);
-  --ink:         oklch(0.22 0.02 80);
-  --ink-soft:    oklch(0.42 0.02 80);
-  --ink-mute:    oklch(0.58 0.015 80);
-  --line:        oklch(0.88 0.02 85);
-  --line-soft:   oklch(0.92 0.015 85);
-  --brand:       oklch(0.34 0.055 155);
-  --brand-ink:   oklch(0.24 0.05 155);
-  --accent:      oklch(0.60 0.13 55);
-  --accent-soft: oklch(0.92 0.05 60);
+  --bg:            oklch(0.97 0.015 85);
+  --bg-raised:     oklch(0.99 0.012 85);
+  --paper:         oklch(1 0 0);
+  --surface:       oklch(0.94 0.02 85);
+
+  --ink:           oklch(0.22 0.02 80);
+  --ink-soft:      oklch(0.42 0.02 80);
+  --ink-mute:      oklch(0.58 0.015 80);
+
+  --line:          oklch(0.88 0.02 85);
+  --line-soft:     oklch(0.92 0.015 85);
+  --border-strong: oklch(0.82 0.015 85);
+
+  --brand:         oklch(0.34 0.055 155);
+  --brand-ink:     oklch(0.24 0.05 155);
+  --on-brand:      oklch(0.98 0.01 85);
+  --accent:        oklch(0.60 0.13 55);
+  --accent-soft:   oklch(0.92 0.05 60);
+
+  --danger:        oklch(0.45 0.15 25);
+  --danger-strong: oklch(0.58 0.18 45);
+  --danger-soft:   oklch(0.96 0.02 25);
+  --danger-border: oklch(0.85 0.06 25);
+  --warning:       oklch(0.85 0.12 75);
+  --warning-soft:  oklch(0.94 0.09 90);
+  --success:       oklch(0.5 0.12 150);
+  --success-soft:  oklch(0.96 0.04 145);
+  --info:          oklch(0.5 0.19 260);
+  --info-soft:     oklch(0.96 0.03 255);
+
+  --tooltip-bg:    oklch(0.23 0.03 260);
+  --tooltip-ink:   oklch(0.97 0.005 260);
+
+  --scrim:         oklch(0.23 0.03 260 / 0.3);
+  --shadow-md:     0 10px 30px oklch(0.23 0.03 260 / 0.15);
+
+  --select-chevron-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23666' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>");
 
   --font-display: "Source Serif 4", "Source Serif Pro", Georgia, serif;
   --font-body:    "Work Sans", -apple-system, BlinkMacSystemFont, sans-serif;
@@ -21,6 +46,50 @@
   --radius:    6px;
   --radius-lg: 10px;
   --max-w: 1120px;
+
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  --bg:            oklch(0.18 0.012 85);
+  --bg-raised:     oklch(0.22 0.012 85);
+  --paper:         oklch(0.24 0.012 85);
+  --surface:       oklch(0.28 0.015 85);
+
+  --ink:           oklch(0.95 0.012 85);
+  --ink-soft:      oklch(0.78 0.012 85);
+  --ink-mute:      oklch(0.62 0.01 80);
+
+  --line:          oklch(0.32 0.012 85);
+  --line-soft:     oklch(0.27 0.01 85);
+  --border-strong: oklch(0.42 0.012 85);
+
+  --brand:         oklch(0.52 0.085 155);
+  --brand-ink:     oklch(0.88 0.06 155);
+  --on-brand:      oklch(0.98 0.01 85);
+  --accent:        oklch(0.72 0.12 55);
+  --accent-soft:   oklch(0.34 0.07 55);
+
+  --danger:        oklch(0.75 0.14 25);
+  --danger-strong: oklch(0.72 0.15 45);
+  --danger-soft:   oklch(0.28 0.06 25);
+  --danger-border: oklch(0.45 0.09 25);
+  --warning:       oklch(0.72 0.12 75);
+  --warning-soft:  oklch(0.32 0.07 85);
+  --success:       oklch(0.75 0.13 150);
+  --success-soft:  oklch(0.30 0.07 150);
+  --info:          oklch(0.72 0.16 260);
+  --info-soft:     oklch(0.30 0.07 260);
+
+  --tooltip-bg:    oklch(0.95 0.008 260);
+  --tooltip-ink:   oklch(0.22 0.02 260);
+
+  --scrim:         oklch(0.05 0.01 260 / 0.6);
+  --shadow-md:     0 10px 30px oklch(0 0 0 / 0.5);
+
+  --select-chevron-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23aaa' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>");
+
+  color-scheme: dark;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -192,7 +261,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   padding-right: 30px;
   appearance: none;
   cursor: pointer;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23666' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>");
+  background-image: var(--select-chevron-url);
   background-repeat: no-repeat;
   background-position: right 12px center;
 }
@@ -218,12 +287,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .toggle-lang button.active {
   background: var(--brand);
-  color: oklch(0.98 0.01 85);
+  color: var(--on-brand);
 }
 
 .btn {
   background: var(--brand);
-  color: oklch(0.98 0.01 85);
+  color: var(--on-brand);
   border: 1px solid var(--brand);
   padding: 11px 18px;
   border-radius: var(--radius);
@@ -471,7 +540,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .side-select {
   appearance: none;
   padding-right: 28px;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23666' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>");
+  background-image: var(--select-chevron-url);
   background-repeat: no-repeat;
   background-position: right 10px center;
 }
@@ -485,7 +554,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   transition: filter 0.15s;
   border: 1px solid var(--brand);
   background: var(--brand);
-  color: oklch(0.98 0.01 85);
+  color: var(--on-brand);
 }
 .btn-sm:hover { filter: brightness(1.08); }
 .btn-sm.ghost {
@@ -496,18 +565,18 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .btn-sm.ghost:hover { filter: none; background: var(--surface); color: var(--ink); }
 .btn-sm.danger {
   background: transparent;
-  color: oklch(0.45 0.15 25);
-  border-color: oklch(0.85 0.06 25);
+  color: var(--danger);
+  border-color: var(--danger-border);
 }
-.btn-sm.danger:hover { filter: none; background: oklch(0.96 0.02 25); }
+.btn-sm.danger:hover { filter: none; background: var(--danger-soft); }
 .form-feedback {
   font-size: 13px;
   padding: 8px 10px;
   border-radius: var(--radius);
   margin-bottom: 12px;
 }
-.form-feedback.error { background: oklch(0.96 0.02 25); color: oklch(0.45 0.15 25); }
-.form-feedback.success { background: oklch(0.96 0.04 145); color: oklch(0.35 0.1 145); }
+.form-feedback.error { background: var(--danger-soft); color: var(--danger); }
+.form-feedback.success { background: var(--success-soft); color: var(--success); }
 
 /* ---------- Lessons ---------- */
 .level-tabs {
@@ -626,7 +695,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   color: var(--brand-ink);
 }
 .coverage { font-size: 13px; font-family: var(--font-body); }
-.coverage.ok { color: oklch(0.5 0.12 150); }
+.coverage.ok { color: var(--success); }
 .coverage.warn { color: var(--accent); }
 .coverage-toggle {
   background: none;
@@ -705,7 +774,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .seg button.active {
   background: var(--brand);
-  color: oklch(0.98 0.01 85);
+  color: var(--on-brand);
 }
 
 .add-lesson {
@@ -760,14 +829,36 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 
 .error-banner {
-  background: color-mix(in oklch, oklch(0.55 0.18 25) 8%, transparent);
-  border: 1px solid color-mix(in oklch, oklch(0.55 0.18 25) 35%, transparent);
+  background: color-mix(in oklch, var(--danger) 8%, transparent);
+  border: 1px solid color-mix(in oklch, var(--danger) 35%, transparent);
   border-radius: var(--radius);
-  color: oklch(0.4 0.15 25);
+  color: var(--danger);
   font-size: 14px;
   padding: 10px 14px;
   margin-bottom: 16px;
 }
+
+.theme-toggle {
+  margin-left: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+.theme-toggle:hover {
+  background: var(--surface);
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+.theme-toggle svg { display: block; }
 
 @media (max-width: 900px) {
   .level-tabs { grid-template-columns: repeat(2, 1fr); }

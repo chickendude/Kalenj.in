@@ -142,7 +142,7 @@
 
 	.token-part:hover,
 	.token-part:focus-visible {
-		background: #e8f2ff;
+		background: var(--info-soft);
 		outline: none;
 	}
 
@@ -152,9 +152,9 @@
 		bottom: calc(100% + 0.3rem);
 		left: 50%;
 		transform: translateX(-50%);
-		background: #111827;
+		background: var(--tooltip-bg);
 		border-radius: 0.45rem;
-		color: #f9fafb;
+		color: var(--tooltip-ink);
 		font-size: 0.84rem;
 		gap: 0.15rem;
 		min-width: 12rem;

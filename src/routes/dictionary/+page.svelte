@@ -2,23 +2,9 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
-	import type { PartOfSpeech } from '@prisma/client';
+	import { PART_OF_SPEECH_LABELS as POS_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 
 	let { data } = $props();
-
-	const POS_LABELS: Record<PartOfSpeech, string> = {
-		NOUN: 'Noun',
-		VERB: 'Verb',
-		ADJECTIVE: 'Adjective',
-		ADVERB: 'Adverb',
-		PRONOUN: 'Pronoun',
-		PREPOSITION: 'Preposition',
-		CONJUNCTION: 'Conjunction',
-		INTERJECTION: 'Interjection',
-		PHRASE: 'Phrase',
-		OTHER: 'Other'
-	};
 
 	const initialQuery = untrack(() => data.query);
 	let searchQuery = $state(initialQuery);

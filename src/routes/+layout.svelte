@@ -109,7 +109,7 @@
 				</g>
 			</svg>
 			<span>Kalenj<span style="color: var(--accent)">.</span>in</span>
-			<span class="brand-sub">Dictionary, Corpus &amp; Course</span>
+			<span class="brand-sub">Dictionary &amp; Corpus</span>
 		</a>
 		<nav class="topbar-nav" aria-label="Primary navigation">
 			{#each navItems as item}

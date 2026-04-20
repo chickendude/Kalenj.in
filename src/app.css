@@ -1281,7 +1281,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .wod-confirm-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in oklch, var(--ink) 55%, transparent);
+  background: oklch(0 0 0 / 0.55);
   display: flex;
   align-items: center;
   justify-content: center;

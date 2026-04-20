@@ -301,25 +301,36 @@
 														<form
 															method="POST"
 															action="?/assign"
-															use:enhance={() => async ({ result }) => {
-																if (result.type === 'success') {
-																	const payload = result.data?.assignSuccess as
-																		| { message: string; updates: Array<{ date: string | Date; word: WordInfo }> }
-																		| undefined;
-																	if (payload) {
-																		const next = new Map(wordOverrides);
-																		for (const u of payload.updates) {
-																			const d = u.date instanceof Date ? u.date : new Date(u.date);
-																			next.set(dateKey(d), u.word);
-																		}
-																		wordOverrides = next;
-																		showToast(payload.message);
+															use:enhance={({ cancel }) => {
+																if (hit.lastShownOn) {
+																	const ok = window.confirm(
+																		`“${hit.kalenjin}” was already the Word of the Day on ${hit.lastShownOn}. Use it again?`
+																	);
+																	if (!ok) {
+																		cancel();
+																		return;
 																	}
-																	closeEditor();
-																} else if (result.type === 'failure') {
-																	const err = (result.data?.assignError as string | undefined) ?? 'Assign failed.';
-																	showToast(err);
 																}
+																return async ({ result }) => {
+																	if (result.type === 'success') {
+																		const payload = result.data?.assignSuccess as
+																			| { message: string; updates: Array<{ date: string | Date; word: WordInfo }> }
+																			| undefined;
+																		if (payload) {
+																			const next = new Map(wordOverrides);
+																			for (const u of payload.updates) {
+																				const d = u.date instanceof Date ? u.date : new Date(u.date);
+																				next.set(dateKey(d), u.word);
+																			}
+																			wordOverrides = next;
+																			showToast(payload.message);
+																		}
+																		closeEditor();
+																	} else if (result.type === 'failure') {
+																		const err = (result.data?.assignError as string | undefined) ?? 'Assign failed.';
+																		showToast(err);
+																	}
+																};
 															}}
 														>
 															<input type="hidden" name="date" value={iso} />

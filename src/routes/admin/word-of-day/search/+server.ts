@@ -11,6 +11,7 @@ export type WordSearchHit = {
 	partOfSpeech: string | null;
 	lastUsedOn: string | null;
 	lastUsedIsFuture: boolean;
+	lastShownOn: string | null;
 };
 
 export const GET: RequestHandler = async ({ url, locals }) => {
@@ -48,7 +49,8 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 			translations: w.translations,
 			partOfSpeech: w.partOfSpeech,
 			lastUsedOn: hit ? hit.date.toISOString().slice(0, 10) : null,
-			lastUsedIsFuture: hit?.isFuture ?? false
+			lastUsedIsFuture: hit?.isFuture ?? false,
+			lastShownOn: hit?.lastShownDate ? hit.lastShownDate.toISOString().slice(0, 10) : null
 		};
 	});
 

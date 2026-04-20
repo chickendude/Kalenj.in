@@ -171,7 +171,7 @@ export async function setWordOfTheDay(
 
 export async function getLastUsedMap(
 	wordIds: string[]
-): Promise<Map<string, { date: Date; isFuture: boolean }>> {
+): Promise<Map<string, { date: Date; isFuture: boolean; lastShownDate: Date | null }>> {
 	if (wordIds.length === 0) return new Map();
 	const today = startOfLocalDay();
 	const rows = await prisma.wordOfTheDay.findMany({
@@ -179,10 +179,19 @@ export async function getLastUsedMap(
 		select: { wordId: true, date: true },
 		orderBy: { date: 'desc' }
 	});
-	const out = new Map<string, { date: Date; isFuture: boolean }>();
+	const out = new Map<string, { date: Date; isFuture: boolean; lastShownDate: Date | null }>();
 	for (const row of rows) {
-		if (!out.has(row.wordId)) {
-			out.set(row.wordId, { date: row.date, isFuture: row.date.getTime() > today.getTime() });
+		const isFuture = row.date.getTime() > today.getTime();
+		const isShown = !isFuture;
+		const existing = out.get(row.wordId);
+		if (!existing) {
+			out.set(row.wordId, {
+				date: row.date,
+				isFuture,
+				lastShownDate: isShown ? row.date : null
+			});
+		} else if (!existing.lastShownDate && isShown) {
+			existing.lastShownDate = row.date;
 		}
 	}
 	return out;

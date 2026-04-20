@@ -686,7 +686,7 @@ export const actions: Actions = {
 					section.words.map((word) => word.sentenceId)
 				)
 			)
-		];
+		].filter((id): id is string => Boolean(id));
 		const { storyId } = lesson;
 
 		await prisma.$transaction(async (tx) => {
@@ -1401,15 +1401,9 @@ export const actions: Actions = {
 		requireEditor(locals);
 		const formData = await request.formData();
 		const wordId = readText(formData, 'wordId');
-		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
-		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 
 		if (!wordId) {
 			return fail(400, { error: 'Word ID is required.' });
-		}
-
-		if (!sentenceKalenjin.trim() || !sentenceEnglish.trim()) {
-			return fail(400, { error: 'Sentence text and translation are required.' });
 		}
 
 		const word = await prisma.word.findUnique({
@@ -1426,29 +1420,13 @@ export const actions: Actions = {
 				const lessonSection = await ensureDefaultLessonSection(tx, params.id);
 				const itemOrder = await getNextLessonWordOrder(tx, params.id);
 
-				const match = await findMatchingExampleSentence(tx, sentenceKalenjin, sentenceEnglish);
-				let sentenceId: string;
-				if (match) {
-					if (match.lessonWord) {
-						throw new Error(formatSentenceInUseError(match.lessonWord));
-					}
-					sentenceId = match.id;
-				} else {
-					const sentence = await tx.exampleSentence.create({
-						data: { kalenjin: sentenceKalenjin, english: sentenceEnglish }
-					});
-					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
-					sentenceId = sentence.id;
-				}
-
 				await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
 						wordId: word.id,
 						kalenjin: word.kalenjin,
 						translations: word.translations,
-						itemOrder,
-						sentenceId
+						itemOrder
 					}
 				});
 			});

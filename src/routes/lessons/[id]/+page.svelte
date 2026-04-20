@@ -13,6 +13,7 @@
 		splitLessonItemsIntoSections
 	} from '$lib/course';
 	import { suggestCefrTargets } from '$lib/cefr-suggestions';
+	import { isUnsetSentenceEnglish } from '$lib/sentence-placeholders';
 
 	let { data, form } = $props();
 
@@ -84,6 +85,7 @@
 
 	type CefrTarget = (typeof data.cefrTargets)[number];
 	const replaceSentenceLabel = 'Replace sentence text';
+	const missingSentenceTranslationLabel = 'Add translation';
 
 	const flattenedLessonWords = $derived(
 		data.lesson.sections
@@ -362,14 +364,14 @@
 	function getLessonWordLocal(
 		lw: {
 			id: string;
-			sentence: { kalenjin: string; english: string };
+			sentence: { kalenjin: string; english: string } | null;
 			notesMarkdown: string | null;
 		}
 	): LessonWordLocalState {
 		return (
 			lessonWordLocalState.get(lw.id) ?? {
-				sentenceKalenjin: lw.sentence.kalenjin,
-				sentenceEnglish: lw.sentence.english,
+				sentenceKalenjin: lw.sentence?.kalenjin ?? '',
+				sentenceEnglish: isUnsetSentenceEnglish(lw.sentence?.english) ? '' : lw.sentence?.english ?? '',
 				notesMarkdown: lw.notesMarkdown ?? ''
 			}
 		);
@@ -451,7 +453,7 @@
 	function beginInlineLessonWordEdit(
 		lw: {
 			id: string;
-			sentence: { kalenjin: string; english: string };
+			sentence: { kalenjin: string; english: string } | null;
 			notesMarkdown: string | null;
 		},
 		field: InlineLessonWordField
@@ -1133,7 +1135,7 @@
 							<div class="vocab-text-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceKalenjin'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
-								{:else if !lwLocal.sentenceKalenjin}
+								{:else if !lessonWord.sentence}
 									<button type="button" class="inline-edit-button empty-sentence-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
 								{:else}
 									<div class="sentence-annotation-shell">
@@ -1172,8 +1174,10 @@
 							<div class="translation-cell">
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-english-input inline-translation-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
+								{:else if lessonWord.sentence}
+									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || missingSentenceTranslationLabel}</button>
 								{:else}
-									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || 'Add translation'}</button>
+									<button type="button" class="inline-edit-button sentence-english-text sentence-notes-empty" disabled>{missingSentenceTranslationLabel}</button>
 								{/if}
 								{#if inlineLessonWordError && inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
 									<p class="error-text">{inlineLessonWordError}</p>

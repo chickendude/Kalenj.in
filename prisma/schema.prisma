@@ -305,7 +305,7 @@ model LessonWord {
   kalenjin               String
   translations           String
   itemOrder              Int
-  sentenceId             String          @unique
+  sentenceId             String?         @unique
   sentenceTranslation    String?
   wordForWordTranslation String?
   notesMarkdown          String?
@@ -313,7 +313,7 @@ model LessonWord {
   updatedAt              DateTime        @updatedAt
   lessonSection          LessonSection   @relation(fields: [lessonSectionId], references: [id], onDelete: Cascade)
   word                   Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
-  sentence               ExampleSentence @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
+  sentence               ExampleSentence? @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
   coveredCefrTargets     CefrEnglishTarget[]
 
   @@unique([lessonSectionId, itemOrder])

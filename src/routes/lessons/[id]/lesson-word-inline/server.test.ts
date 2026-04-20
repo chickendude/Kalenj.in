@@ -1,15 +1,20 @@
 import { describe, expect, it, beforeEach, vi } from 'vitest';
+import { UNSET_SENTENCE_ENGLISH } from '$lib/sentence-placeholders';
 import { POST } from './+server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
 		exampleSentence: {
+			create: vi.fn(),
 			update: vi.fn()
 		},
 		exampleSentenceToken: {
 			findMany: vi.fn(),
 			deleteMany: vi.fn(),
 			createMany: vi.fn()
+		},
+		lessonWord: {
+			update: vi.fn()
 		}
 	};
 
@@ -35,7 +40,8 @@ function resetMocks() {
 		mocks.prisma.lessonWord,
 		mocks.prisma.exampleSentence,
 		mocks.tx.exampleSentence,
-		mocks.tx.exampleSentenceToken
+		mocks.tx.exampleSentenceToken,
+		mocks.tx.lessonWord
 	]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
@@ -45,6 +51,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([]);
+	mocks.tx.exampleSentence.create.mockResolvedValue({ id: 'sentence-2' });
 	mocks.prisma.exampleSentence.findFirst.mockResolvedValue(null);
 }
 
@@ -78,6 +85,30 @@ beforeEach(() => {
 });
 
 describe('POST /lessons/[id]/lesson-word-inline', () => {
+	it('creates a sentence only when sentence text is added to a word without one', async () => {
+		mocks.prisma.lessonWord.findUnique.mockResolvedValue({
+			sentenceId: null,
+			sentence: null,
+			translations: 'hello',
+			lessonSection: { lessonId: 'lesson-1' }
+		});
+
+		const response = await post({
+			lessonWordId: 'lesson-word-1',
+			field: 'sentenceKalenjin',
+			value: 'Chamgei'
+		});
+
+		expect(response.status).toBe(200);
+		expect(mocks.tx.exampleSentence.create).toHaveBeenCalledWith({
+			data: { kalenjin: 'Chamgei', english: UNSET_SENTENCE_ENGLISH }
+		});
+		expect(mocks.tx.lessonWord.update).toHaveBeenCalledWith({
+			where: { id: 'lesson-word-1' },
+			data: { sentenceId: 'sentence-2' }
+		});
+	});
+
 	it('splits saved vocabulary sentences into space-separated tokens', async () => {
 		const response = await post({
 			lessonWordId: 'lesson-word-1',

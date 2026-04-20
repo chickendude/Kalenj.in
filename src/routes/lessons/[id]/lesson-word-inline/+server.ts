@@ -5,6 +5,7 @@ import {
 	formatSentenceInUseError
 } from '$lib/server/example-sentence-dedupe';
 import { syncExampleSentenceTokens } from '$lib/server/sentence-annotations';
+import { UNSET_SENTENCE_ENGLISH } from '$lib/sentence-placeholders';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -48,6 +49,7 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		where: { id: lessonWordId },
 		select: {
 			sentenceId: true,
+			translations: true,
 			sentence: { select: { kalenjin: true, english: true } },
 			lessonSection: { select: { lessonId: true } }
 		}
@@ -63,16 +65,50 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 			data: { [typedField]: trimmedValue }
 		});
 	} else if (typedField === 'sentenceKalenjin' || typedField === 'sentenceEnglish') {
+		const currentSentenceId = lessonWord.sentenceId;
+		const currentSentence = lessonWord.sentence;
+
+		if (!currentSentenceId || !currentSentence) {
+			if (typedField === 'sentenceEnglish') {
+				error(400, 'Add sentence text before adding a translation.');
+			}
+
+			const nextKalenjin = trimmedValue;
+			const nextEnglish = UNSET_SENTENCE_ENGLISH;
+			const match = await findMatchingExampleSentence(prisma, nextKalenjin, nextEnglish);
+			if (match?.lessonWord) {
+				error(409, formatSentenceInUseError(match.lessonWord));
+			}
+
+			await prisma.$transaction(async (tx) => {
+				let sentenceId = match?.id;
+				if (!sentenceId) {
+					const sentence = await tx.exampleSentence.create({
+						data: { kalenjin: nextKalenjin, english: nextEnglish }
+					});
+					await syncExampleSentenceTokens(tx, sentence.id, nextKalenjin);
+					sentenceId = sentence.id;
+				}
+
+				await tx.lessonWord.update({
+					where: { id: lessonWordId },
+					data: { sentenceId }
+				});
+			});
+
+			return json({ ok: true });
+		}
+
 		const nextKalenjin =
-			typedField === 'sentenceKalenjin' ? trimmedValue : lessonWord.sentence.kalenjin;
+			typedField === 'sentenceKalenjin' ? trimmedValue : currentSentence.kalenjin;
 		const nextEnglish =
-			typedField === 'sentenceEnglish' ? trimmedValue : lessonWord.sentence.english;
+			typedField === 'sentenceEnglish' ? trimmedValue : currentSentence.english;
 
 		const match = await findMatchingExampleSentence(
 			prisma,
 			nextKalenjin,
 			nextEnglish,
-			lessonWord.sentenceId
+			currentSentenceId
 		);
 		if (match?.lessonWord) {
 			error(409, formatSentenceInUseError(match.lessonWord));
@@ -80,13 +116,13 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 
 		await prisma.$transaction(async (tx) => {
 			await tx.exampleSentence.update({
-				where: { id: lessonWord.sentenceId },
+				where: { id: currentSentenceId },
 				data: typedField === 'sentenceKalenjin'
 					? { kalenjin: trimmedValue }
 					: { english: trimmedValue }
 			});
 			if (typedField === 'sentenceKalenjin') {
-				await syncExampleSentenceTokens(tx, lessonWord.sentenceId, trimmedValue);
+				await syncExampleSentenceTokens(tx, currentSentenceId, trimmedValue);
 			}
 		});
 	} else if (typedField === 'notesMarkdown') {

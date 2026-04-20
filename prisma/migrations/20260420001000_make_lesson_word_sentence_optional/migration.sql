@@ -1,0 +1,1 @@
+ALTER TABLE "LessonWord" ALTER COLUMN "sentenceId" DROP NOT NULL;

@@ -1,4 +1,5 @@
 node_modules
+DEPLOYMENT.md
 
 # Output
 .output
@@ -6,6 +7,7 @@ node_modules
 .netlify
 .wrangler
 /.claude
+/.codex-worktrees
 /docs
 /.svelte-kit
 /build

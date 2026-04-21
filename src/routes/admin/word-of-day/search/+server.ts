@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { getLastUsedMap } from '$lib/server/word-of-the-day';
 import type { RequestHandler } from './$types';
 
@@ -22,22 +23,34 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		return json({ results: [] satisfies WordSearchHit[], query });
 	}
 
-	const words = await prisma.word.findMany({
-		where: {
-			OR: [
-				{ kalenjin: { contains: query, mode: 'insensitive' } },
-				{ translations: { contains: query, mode: 'insensitive' } }
-			]
-		},
-		orderBy: { kalenjin: 'asc' },
-		take: 12,
-		select: {
-			id: true,
-			kalenjin: true,
-			translations: true,
-			partOfSpeech: true
+	const [kalenjinWords, translationWords] = await Promise.all([
+		searchWordsByKalenjin(prisma, query, 12),
+		prisma.word.findMany({
+			where: {
+				translations: { contains: query, mode: 'insensitive' }
+			},
+			orderBy: { kalenjin: 'asc' },
+			take: 12,
+			select: {
+				id: true,
+				kalenjin: true,
+				translations: true,
+				partOfSpeech: true
+			}
+		})
+	]);
+
+	const merged = new Map<string, (typeof translationWords)[number]>();
+	for (const word of kalenjinWords) {
+		merged.set(word.id, word);
+	}
+	for (const word of translationWords) {
+		if (!merged.has(word.id)) {
+			merged.set(word.id, word);
 		}
-	});
+	}
+
+	const words = [...merged.values()].slice(0, 12);
 
 	const lastUsed = await getLastUsedMap(words.map((w) => w.id));
 

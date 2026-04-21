@@ -1,4 +1,10 @@
 import { Prisma, type PartOfSpeech } from '@prisma/client';
+import {
+	APOSTROPHE_REGEX_SOURCE,
+	canInsertOptionalApostropheAfter,
+	hasSearchApostrophe,
+	isSearchApostrophe
+} from '$lib/server/apostrophe-search';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 
 export type KalenjinSearchWord = {
@@ -33,6 +39,7 @@ type SearchForm = {
  */
 function buildEquivalentSearchRegexSource(query: string, sql = false): string {
 	const whitespace = sql ? '[[:space:]]+' : '\\s+';
+	const allowOptionalApostrophes = !hasSearchApostrophe(query);
 	let source = '';
 
 	for (let index = 0; index < query.length; index += 1) {
@@ -42,6 +49,8 @@ function buildEquivalentSearchRegexSource(query: string, sql = false): string {
 
 		if (/\s/.test(char)) {
 			source += whitespace;
+		} else if (isSearchApostrophe(char)) {
+			source += APOSTROPHE_REGEX_SOURCE;
 		} else if (char === 'a' || char === 'o') {
 			source += '[ao]';
 		} else if (char === 'k' || char === 'g') {
@@ -50,6 +59,10 @@ function buildEquivalentSearchRegexSource(query: string, sql = false): string {
 			source += sql ? (nextChar ? '[pb]' : '[pb]($|[[:space:]])') : '[pb](?=$|\\s)';
 		} else {
 			source += char.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+		}
+
+		if (allowOptionalApostrophes && canInsertOptionalApostropheAfter(char, nextChar)) {
+			source += `${APOSTROPHE_REGEX_SOURCE}?`;
 		}
 	}
 

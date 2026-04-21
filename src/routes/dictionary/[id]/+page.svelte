@@ -6,6 +6,13 @@
 
 	let { data, form } = $props();
 
+	type DictionarySearchResult = {
+		id: string;
+		kalenjin: string;
+		translations: string;
+		partOfSpeech: PartOfSpeech | null;
+	};
+
 	const POS_LABELS: Record<PartOfSpeech, string> = {
 		NOUN: 'Noun',
 		VERB: 'Verb',
@@ -24,6 +31,58 @@
 		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
 	);
 	const translations = $derived(parseTranslationList(data.word.translations));
+
+	let relatedQuery = $state('');
+	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
+	let relatedSearchQuery = $state('');
+	let relatedSearchLoading = $state(false);
+	let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let relatedSearchSeq = 0;
+
+	const relatedWordIds = $derived(new Set(data.word.relatedWords.map((link) => link.word.id)));
+	const attachableRelatedResults = $derived(
+		(relatedSearchResults ?? []).filter(
+			(result) => result.id !== data.word.id && !relatedWordIds.has(result.id)
+		)
+	);
+
+	function firstTranslation(value: string): string {
+		return parseTranslationList(value)[0] ?? value;
+	}
+
+	async function runRelatedSearch(query: string) {
+		const seq = ++relatedSearchSeq;
+		const trimmed = query.trim();
+		if (!trimmed) {
+			relatedSearchResults = null;
+			relatedSearchQuery = '';
+			relatedSearchLoading = false;
+			return;
+		}
+
+		relatedSearchLoading = true;
+		try {
+			const res = await fetch(`/dictionary/search?q=${encodeURIComponent(trimmed)}`);
+			if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+			const json = (await res.json()) as { results: DictionarySearchResult[] };
+			if (seq !== relatedSearchSeq) return;
+			relatedSearchResults = json.results;
+			relatedSearchQuery = trimmed;
+		} catch {
+			if (seq !== relatedSearchSeq) return;
+			relatedSearchResults = [];
+			relatedSearchQuery = trimmed;
+		} finally {
+			if (seq === relatedSearchSeq) relatedSearchLoading = false;
+		}
+	}
+
+	function handleRelatedSearchInput(event: Event) {
+		const value = (event.currentTarget as HTMLInputElement).value;
+		relatedQuery = value;
+		if (relatedSearchTimer) clearTimeout(relatedSearchTimer);
+		relatedSearchTimer = setTimeout(() => runRelatedSearch(value), 180);
+	}
 </script>
 
 <svelte:head>
@@ -65,6 +124,23 @@
 			{#if data.word.notes}
 				<h2 class="section-title">Notes</h2>
 				<p class="muted" style="font-size: 15px; margin: 0;">{data.word.notes}</p>
+			{/if}
+
+			<h2 class="section-title">Related words</h2>
+			{#if data.word.relatedWords.length === 0}
+				<p class="muted" style="font-size: 15px; margin: 0;">No related words yet.</p>
+			{:else}
+				<div class="related-word-grid">
+					{#each data.word.relatedWords as link (link.word.id)}
+						<a href={`/dictionary/${link.word.id}`} class="related-word-card">
+							<span class="related-word-title">{link.word.kalenjin}</span>
+							<span class="related-word-gloss">{firstTranslation(link.word.translations)}</span>
+							{#if link.word.partOfSpeech}
+								<span class="pos-chip tiny">{POS_LABELS[link.word.partOfSpeech]}</span>
+							{/if}
+						</a>
+					{/each}
+				</div>
 			{/if}
 
 			<h2 class="section-title">Examples from the corpus</h2>
@@ -159,6 +235,73 @@
 							<button type="submit" class="btn-sm">Save</button>
 						</div>
 					</form>
+				</div>
+
+				<div class="side-card">
+					<h3>Related words</h3>
+
+					{#if form?.relatedWordError}
+						<div class="form-feedback error">{form.relatedWordError}</div>
+					{:else if form?.relatedWordSuccess}
+						<div class="form-feedback success">Related words updated.</div>
+					{/if}
+
+					{#if data.word.relatedWords.length === 0}
+						<p class="related-editor-empty">No related words linked.</p>
+					{:else}
+						<ul class="related-editor-list">
+							{#each data.word.relatedWords as link (link.word.id)}
+								<li>
+									<a href={`/dictionary/${link.word.id}`}>
+										<span>{link.word.kalenjin}</span>
+										<small>{firstTranslation(link.word.translations)}</small>
+									</a>
+									<form method="POST" action="?/removeRelatedWord">
+										<input type="hidden" name="relatedWordId" value={link.word.id} />
+										<button type="submit" class="btn-sm ghost">Remove</button>
+									</form>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+
+					<div class="side-field">
+						<label for="relatedWordSearch">Attach another word</label>
+						<input
+							id="relatedWordSearch"
+							type="search"
+							class="side-input"
+							placeholder="Search Kalenjin or English"
+							autocomplete="off"
+							value={relatedQuery}
+							oninput={handleRelatedSearchInput}
+						/>
+					</div>
+
+					{#if relatedSearchLoading}
+						<p class="related-editor-empty">Searching...</p>
+					{:else if relatedSearchResults !== null}
+						{#if attachableRelatedResults.length === 0}
+							<p class="related-editor-empty">No attachable matches for “{relatedSearchQuery}”.</p>
+						{:else}
+							<ul class="related-search-results">
+								{#each attachableRelatedResults as result (result.id)}
+									<li>
+										<form method="POST" action="?/addRelatedWord">
+											<input type="hidden" name="relatedWordId" value={result.id} />
+											<button type="submit" class="related-search-button">
+												<span>
+													<strong>{result.kalenjin}</strong>
+													<small>{firstTranslation(result.translations)}</small>
+												</span>
+												<span class="related-add-label">Add</span>
+											</button>
+										</form>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
 				</div>
 
 				<div class="side-card">

@@ -7,8 +7,34 @@ import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
+type RelatedPair = {
+	word: RelatedWordSummary;
+	createdAt: Date;
+};
+
+type RelatedWordSummary = {
+	id: string;
+	kalenjin: string;
+	translations: string;
+	partOfSpeech: PartOfSpeech | null;
+};
+
 function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
+}
+
+function relatedWordPair(wordId: string, relatedWordId: string): { wordId: string; relatedWordId: string } {
+	return wordId < relatedWordId
+		? { wordId, relatedWordId }
+		: { wordId: relatedWordId, relatedWordId: wordId };
+}
+
+function sortRelatedWords(relatedWords: RelatedPair[]): RelatedPair[] {
+	return relatedWords.sort(
+		(a, b) =>
+			a.word.kalenjin.localeCompare(b.word.kalenjin) ||
+			a.word.translations.localeCompare(b.word.translations)
+	);
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -29,6 +55,20 @@ export const load: PageServerLoad = async ({ params }) => {
 						}
 					}
 				}
+			},
+			relatedWords: {
+				include: {
+					relatedWord: {
+						select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+					}
+				}
+			},
+			relatedToWords: {
+				include: {
+					word: {
+						select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+					}
+				}
 			}
 		}
 	});
@@ -37,8 +77,22 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, 'Word not found');
 	}
 
+	const relatedWords = sortRelatedWords([
+		...word.relatedWords.map((link) => ({
+			word: link.relatedWord,
+			createdAt: link.createdAt
+		})),
+		...word.relatedToWords.map((link) => ({
+			word: link.word,
+			createdAt: link.createdAt
+		}))
+	]);
+
 	return {
-		word
+		word: {
+			...word,
+			relatedWords
+		}
 	};
 };
 
@@ -99,5 +153,58 @@ export const actions: Actions = {
 		requireEditor(locals);
 		await prisma.word.delete({ where: { id: params.id } });
 		redirect(303, '/dictionary');
+	},
+	addRelatedWord: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const formData = await request.formData();
+		const relatedWordId = readText(formData, 'relatedWordId');
+
+		if (!relatedWordId) {
+			return fail(400, { relatedWordError: 'Choose a word to link.' });
+		}
+
+		if (relatedWordId === params.id) {
+			return fail(400, { relatedWordError: 'A word cannot be related to itself.' });
+		}
+
+		const [currentWord, relatedWord] = await Promise.all([
+			prisma.word.findUnique({
+				where: { id: params.id },
+				select: { id: true }
+			}),
+			prisma.word.findUnique({
+				where: { id: relatedWordId },
+				select: { id: true }
+			})
+		]);
+
+		if (!currentWord) {
+			error(404, 'Word not found');
+		}
+		if (!relatedWord) {
+			return fail(404, { relatedWordError: 'Related word not found.' });
+		}
+
+		await prisma.relatedWord.createMany({
+			data: [relatedWordPair(params.id, relatedWordId)],
+			skipDuplicates: true
+		});
+
+		return { relatedWordSuccess: true };
+	},
+	removeRelatedWord: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const formData = await request.formData();
+		const relatedWordId = readText(formData, 'relatedWordId');
+
+		if (!relatedWordId) {
+			return fail(400, { relatedWordError: 'Choose a word to remove.' });
+		}
+
+		await prisma.relatedWord.deleteMany({
+			where: relatedWordPair(params.id, relatedWordId)
+		});
+
+		return { relatedWordSuccess: true };
 	}
 };

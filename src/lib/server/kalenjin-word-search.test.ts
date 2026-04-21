@@ -79,13 +79,18 @@ describe('scoreKalenjinWordMatch', () => {
 		expect(scoreKalenjinWordMatch(WORDS[0], 'chamcham')).toBe(0);
 	});
 
+	it('treats k/g as equivalent for base lemma matching', () => {
+		expect(scoreKalenjinWordMatch(WORDS[2], 'got')).toBe(2);
+		expect(scoreKalenjinWordMatch(WORDS[2], 'kot')).toBe(0);
+	});
+
 	it('matches alternative spellings', () => {
 		expect(scoreKalenjinWordMatch(WORDS[1], 'misseng')).toBe(1);
 	});
 });
 
 describe('sortKalenjinSearchResults', () => {
-	it('prefers primary exact matches, then alternate spellings, then fuzzy a/o matches', () => {
+	it('prefers primary exact matches, then alternate spellings, then fuzzy equivalent-letter matches', () => {
 		expect(sortKalenjinSearchResults(WORDS, 'kot').map((word) => word.id)).toEqual(['3', '1', '2']);
 		expect(sortKalenjinSearchResults(WORDS, 'misseng').map((word) => word.id)).toEqual([
 			'2',
@@ -96,6 +101,11 @@ describe('sortKalenjinSearchResults', () => {
 			'1',
 			'2',
 			'3'
+		]);
+		expect(sortKalenjinSearchResults(WORDS, 'got').map((word) => word.id)).toEqual([
+			'3',
+			'1',
+			'2'
 		]);
 	});
 });

@@ -28,13 +28,13 @@ type SearchForm = {
 };
 
 /**
- * Collapse Kalenjin "a" and "o" vowels into a single canonical form so that
- * words like chamcham / chomchom, achame / ochome, and boiboi / baibai compare
- * as equivalent. Both vowels are mapped to "a" — the choice is arbitrary as
- * long as both sides of a comparison use the same mapping.
+ * Collapse Kalenjin letters that are commonly interchanged into a single
+ * canonical form so that words like chamcham / chomchom and koit / goit compare
+ * as equivalent. The canonical choices are arbitrary, as long as both sides of a
+ * comparison use the same mapping.
  */
-function normalizeAoEquivalent(value: string): string {
-	return value.replace(/[ao]/g, 'a');
+function normalizeInterchangeableLetters(value: string): string {
+	return value.replace(/[ao]/g, 'a').replace(/[kg]/g, 'k');
 }
 
 export function normalizeKalenjinSearchQuery(query: string): string {
@@ -104,8 +104,8 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return Number.POSITIVE_INFINITY;
 	}
 
-	const aoQuery = normalizeAoEquivalent(query);
-	const aoForm = normalizeAoEquivalent(form.normalized);
+	const equivalentQuery = normalizeInterchangeableLetters(query);
+	const equivalentForm = normalizeInterchangeableLetters(form.normalized);
 	const isPrimaryForm = form.kind === 'lemma';
 	const alternateOffset = isPrimaryForm ? 0 : 1;
 
@@ -113,7 +113,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 0 + alternateOffset;
 	}
 
-	if (aoForm === aoQuery) {
+	if (equivalentForm === equivalentQuery) {
 		return 2 + alternateOffset;
 	}
 
@@ -121,7 +121,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 4 + alternateOffset;
 	}
 
-	if (aoForm.startsWith(aoQuery)) {
+	if (equivalentForm.startsWith(equivalentQuery)) {
 		return 6 + alternateOffset;
 	}
 
@@ -129,7 +129,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 8 + alternateOffset;
 	}
 
-	if (aoForm.includes(aoQuery)) {
+	if (equivalentForm.includes(equivalentQuery)) {
 		return 10 + alternateOffset;
 	}
 
@@ -190,7 +190,7 @@ export async function searchWordsByKalenjin(
 	}
 
 	const containsQuery = `%${normalizedQuery}%`;
-	const aoContainsQuery = `%${normalizeAoEquivalent(normalizedQuery)}%`;
+	const equivalentContainsQuery = `%${normalizeInterchangeableLetters(normalizedQuery)}%`;
 	const candidateRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
 		SELECT DISTINCT w.id
 		FROM "Word" w
@@ -199,9 +199,9 @@ export async function searchWordsByKalenjin(
 			w."kalenjinNormalized" LIKE ${containsQuery}
 			OR COALESCE(w."pluralFormNormalized", '') LIKE ${containsQuery}
 			OR COALESCE(ws."spellingNormalized", '') LIKE ${containsQuery}
-			OR translate(w."kalenjinNormalized", 'ao', 'aa') LIKE ${aoContainsQuery}
-			OR translate(COALESCE(w."pluralFormNormalized", ''), 'ao', 'aa') LIKE ${aoContainsQuery}
-			OR translate(COALESCE(ws."spellingNormalized", ''), 'ao', 'aa') LIKE ${aoContainsQuery}
+			OR translate(w."kalenjinNormalized", 'og', 'ak') LIKE ${equivalentContainsQuery}
+			OR translate(COALESCE(w."pluralFormNormalized", ''), 'og', 'ak') LIKE ${equivalentContainsQuery}
+			OR translate(COALESCE(ws."spellingNormalized", ''), 'og', 'ak') LIKE ${equivalentContainsQuery}
 		LIMIT ${Math.max(limit * 8, 100)}
 	`);
 

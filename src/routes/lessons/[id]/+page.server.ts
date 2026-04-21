@@ -18,7 +18,8 @@ import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
-import { Prisma, type CefrLevel } from '@prisma/client';
+import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
 function buildWordSelect() {
@@ -27,6 +28,8 @@ function buildWordSelect() {
 		kalenjin: true,
 		translations: true,
 		notes: true,
+		partOfSpeech: true,
+		pluralForm: true,
 		spellings: {
 			orderBy: [{ spelling: 'asc' as const }],
 			select: {
@@ -46,9 +49,13 @@ async function createOrUpdateLinkedWord(
 		translations: string;
 		notes?: string | null;
 		alternativeSpellings?: string | null;
+		partOfSpeech?: PartOfSpeech | null;
+		pluralForm?: string | null;
 	}
 ) {
 	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
+	const pluralForm = input.pluralForm ?? null;
+	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
 
 	if (input.wordId) {
 		return tx.word.update({
@@ -58,6 +65,9 @@ async function createOrUpdateLinkedWord(
 				kalenjinNormalized: normalizeLemma(input.kalenjin),
 				translations: input.translations,
 				notes: input.notes ?? null,
+				partOfSpeech: input.partOfSpeech ?? null,
+				pluralForm,
+				pluralFormNormalized,
 				spellings: {
 					deleteMany: {},
 					createMany: spellings.length
@@ -77,6 +87,9 @@ async function createOrUpdateLinkedWord(
 			kalenjinNormalized: normalizeLemma(input.kalenjin),
 			translations: input.translations,
 			notes: input.notes ?? null,
+			partOfSpeech: input.partOfSpeech ?? null,
+			pluralForm,
+			pluralFormNormalized,
 			spellings: spellings.length
 				? {
 						createMany: {
@@ -1105,12 +1118,22 @@ export const actions: Actions = {
 		const notes = readOptionalText(formData, 'notes');
 		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
+		const pluralForm = readOptionalText(formData, 'pluralForm');
 
 		if (!storySentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
 				error: 'Sentence token, lemma, and translations are required.'
 			});
 		}
+
+		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
+			return fail(400, { error: 'Invalid part of speech value.' });
+		}
+
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
 
 		const story = await prisma.lesson.findUnique({
 			where: { id: params.id },
@@ -1134,7 +1157,10 @@ export const actions: Actions = {
 					kalenjin,
 					translations,
 					notes,
-					alternativeSpellings
+					alternativeSpellings,
+					partOfSpeech,
+					pluralForm:
+						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
 				if (checkedSegmentId) {
@@ -1318,12 +1344,22 @@ export const actions: Actions = {
 		const notes = readOptionalText(formData, 'notes');
 		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
+		const pluralForm = readOptionalText(formData, 'pluralForm');
 
 		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
 				error: 'Sentence token, lemma, and translations are required.'
 			});
 		}
+
+		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
+			return fail(400, { error: 'Invalid part of speech value.' });
+		}
+
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
 		const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
@@ -1338,7 +1374,10 @@ export const actions: Actions = {
 					kalenjin,
 					translations,
 					notes,
-					alternativeSpellings
+					alternativeSpellings,
+					partOfSpeech,
+					pluralForm:
+						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
 				if (checkedSegmentId) {

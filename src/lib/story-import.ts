@@ -21,6 +21,12 @@ function parseSpeakerPrefix(value: string): { speaker: string | null; remainder:
 	};
 }
 
+function parseSpeakerColumn(value: string): string | null {
+	const { speaker } = parseSpeakerPrefix(value);
+
+	return speaker ?? (value.trim() || null);
+}
+
 function splitStoryLine(line: string): string[] {
 	const tabParts = line
 		.split('\t')
@@ -47,7 +53,7 @@ function parseStoryLine(line: string, sentenceOrder: number): ParsedStorySentenc
 	const parts = splitStoryLine(line);
 
 	if (parts.length >= 3) {
-		const { speaker } = parseSpeakerPrefix(parts[0]);
+		const speaker = parseSpeakerColumn(parts[0]);
 		const kalenjin = parts[1];
 		const english = parts.slice(2).join(' ');
 

@@ -82,6 +82,25 @@ describe('prepareAlternativeSpellings', () => {
 });
 
 describe('scoreKalenjinWordMatch', () => {
+	it('treats apostrophes as optional only when the query omits them', () => {
+		const withApostrophe = makeSearchWord({
+			id: '4',
+			kalenjin: "koit'a",
+			kalenjinNormalized: "koit'a",
+			translations: 'stone'
+		});
+		const withoutApostrophe = makeSearchWord({
+			id: '5',
+			kalenjin: 'koita',
+			kalenjinNormalized: 'koita',
+			translations: 'stone'
+		});
+
+		expect(scoreKalenjinWordMatch(withApostrophe, 'koita')).toBe(2);
+		expect(scoreKalenjinWordMatch(withApostrophe, "koit'a")).toBe(0);
+		expect(scoreKalenjinWordMatch(withoutApostrophe, "koit'a")).toBe(Number.POSITIVE_INFINITY);
+	});
+
 	it('treats a/o as equivalent for base lemma matching', () => {
 		expect(scoreKalenjinWordMatch(WORDS[0], 'chomchom')).toBe(2);
 		expect(scoreKalenjinWordMatch(WORDS[0], 'chamcham')).toBe(0);

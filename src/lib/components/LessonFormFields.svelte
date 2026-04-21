@@ -118,8 +118,9 @@
 			<p class="story-import-hint">Format looks good.</p>
 		{:else}
 			<p class="story-import-hint">
-				One line per sentence. Separate parts with tab or " / ": Kalenjin / English, or
-				Speaker: / Kalenjin / English.
+				Separate parts with tab or " / ": Kalenjin / English, or Speaker: / Kalenjin /
+				English. Lines with multiple sentences are split automatically; you can merge or
+				re-split them afterwards in the lesson editor.
 			</p>
 		{/if}
 	</div>

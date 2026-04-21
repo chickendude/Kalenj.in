@@ -138,6 +138,54 @@ Chelang'at\tAchicha, piron kametnyun ndo ayat kot.\tNo, my mother will beat me i
 		);
 	});
 
+	it('splits multi-sentence lines into individual story sentences', () => {
+		const sentences = parseStoryImportText(
+			"Iyo: / Iyo, nyon yat kot. Kaagurin saisiek chechang menyone iyate kot. Limin nee rani? / Iyo, come open the house. I have called you several hours, but you're not coming to open the house. What's disturbing you?"
+		);
+
+		expect(sentences).toEqual([
+			{
+				sentenceOrder: 1,
+				speaker: 'Iyo',
+				kalenjin: 'Iyo, nyon yat kot.',
+				english: 'Iyo, come open the house.'
+			},
+			{
+				sentenceOrder: 2,
+				speaker: 'Iyo',
+				kalenjin: 'Kaagurin saisiek chechang menyone iyate kot.',
+				english: "I have called you several hours, but you're not coming to open the house."
+			},
+			{
+				sentenceOrder: 3,
+				speaker: 'Iyo',
+				kalenjin: 'Limin nee rani?',
+				english: "What's disturbing you?"
+			}
+		]);
+	});
+
+	it('keeps a multi-sentence line intact when english sentence count does not match', () => {
+		const sentences = parseStoryImportText(
+			'Chamgei! Missing kot.\tGood evening and a warm welcome.'
+		);
+
+		expect(sentences).toEqual([
+			{
+				sentenceOrder: 1,
+				speaker: null,
+				kalenjin: 'Chamgei!',
+				english: 'Good evening and a warm welcome.'
+			},
+			{
+				sentenceOrder: 2,
+				speaker: null,
+				kalenjin: 'Missing kot.',
+				english: ''
+			}
+		]);
+	});
+
 	it('parses the full sample dialogue format used for story imports', () => {
 		const sentences = parseStoryImportText(`Michael:\tChamgei nebo langat.\tGood evening.
 Chirchir:\tMissing kot.\tGood evening, too.

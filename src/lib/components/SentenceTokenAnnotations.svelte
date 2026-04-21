@@ -34,6 +34,7 @@
 			translations?: string | null;
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
+			pluralForm?: string | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -56,6 +57,7 @@
 			translations?: string | null;
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
+			pluralForm?: string | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -78,6 +80,7 @@
 		createTranslations: string;
 		createNotes: string;
 		createAlternativeSpellings: string;
+		createPluralForm: string;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
 
@@ -101,6 +104,7 @@
 			translations?: string | null;
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
+			pluralForm?: string | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -164,6 +168,7 @@
 	let splitMarkers = $state<Record<string, number[]>>({});
 	let hoveredSplitMarker = $state<number | null>(null);
 	let posOtherOpen = $state(false);
+	let posOtherWrap = $state<HTMLDivElement | null>(null);
 	const autoSaveTimers = new Map<string, number>();
 
 		const groups = $derived(
@@ -244,6 +249,7 @@
 				createTranslations: token.word?.translations ?? '',
 				createNotes: token.word?.notes ?? '',
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
+				createPluralForm: token.word?.pluralForm ?? '',
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
@@ -255,6 +261,7 @@
 					createTranslations: segment.word?.translations ?? '',
 					createNotes: segment.word?.notes ?? '',
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
+					createPluralForm: segment.word?.pluralForm ?? '',
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
 			}
@@ -387,6 +394,29 @@
 
 		window.addEventListener('keydown', handleWindowKeydown);
 		return () => window.removeEventListener('keydown', handleWindowKeydown);
+	});
+
+	$effect(() => {
+		if (!posOtherOpen) {
+			return;
+		}
+
+		function handlePointerDown(event: MouseEvent) {
+			const wrap = posOtherWrap;
+			if (!wrap) {
+				return;
+			}
+
+			const target = event.target;
+			if (target instanceof Node && wrap.contains(target)) {
+				return;
+			}
+
+			posOtherOpen = false;
+		}
+
+		window.addEventListener('pointerdown', handlePointerDown, true);
+		return () => window.removeEventListener('pointerdown', handlePointerDown, true);
 	});
 
 	function activatePickerToken(token: SentenceToken, segmentId: string | null = null) {
@@ -918,6 +948,8 @@
 					tokenUpdate.word?.spellings
 						? serializeSpellings(tokenUpdate.word.spellings)
 						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? '',
+				createPluralForm:
+					tokenUpdate.word?.pluralForm ?? drafts[tokenUpdate.tokenId]?.createPluralForm ?? '',
 				createPartOfSpeech:
 					tokenUpdate.word?.partOfSpeech ?? drafts[tokenUpdate.tokenId]?.createPartOfSpeech ?? ''
 			};
@@ -936,6 +968,8 @@
 					createAlternativeSpellings: segment.word?.spellings
 						? serializeSpellings(segment.word.spellings)
 						: drafts[segment.id]?.createAlternativeSpellings ?? '',
+					createPluralForm:
+						segment.word?.pluralForm ?? drafts[segment.id]?.createPluralForm ?? '',
 					createPartOfSpeech:
 						segment.word?.partOfSpeech ?? drafts[segment.id]?.createPartOfSpeech ?? ''
 				};
@@ -1053,6 +1087,8 @@
 		{@const currentPos = drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
 		{@const otherSelected =
 			currentPos !== '' && !(CORE_POS as readonly string[]).includes(currentPos)}
+		{@const currentPosNeedsPlural = currentPos === 'NOUN' || currentPos === 'ADJECTIVE'}
+		{@const pluralFormValue = drafts[activeDraftKey]?.createPluralForm ?? ''}
 		{@const splittableSurface = activeToken.surfaceForm.replace(
 			/[^\p{L}\p{M}\p{N}]+$/u,
 			''
@@ -1273,7 +1309,7 @@
 									{PART_OF_SPEECH_LABELS[pos]}
 								</button>
 							{/each}
-							<div class="pos-other-wrap">
+							<div class="pos-other-wrap" bind:this={posOtherWrap}>
 								<button
 									type="button"
 									aria-pressed={otherSelected}
@@ -1384,6 +1420,11 @@
 						name="partOfSpeech"
 						value={drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
 					/>
+					<input
+						type="hidden"
+						name="pluralForm"
+						value={currentPosNeedsPlural ? pluralFormValue : ''}
+					/>
 
 					<div class="lemma-form-grid">
 						<div class="field">
@@ -1419,6 +1460,47 @@
 							/>
 						</div>
 					</div>
+
+					{#if currentPosNeedsPlural}
+						<div class="lemma-forms-block">
+							<div class="lemma-forms-head">
+								<span class="lemma-forms-label">Forms</span>
+								<span class="lemma-forms-hint">
+									{currentPos === 'NOUN'
+										? 'Nouns need a plural form.'
+										: 'Adjectives need a plural form.'}
+								</span>
+							</div>
+							<div class="lemma-forms-grid">
+								<div class="field">
+									<label for="lemma-field-singular">Singular</label>
+									<input
+										id="lemma-field-singular"
+										class="input"
+										value={createLemmaValue}
+										readonly
+										tabindex="-1"
+										aria-readonly="true"
+									/>
+								</div>
+								<div class="field">
+									<label for="lemma-field-plural">Plural</label>
+									<input
+										id="lemma-field-plural"
+										class="input"
+										placeholder="e.g. chego"
+										value={pluralFormValue}
+										oninput={(event) =>
+											updateDraft(
+												activeDraftKey,
+												'createPluralForm',
+												(event.currentTarget as HTMLInputElement).value
+											)}
+									/>
+								</div>
+							</div>
+						</div>
+					{/if}
 
 					<div class="field lemma-full-field">
 						<label for="lemma-field-translations">Translations</label>
@@ -2018,6 +2100,42 @@
 	.lemma-full-field {
 		margin-top: 12px;
 	}
+	.lemma-forms-block {
+		background: color-mix(in oklch, var(--accent) 10%, var(--paper));
+		border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--line));
+		border-radius: 12px;
+		margin-top: 12px;
+		padding: 14px 16px;
+	}
+	.lemma-forms-head {
+		align-items: baseline;
+		display: flex;
+		gap: 12px;
+		justify-content: space-between;
+		margin-bottom: 10px;
+	}
+	.lemma-forms-label {
+		color: var(--ink-soft);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+	}
+	.lemma-forms-hint {
+		color: var(--ink-soft);
+		font-size: 12px;
+		font-style: italic;
+	}
+	.lemma-forms-grid {
+		display: grid;
+		gap: 12px;
+		grid-template-columns: 1fr 1fr;
+	}
+	.lemma-forms-grid .input[readonly] {
+		background: color-mix(in oklch, var(--line) 45%, transparent);
+		color: var(--ink);
+		cursor: default;
+	}
 	.field-label {
 		color: var(--ink);
 		display: block;
@@ -2087,8 +2205,8 @@
 		min-width: 100%;
 		overflow: hidden;
 		position: absolute;
-		right: 0;
 		top: calc(100% + 6px);
+		width: max-content;
 		z-index: 2;
 	}
 	.pos-other-item {
@@ -2099,6 +2217,7 @@
 		font-size: 13px;
 		padding: 8px 12px;
 		text-align: left;
+		white-space: nowrap;
 	}
 	.pos-other-item:hover {
 		background: color-mix(in oklch, var(--brand) 10%, transparent);
@@ -2176,7 +2295,8 @@
 		.lemma-modal {
 			padding: 20px 18px 18px;
 		}
-		.lemma-form-grid {
+		.lemma-form-grid,
+		.lemma-forms-grid {
 			grid-template-columns: 1fr;
 		}
 		.lemma-modal-title {

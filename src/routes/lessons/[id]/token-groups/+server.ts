@@ -65,6 +65,7 @@ const WORD_SELECT = {
 	translations: true,
 	notes: true,
 	partOfSpeech: true,
+	pluralForm: true,
 	spellings: {
 		orderBy: [{ spelling: 'asc' as const }],
 		select: {

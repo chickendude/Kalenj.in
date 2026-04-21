@@ -23,6 +23,7 @@ function buildWordSelect() {
 		translations: true,
 		notes: true,
 		partOfSpeech: true,
+		pluralForm: true,
 		spellings: {
 			orderBy: [{ spelling: 'asc' as const }],
 			select: {
@@ -78,9 +79,12 @@ async function createOrUpdateLinkedWord(
 		notes?: string | null;
 		alternativeSpellings?: string | null;
 		partOfSpeech?: PartOfSpeech | null;
+		pluralForm?: string | null;
 	}
 ) {
 	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
+	const pluralForm = input.pluralForm ?? null;
+	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
 
 	if (input.wordId) {
 		return tx.word.update({
@@ -91,6 +95,8 @@ async function createOrUpdateLinkedWord(
 				translations: input.translations,
 				notes: input.notes ?? null,
 				partOfSpeech: input.partOfSpeech ?? null,
+				pluralForm,
+				pluralFormNormalized,
 				spellings: {
 					deleteMany: {},
 					createMany: spellings.length
@@ -111,6 +117,8 @@ async function createOrUpdateLinkedWord(
 			translations: input.translations,
 			notes: input.notes ?? null,
 			partOfSpeech: input.partOfSpeech ?? null,
+			pluralForm,
+			pluralFormNormalized,
 			spellings: spellings.length
 				? {
 						createMany: {
@@ -292,6 +300,7 @@ export const actions: Actions = {
 		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
+		const pluralForm = readOptionalText(formData, 'pluralForm');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -324,7 +333,8 @@ export const actions: Actions = {
 					translations,
 					notes,
 					alternativeSpellings,
-					partOfSpeech
+					partOfSpeech,
+					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
 				if (checkedSegmentId) {

@@ -96,6 +96,8 @@ model Word {
   lessonWords  LessonWord[]
   spellings    WordSpelling[]
   wordOfDayEntries WordOfTheDay[]
+  relatedWords RelatedWord[] @relation("RelatedWordSource")
+  relatedToWords RelatedWord[] @relation("RelatedWordTarget")
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
@@ -126,6 +128,18 @@ model WordSpelling {
 
   @@unique([wordId, spellingNormalized])
   @@index([spellingNormalized])
+}
+
+model RelatedWord {
+  id            String   @id @default(cuid())
+  wordId        String
+  relatedWordId String
+  createdAt     DateTime @default(now())
+  word          Word     @relation("RelatedWordSource", fields: [wordId], references: [id], onDelete: Cascade)
+  relatedWord   Word     @relation("RelatedWordTarget", fields: [relatedWordId], references: [id], onDelete: Cascade)
+
+  @@unique([wordId, relatedWordId])
+  @@index([relatedWordId])
 }
 
 model ExampleSentence {

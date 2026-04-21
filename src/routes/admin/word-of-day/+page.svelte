@@ -176,6 +176,17 @@
 		formEl.requestSubmit();
 	}
 
+	function handleConfirmBackdropClick(event: MouseEvent) {
+		if (event.target === event.currentTarget) cancelConfirm();
+	}
+
+	function handleConfirmBackdropKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelConfirm();
+		}
+	}
+
 	$effect(() => {
 		if (editingDayKey !== null) {
 			queueMicrotask(() => searchInput?.focus());
@@ -390,14 +401,17 @@
 {#if pendingAssign}
 	<div
 		class="wod-confirm-backdrop"
-		role="dialog"
-		aria-modal="true"
-		aria-labelledby="wod-confirm-title"
-		onclick={(e) => {
-			if (e.target === e.currentTarget) cancelConfirm();
-		}}
+		role="presentation"
+		onclick={handleConfirmBackdropClick}
+		onkeydown={handleConfirmBackdropKeydown}
 	>
-		<div class="wod-confirm-dialog">
+		<div
+			class="wod-confirm-dialog"
+			role="dialog"
+			aria-modal="true"
+			aria-labelledby="wod-confirm-title"
+			tabindex="-1"
+		>
 			<h2 id="wod-confirm-title">Word already used</h2>
 			<p>
 				<strong>{pendingAssign.kalenjin}</strong> was the Word of the Day on

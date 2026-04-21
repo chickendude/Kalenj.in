@@ -50,6 +50,14 @@ const WORDS = [
 	}
 ];
 
+function makeSearchWord(overrides: Partial<(typeof WORDS)[number]> = {}): (typeof WORDS)[number] {
+	return {
+		...WORDS[0],
+		...overrides,
+		spellings: overrides.spellings ?? []
+	};
+}
+
 describe('normalizeKalenjinSearchQuery', () => {
 	it('strips punctuation and lowercases while keeping apostrophes', () => {
 		expect(normalizeKalenjinSearchQuery('"Koit\'a?!"')).toBe("koit'a");
@@ -79,13 +87,41 @@ describe('scoreKalenjinWordMatch', () => {
 		expect(scoreKalenjinWordMatch(WORDS[0], 'chamcham')).toBe(0);
 	});
 
+	it('treats k/g as equivalent for base lemma matching', () => {
+		expect(scoreKalenjinWordMatch(WORDS[2], 'got')).toBe(2);
+		expect(scoreKalenjinWordMatch(WORDS[2], 'kot')).toBe(0);
+	});
+
+	it('treats word-final p/b as equivalent for base lemma matching', () => {
+		const word = makeSearchWord({
+			id: '4',
+			kalenjin: 'chitap',
+			kalenjinNormalized: 'chitap',
+			translations: 'person of'
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'chitab')).toBe(2);
+		expect(scoreKalenjinWordMatch(word, 'chitap')).toBe(0);
+	});
+
+	it('does not treat internal p/b as equivalent', () => {
+		const word = makeSearchWord({
+			id: '5',
+			kalenjin: 'kaplel',
+			kalenjinNormalized: 'kaplel',
+			translations: 'white'
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'kablel')).toBe(Number.POSITIVE_INFINITY);
+	});
+
 	it('matches alternative spellings', () => {
 		expect(scoreKalenjinWordMatch(WORDS[1], 'misseng')).toBe(1);
 	});
 });
 
 describe('sortKalenjinSearchResults', () => {
-	it('prefers primary exact matches, then alternate spellings, then fuzzy a/o matches', () => {
+	it('prefers primary exact matches, then alternate spellings, then fuzzy equivalent-letter matches', () => {
 		expect(sortKalenjinSearchResults(WORDS, 'kot').map((word) => word.id)).toEqual(['3', '1', '2']);
 		expect(sortKalenjinSearchResults(WORDS, 'misseng').map((word) => word.id)).toEqual([
 			'2',
@@ -96,6 +132,11 @@ describe('sortKalenjinSearchResults', () => {
 			'1',
 			'2',
 			'3'
+		]);
+		expect(sortKalenjinSearchResults(WORDS, 'got').map((word) => word.id)).toEqual([
+			'3',
+			'1',
+			'2'
 		]);
 	});
 });

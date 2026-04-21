@@ -28,13 +28,44 @@ type SearchForm = {
 };
 
 /**
- * Collapse Kalenjin "a" and "o" vowels into a single canonical form so that
- * words like chamcham / chomchom, achame / ochome, and boiboi / baibai compare
- * as equivalent. Both vowels are mapped to "a" — the choice is arbitrary as
- * long as both sides of a comparison use the same mapping.
+ * Build a search pattern for Kalenjin letters that are commonly interchanged:
+ * a/o and k/g anywhere, plus p/b only at word endings.
  */
-function normalizeAoEquivalent(value: string): string {
-	return value.replace(/[ao]/g, 'a');
+function buildEquivalentSearchRegexSource(query: string, sql = false): string {
+	const whitespace = sql ? '[[:space:]]+' : '\\s+';
+	let source = '';
+
+	for (let index = 0; index < query.length; index += 1) {
+		const char = query[index];
+		const nextChar = query[index + 1];
+		const isWordFinal = !nextChar || /\s/.test(nextChar);
+
+		if (/\s/.test(char)) {
+			source += whitespace;
+		} else if (char === 'a' || char === 'o') {
+			source += '[ao]';
+		} else if (char === 'k' || char === 'g') {
+			source += '[kg]';
+		} else if ((char === 'p' || char === 'b') && isWordFinal) {
+			source += sql ? (nextChar ? '[pb]' : '[pb]($|[[:space:]])') : '[pb](?=$|\\s)';
+		} else {
+			source += char.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
+		}
+	}
+
+	return source;
+}
+
+function matchesEquivalentSearch(form: string, query: string, mode: 'exact' | 'prefix' | 'contains') {
+	const source = buildEquivalentSearchRegexSource(query);
+	const pattern =
+		mode === 'exact' ? `^${source}$` : mode === 'prefix' ? `^${source}` : source;
+
+	return new RegExp(pattern).test(form);
+}
+
+function buildEquivalentSqlSearchPattern(query: string): string {
+	return buildEquivalentSearchRegexSource(query, true);
 }
 
 export function normalizeKalenjinSearchQuery(query: string): string {
@@ -104,8 +135,6 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return Number.POSITIVE_INFINITY;
 	}
 
-	const aoQuery = normalizeAoEquivalent(query);
-	const aoForm = normalizeAoEquivalent(form.normalized);
 	const isPrimaryForm = form.kind === 'lemma';
 	const alternateOffset = isPrimaryForm ? 0 : 1;
 
@@ -113,7 +142,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 0 + alternateOffset;
 	}
 
-	if (aoForm === aoQuery) {
+	if (matchesEquivalentSearch(form.normalized, query, 'exact')) {
 		return 2 + alternateOffset;
 	}
 
@@ -121,7 +150,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 4 + alternateOffset;
 	}
 
-	if (aoForm.startsWith(aoQuery)) {
+	if (matchesEquivalentSearch(form.normalized, query, 'prefix')) {
 		return 6 + alternateOffset;
 	}
 
@@ -129,7 +158,7 @@ function scoreSearchFormMatch(form: SearchForm, query: string): number {
 		return 8 + alternateOffset;
 	}
 
-	if (aoForm.includes(aoQuery)) {
+	if (matchesEquivalentSearch(form.normalized, query, 'contains')) {
 		return 10 + alternateOffset;
 	}
 
@@ -190,7 +219,7 @@ export async function searchWordsByKalenjin(
 	}
 
 	const containsQuery = `%${normalizedQuery}%`;
-	const aoContainsQuery = `%${normalizeAoEquivalent(normalizedQuery)}%`;
+	const equivalentSearchPattern = buildEquivalentSqlSearchPattern(normalizedQuery);
 	const candidateRows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
 		SELECT DISTINCT w.id
 		FROM "Word" w
@@ -199,9 +228,9 @@ export async function searchWordsByKalenjin(
 			w."kalenjinNormalized" LIKE ${containsQuery}
 			OR COALESCE(w."pluralFormNormalized", '') LIKE ${containsQuery}
 			OR COALESCE(ws."spellingNormalized", '') LIKE ${containsQuery}
-			OR translate(w."kalenjinNormalized", 'ao', 'aa') LIKE ${aoContainsQuery}
-			OR translate(COALESCE(w."pluralFormNormalized", ''), 'ao', 'aa') LIKE ${aoContainsQuery}
-			OR translate(COALESCE(ws."spellingNormalized", ''), 'ao', 'aa') LIKE ${aoContainsQuery}
+			OR w."kalenjinNormalized" ~ ${equivalentSearchPattern}
+			OR COALESCE(w."pluralFormNormalized", '') ~ ${equivalentSearchPattern}
+			OR COALESCE(ws."spellingNormalized", '') ~ ${equivalentSearchPattern}
 		LIMIT ${Math.max(limit * 8, 100)}
 	`);
 

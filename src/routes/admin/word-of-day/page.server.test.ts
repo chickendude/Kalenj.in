@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { addDays, startOfLocalDay } from '$lib/word-of-the-day';
 
 const mocks = vi.hoisted(() => {
 	const prisma = {
@@ -49,9 +50,7 @@ describe('assign action', () => {
 	});
 
 	it('rejects dates before today without touching the schedule', async () => {
-		const yesterday = new Date();
-		yesterday.setUTCHours(0, 0, 0, 0);
-		yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+		const yesterday = addDays(startOfLocalDay(), -1);
 		const iso = yesterday.toISOString().slice(0, 10);
 
 		const result = (await assign({ date: iso, wordId: 'w1' })) as {

@@ -2,6 +2,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
+	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type ExampleToken = {
@@ -36,6 +37,7 @@
 	let { word }: { word: WordOfDay } = $props();
 
 	const todayLabel = new Date().toLocaleDateString(undefined, {
+		timeZone: WORD_OF_THE_DAY_TIME_ZONE,
 		month: 'short',
 		day: 'numeric'
 	});

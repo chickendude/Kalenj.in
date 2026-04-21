@@ -1,7 +1,16 @@
-// All WOTD dates are represented as UTC midnight of a local calendar day.
+// All WOTD dates are represented as UTC midnight of an Eastern calendar day.
 // This matches Postgres's `@db.Date` round-trip (DATE columns are tz-naive,
 // Prisma marshals them as 00:00:00Z) so equality checks and lookups work
 // regardless of the server's local timezone.
+
+export const WORD_OF_THE_DAY_TIME_ZONE = 'America/New_York';
+
+const easternDateFormatter = new Intl.DateTimeFormat('en-US', {
+	timeZone: WORD_OF_THE_DAY_TIME_ZONE,
+	year: 'numeric',
+	month: '2-digit',
+	day: '2-digit'
+});
 
 function isUtcMidnight(d: Date): boolean {
 	return (
@@ -12,12 +21,25 @@ function isUtcMidnight(d: Date): boolean {
 	);
 }
 
-export function startOfLocalDay(date: Date = new Date()): Date {
-	if (isUtcMidnight(date)) return date;
-	return new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+function easternDateParts(date: Date): { year: number; month: number; day: number } {
+	const parts = Object.fromEntries(
+		easternDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+	);
+	return {
+		year: Number(parts.year),
+		month: Number(parts.month),
+		day: Number(parts.day)
+	};
 }
 
-export function wordOfTheDayKey(date: Date = new Date()): number {
+export function startOfLocalDay(date?: Date): Date {
+	const value = date ?? new Date();
+	if (date && isUtcMidnight(value)) return value;
+	const { year, month, day } = easternDateParts(value);
+	return new Date(Date.UTC(year, month - 1, day));
+}
+
+export function wordOfTheDayKey(date?: Date): number {
 	const d = startOfLocalDay(date);
 	return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
 }

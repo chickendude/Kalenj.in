@@ -14,6 +14,7 @@
 	} from '$lib/course';
 	import { suggestCefrTargets } from '$lib/cefr-suggestions';
 	import { isUnsetSentenceEnglish } from '$lib/sentence-placeholders';
+	import { splitSentenceText } from '$lib/story-split';
 
 	let { data, form } = $props();
 
@@ -344,6 +345,52 @@
 		} else if (event.key === 'Escape') {
 			event.preventDefault();
 			cancelInlineStoryEdit();
+		}
+	}
+
+	let storyRowBusy = $state<string | null>(null);
+
+	async function splitStorySentence(sentenceId: string) {
+		if (storyRowBusy) return;
+		storyRowBusy = sentenceId;
+		inlineStoryError = null;
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/story-sentence-split`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ sentenceId })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) {
+				throw new Error(result.error ?? 'Could not split sentence.');
+			}
+			await invalidateAll();
+		} catch (err) {
+			inlineStoryError = err instanceof Error ? err.message : 'Could not split sentence.';
+		} finally {
+			storyRowBusy = null;
+		}
+	}
+
+	async function mergeStorySentence(sentenceId: string) {
+		if (storyRowBusy) return;
+		storyRowBusy = sentenceId;
+		inlineStoryError = null;
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/story-sentence-merge`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ sentenceId })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) {
+				throw new Error(result.error ?? 'Could not merge sentence.');
+			}
+			await invalidateAll();
+		} catch (err) {
+			inlineStoryError = err instanceof Error ? err.message : 'Could not merge sentence.';
+		} finally {
+			storyRowBusy = null;
 		}
 	}
 
@@ -880,13 +927,18 @@
 			<div class="table-header story-grid">
 				<span>Speaker</span>
 				<span>Text</span>
+				<span></span>
 				<span>Translation</span>
 			</div>
 
 			{#if !data.lesson.story || storySentences.length === 0}
 				<p>No story sentences yet.</p>
 			{:else}
-				{#each storySentences as sentence}
+				{#each storySentences as sentence, sentenceIndex}
+					{@const prev = sentenceIndex > 0 ? storySentences[sentenceIndex - 1] : null}
+					{@const showSpeaker = !prev || prev.speaker !== sentence.speaker}
+					{@const canSplit = splitSentenceText(sentence.kalenjin).length > 1}
+					{@const canMerge = sentenceIndex < storySentences.length - 1}
 					<div class="table-row story-grid">
 						<div>
 							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
@@ -901,9 +953,10 @@
 								<button
 									type="button"
 									class="inline-edit-button"
+									class:inline-edit-button--quiet={!showSpeaker}
 									onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
 								>
-									{sentence.speaker ?? '—'}
+									{showSpeaker ? (sentence.speaker ?? '—') : ''}
 								</button>
 							{/if}
 						</div>
@@ -921,6 +974,67 @@
 								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
 								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
 							/>
+						</div>
+						<div class="row-actions">
+							{#if canSplit}
+								<button
+									type="button"
+									class="row-action-icon"
+									title="Split into separate sentences"
+									aria-label="Split sentence"
+									disabled={storyRowBusy === sentence.id}
+									onclick={() => void splitStorySentence(sentence.id)}
+								>
+									<svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+										<circle
+											cx="3.5"
+											cy="4"
+											r="1.8"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.3"
+										/>
+										<circle
+											cx="3.5"
+											cy="12"
+											r="1.8"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.3"
+										/>
+										<path
+											d="M5 5 L14 11 M5 11 L14 5"
+											stroke="currentColor"
+											stroke-width="1.3"
+											stroke-linecap="round"
+											fill="none"
+										/>
+									</svg>
+								</button>
+							{/if}
+							{#if canMerge}
+								<button
+									type="button"
+									class="row-action-icon"
+									title="Merge with next sentence"
+									aria-label="Merge with next sentence"
+									disabled={storyRowBusy === sentence.id}
+									onclick={() => void mergeStorySentence(sentence.id)}
+								>
+									<svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+										<circle cx="3.5" cy="3" r="1.6" />
+										<circle cx="12.5" cy="3" r="1.6" />
+										<circle cx="8" cy="13" r="1.6" />
+										<path
+											d="M3.5 4.6 L8 8.5 M12.5 4.6 L8 8.5 M8 8.5 V11.4"
+											stroke="currentColor"
+											stroke-width="1.5"
+											stroke-linecap="round"
+											fill="none"
+										/>
+									</svg>
+								</button>
+							{/if}
 						</div>
 						<div class="translation-cell">
 							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
@@ -1689,7 +1803,7 @@
 	}
 
 	.story-grid {
-		grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr);
+		grid-template-columns: 120px minmax(0, 2fr) 1.75rem minmax(0, 2fr);
 	}
 
 	.story-text-cell {
@@ -1707,6 +1821,49 @@
 		display: grid;
 		gap: 0.3rem;
 		padding-top: 0.45rem;
+	}
+
+	.row-actions {
+		align-items: center;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		justify-content: center;
+	}
+
+	.row-action-icon {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius);
+		color: var(--ink-mute);
+		cursor: pointer;
+		display: inline-flex;
+		height: 1.5rem;
+		justify-content: center;
+		padding: 0;
+		width: 1.5rem;
+	}
+
+	.row-action-icon:hover:not(:disabled),
+	.row-action-icon:focus-visible {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	.row-action-icon:disabled {
+		cursor: default;
+		opacity: 0.4;
+	}
+
+	.row-action-icon svg {
+		fill: currentColor;
+		height: 0.95rem;
+		width: 0.95rem;
+	}
+
+	.inline-edit-button--quiet {
+		color: var(--ink-mute);
 	}
 
 	.notes-button {

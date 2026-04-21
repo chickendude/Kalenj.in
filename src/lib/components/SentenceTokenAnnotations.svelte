@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { groupSentenceTokens } from '$lib/word-groups';
+	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
+
+	const CORE_POS = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
+	const OTHER_POS = [
+		'ADVERB',
+		'PRONOUN',
+		'PREPOSITION',
+		'CONJUNCTION',
+		'INTERJECTION',
+		'PHRASE',
+		'OTHER'
+	] as const satisfies readonly PartOfSpeech[];
 
 	type DictionaryWord = {
 		id: string;
@@ -20,6 +33,7 @@
 			kalenjin: string;
 			translations?: string | null;
 			notes?: string | null;
+			partOfSpeech?: PartOfSpeech | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -41,6 +55,7 @@
 			kalenjin: string;
 			translations?: string | null;
 			notes?: string | null;
+			partOfSpeech?: PartOfSpeech | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -63,6 +78,7 @@
 		createTranslations: string;
 		createNotes: string;
 		createAlternativeSpellings: string;
+		createPartOfSpeech: PartOfSpeech | '';
 	};
 
 	type MergePrompt = {
@@ -84,6 +100,7 @@
 			kalenjin: string;
 			translations?: string | null;
 			notes?: string | null;
+			partOfSpeech?: PartOfSpeech | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -146,6 +163,7 @@
 	let groupActionError = $state<string | null>(null);
 	let splitMarkers = $state<Record<string, number[]>>({});
 	let hoveredSplitMarker = $state<number | null>(null);
+	let posOtherOpen = $state(false);
 	const autoSaveTimers = new Map<string, number>();
 
 		const groups = $derived(
@@ -170,6 +188,12 @@
 
 	function normalizeSearchQuery(value: string): string {
 		return value.replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+	}
+
+	function stripSurroundingPunctuation(value: string): string {
+		return value
+			.replace(/^[^\p{L}\p{M}\p{N}]+/u, '')
+			.replace(/[^\p{L}\p{M}\p{N}]+$/u, '');
 	}
 
 	function serializeSpellings(
@@ -219,7 +243,8 @@
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
 				createTranslations: token.word?.translations ?? '',
 				createNotes: token.word?.notes ?? '',
-				createAlternativeSpellings: serializeSpellings(token.word?.spellings)
+				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
+				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
 			for (const segment of token.segments ?? []) {
@@ -229,7 +254,8 @@
 					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
 					createTranslations: segment.word?.translations ?? '',
 					createNotes: segment.word?.notes ?? '',
-					createAlternativeSpellings: serializeSpellings(segment.word?.spellings)
+					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
+					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
 			}
 		}
@@ -372,6 +398,7 @@
 		searchError = null;
 		groupActionError = null;
 		hoveredSplitMarker = null;
+		posOtherOpen = false;
 	}
 
 	function openPicker(token: SentenceToken) {
@@ -425,22 +452,10 @@
 		event.stopPropagation();
 	}
 
-	function updateDraft(tokenId: string, field: keyof TokenDraft, value: string) {
+	function updateDraft<K extends keyof TokenDraft>(tokenId: string, field: K, value: TokenDraft[K]) {
 		drafts[tokenId] = {
 			...drafts[tokenId],
 			[field]: value
-		};
-	}
-
-	function resetEditorToCreate(token: SentenceToken) {
-		const draftKey = activeSegment?.id ?? token.id;
-		drafts[draftKey] = {
-			...drafts[draftKey],
-			selectedWordId: '',
-			createLemma: normalizeSearchQuery(activeSegment?.surfaceForm ?? token.surfaceForm),
-			createTranslations: '',
-			createNotes: '',
-			createAlternativeSpellings: ''
 		};
 	}
 
@@ -591,20 +606,95 @@
 	}
 
 	function splitMarkersFor(tokenId: string): number[] {
-		return Object.prototype.hasOwnProperty.call(splitMarkers, tokenId)
-			? splitMarkers[tokenId]
-			: defaultSplitMarkersFor(tokenId);
+		const pending = splitMarkers[tokenId];
+		return pending !== undefined ? pending : defaultSplitMarkersFor(tokenId);
 	}
 
-	function toggleSplitMarker(tokenId: string, boundary: number, surface: string): void {
+	async function applySplitClick(tokenId: string, boundary: number, surface: string): Promise<void> {
 		if (boundary <= 0 || boundary >= surface.length) {
 			return;
 		}
 
 		const currentMarkers = splitMarkersFor(tokenId);
-		splitMarkers[tokenId] = currentMarkers.includes(boundary)
+		const nextMarkers = currentMarkers.includes(boundary)
 			? currentMarkers.filter((value) => value !== boundary)
 			: [...currentMarkers, boundary].sort((a, b) => a - b);
+
+		// Optimistic UI update so the click feels instantaneous while the
+		// server persists the new split.
+		splitMarkers[tokenId] = nextMarkers;
+		hoveredSplitMarker = null;
+
+		try {
+			if (nextMarkers.length === 0) {
+				await unsplitActiveGroup();
+			} else {
+				await splitActiveGroup(nextMarkers);
+			}
+		} catch {
+			// Roll back optimistic state on failure. splitActiveGroup already
+			// surfaces the error message via groupActionError.
+			const revert = { ...splitMarkers };
+			delete revert[tokenId];
+			splitMarkers = revert;
+		}
+	}
+
+	async function unsplitActiveGroup(): Promise<void> {
+		if (!activeToken) {
+			return;
+		}
+
+		const originalTokenId = activeToken.id;
+
+		try {
+			await requestGroupAction({
+				action: 'unsplit',
+				tokenId: originalTokenId
+			});
+			const nextSplitMarkers = { ...splitMarkers };
+			delete nextSplitMarkers[originalTokenId];
+			splitMarkers = nextSplitMarkers;
+			hoveredSplitMarker = null;
+			activeSegmentId = null;
+		} catch (unsplitError) {
+			groupActionError =
+				unsplitError instanceof Error ? unsplitError.message : 'Could not unsplit this word.';
+			throw unsplitError;
+		}
+	}
+
+	type SplitPart = { text: string; start: number; end: number };
+
+	function computeSplitParts(text: string, splits: number[]): SplitPart[] {
+		const bounds = [0, ...splits, text.length];
+		const parts: SplitPart[] = [];
+		for (let i = 0; i < bounds.length - 1; i += 1) {
+			const start = bounds[i];
+			const end = bounds[i + 1];
+			if (end > start) {
+				parts.push({ text: text.slice(start, end), start, end });
+			}
+		}
+		return parts;
+	}
+
+	function partIndexForChar(charIndex: number, splits: number[]): number {
+		let idx = 0;
+		for (const sp of splits) {
+			if (sp <= charIndex) {
+				idx += 1;
+			}
+		}
+		return idx;
+	}
+
+	function activeSegmentIndex(
+		token: SentenceToken | null,
+		segment: TokenSegment | null
+	): number {
+		if (!token || !segment) return -1;
+		return token.segments?.findIndex((entry) => entry.id === segment.id) ?? -1;
 	}
 
 	function splitPreview(surface: string, tokenId: string): string {
@@ -827,7 +917,9 @@
 				createAlternativeSpellings:
 					tokenUpdate.word?.spellings
 						? serializeSpellings(tokenUpdate.word.spellings)
-						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? ''
+						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? '',
+				createPartOfSpeech:
+					tokenUpdate.word?.partOfSpeech ?? drafts[tokenUpdate.tokenId]?.createPartOfSpeech ?? ''
 			};
 
 			for (const segment of tokenUpdate.segments ?? []) {
@@ -843,7 +935,9 @@
 					createNotes: segment.word?.notes ?? drafts[segment.id]?.createNotes ?? '',
 					createAlternativeSpellings: segment.word?.spellings
 						? serializeSpellings(segment.word.spellings)
-						: drafts[segment.id]?.createAlternativeSpellings ?? ''
+						: drafts[segment.id]?.createAlternativeSpellings ?? '',
+					createPartOfSpeech:
+						segment.word?.partOfSpeech ?? drafts[segment.id]?.createPartOfSpeech ?? ''
 				};
 			}
 		}
@@ -945,6 +1039,24 @@
 	{/if}
 
 	{#if activeToken && activeGroup}
+		{@const pendingSplits = splitMarkersFor(activeToken.id)}
+		{@const previewParts = computeSplitParts(activeToken.surfaceForm, pendingSplits)}
+		{@const hasCommittedSegments = splitTabSegments.length > 1}
+		{@const activeSegIdx = activeSegmentIndex(activeToken, activeSegment)}
+		{@const activeSurfaceTrim = (activeSurface ?? '').trim()}
+		{@const createLemmaValue =
+			drafts[activeDraftKey]?.createLemma ?? activeSurface ?? ''}
+		{@const createTranslationsValue = drafts[activeDraftKey]?.createTranslations ?? ''}
+		{@const selectedWordInDraft = drafts[activeDraftKey]?.selectedWordId ?? ''}
+		{@const canSubmitCreate =
+			createLemmaValue.trim().length > 0 && createTranslationsValue.trim().length > 0}
+		{@const currentPos = drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
+		{@const otherSelected =
+			currentPos !== '' && !(CORE_POS as readonly string[]).includes(currentPos)}
+		{@const splittableSurface = activeToken.surfaceForm.replace(
+			/[^\p{L}\p{M}\p{N}]+$/u,
+			''
+		)}
 		<div
 			class="modal-backdrop"
 			role="button"
@@ -954,7 +1066,7 @@
 			onkeydown={handleBackdropKeydown}
 		>
 			<div
-				class="picker-modal"
+				class="lemma-modal"
 				role="dialog"
 				aria-modal="true"
 				aria-label="Link root lemma"
@@ -962,29 +1074,112 @@
 				onclick={(event) => event.stopPropagation()}
 				onkeydown={handleModalKeydown}
 			>
-				<div class="picker-header">
-					<div>
-						<strong>Link root lemma</strong>
-						<p class="status-text">Word: "{activeGroup.fullSurface}"</p>
+				<!-- Header -->
+				<div class="lemma-modal-head">
+					<div class="lemma-modal-head-text">
+						<div class="lemma-kicker">Root lemma</div>
+						<h3 class="lemma-modal-title">
+							<span class="lemma-token-word">{stripSurroundingPunctuation(
+									activeGroup.fullSurface
+								)}</span>
+							{#if drafts[activeToken.id]?.inContextTranslation?.trim()}
+								<span class="lemma-token-gloss">{drafts[activeToken.id].inContextTranslation}</span>
+							{/if}
+						</h3>
 					</div>
-					<button type="button" class="secondary-button" onclick={() => closePicker()}>Close</button>
+					<button
+						type="button"
+						class="icon-btn"
+						aria-label="Close"
+						onclick={() => closePicker()}
+					>
+						×
+					</button>
 				</div>
 
-				{#if splitTabSegments.length > 1}
-					<div class="split-tabs" role="tablist" aria-label="Split word parts">
-						{#each splitTabSegments as tabSegment, tabIndex}
-							<button
-								type="button"
-								role="tab"
-								class="split-tab"
-								class:active={tabSegment.id === activeSegment?.id}
-								aria-selected={tabSegment.id === activeSegment?.id}
-								onclick={() => activatePickerToken(activeToken, tabSegment.id)}
-							>
-								<span>{tabSegment.surfaceForm}</span>
-								<small>{tabSegment.word?.kalenjin ?? `Part ${tabIndex + 1}`}</small>
-							</button>
-						{/each}
+				<!-- Splitter: character-level split control -->
+				{#if splittableSurface.length > 1}
+					<div class="splitter-block">
+						<div class="splitter-row-head">
+							<span class="splitter-label">Word parts</span>
+							<span class="splitter-hint">
+								{#if hasCommittedSegments}
+									Linking {splitTabSegments.length} parts separately — click a split to remove
+									it.
+								{:else}
+									Click a letter to split after it (e.g. ka|mama → ka + mama).
+								{/if}
+							</span>
+							{#if hasCommittedSegments}
+								<button
+									type="button"
+									class="btn ghost sm splitter-clear"
+									onclick={() => void unsplitActiveGroup()}
+								>
+									Undo splits
+								</button>
+							{/if}
+						</div>
+						<div class="splitter" role="group" aria-label={`Split ${splittableSurface}`}>
+							{#each Array.from(splittableSurface) as ch, i}
+								{@const partIdx = partIndexForChar(i, pendingSplits)}
+								{@const isLast = i === splittableSurface.length - 1}
+								{@const hasSplitAfter = !isLast && pendingSplits.includes(i + 1)}
+								<button
+									type="button"
+									class={`splitter-char part-tint-${partIdx % 4}`}
+									class:has-split-after={hasSplitAfter}
+									data-active={activeSegIdx >= 0 && partIdx === activeSegIdx ? 'true' : 'false'}
+									aria-label={isLast
+										? `Letter ${ch}`
+										: hasSplitAfter
+											? `Remove split after "${ch}"`
+											: `Split after "${ch}"`}
+									disabled={isLast}
+									onclick={() =>
+										void applySplitClick(
+											activeToken.id,
+											i + 1,
+											activeToken.surfaceForm
+										)}
+								>
+									{ch}
+								</button>
+								{#if hasSplitAfter}
+									<span class="splitter-split-marker" aria-hidden="true"></span>
+								{/if}
+							{/each}
+						</div>
+
+						{#if hasCommittedSegments}
+							<div class="part-tabs" role="tablist">
+								{#each splitTabSegments as seg, segIdx}
+									<button
+										type="button"
+										role="tab"
+										aria-selected={seg.id === activeSegment?.id}
+										class={`part-tab part-tint-${segIdx % 4}`}
+										class:active={seg.id === activeSegment?.id}
+										onclick={() => activatePickerToken(activeToken, seg.id)}
+									>
+										<span class="part-tab-num">Part {segIdx + 1}</span>
+										<span class="part-tab-word">{seg.surfaceForm}</span>
+										{#if seg.word}
+											<span class="part-tab-mark">●</span>
+										{/if}
+									</button>
+								{/each}
+							</div>
+						{:else if previewParts.length > 1}
+							<div class="part-tabs part-tabs-preview" aria-label="Preview of split parts">
+								{#each previewParts as p, i}
+									<div class={`part-tab part-tint-${i % 4}`}>
+										<span class="part-tab-num">Part {i + 1}</span>
+										<span class="part-tab-word">{p.text}</span>
+									</div>
+								{/each}
+							</div>
+						{/if}
 					</div>
 				{/if}
 
@@ -992,231 +1187,292 @@
 					<p class="status-text error-text">{groupActionError}</p>
 				{/if}
 
-				<label>
-					Search
+				<!-- Search + horizontal hit rail -->
+				<div class="lemma-search-block">
 					<input
 						bind:this={searchInput}
+						class="input lemma-search-input"
 						value={searchQuery}
-						placeholder="Search lemma"
+						placeholder={hasCommittedSegments
+							? `Search lemmas for "${activeSurfaceTrim}"…`
+							: 'Search existing lemmas…'}
 						oninput={(event) =>
 							handleSearchInput(activeDraftKey, (event.currentTarget as HTMLInputElement).value)}
 					/>
-				</label>
-
-				<div class="results-list">
-					{#if searchError}
-						<p class="status-text error-text">{searchError}</p>
-					{:else if searchLoading}
-						<div class="loading-placeholder" aria-live="polite" aria-label="Searching">
-							<span class="loading-spinner" aria-hidden="true"></span>
-						</div>
-					{:else if !searchLoading && searchResults.length === 0}
-						<p class="status-text">No search results yet.</p>
-					{:else}
-						{#each searchResults as result}
-							<form
-								method="POST"
-								action={updateAction}
-								use:enhance={enhanceUpdateForm(activeToken.id)}
-							>
-								<input type="hidden" name={entityIdField} value={entityId} />
-								<input type="hidden" name="tokenId" value={activeToken.id} />
-								{#if activeSegment}
-									<input type="hidden" name="segmentId" value={activeSegment.id} />
+					<div class="lemma-hit-rail" role="list">
+						{#if searchError}
+							<div class="lemma-hit-empty error-text">{searchError}</div>
+						{:else if searchLoading}
+							<div class="lemma-hit-empty" aria-live="polite" aria-label="Searching">
+								<span class="loading-spinner" aria-hidden="true"></span>
+							</div>
+						{:else if searchResults.length === 0}
+							<div class="lemma-hit-empty">
+								{#if searchQuery.trim()}
+									No lemmas match "{searchQuery}".
+								{:else}
+									Type to search existing lemmas.
 								{/if}
-								<input type="hidden" name="wordId" value={result.id} />
-								<input
-									type="hidden"
-									name="inContextTranslation"
-									value={drafts[activeToken.id]?.inContextTranslation ?? ''}
-								/>
-								<button
-									type="submit"
-									class="result-button"
-									class:selected-result={activeWordId === result.id}
-									title={`${result.kalenjin} — ${result.translations}`}
-								>
-									<span class="result-lemma">{result.kalenjin}</span>
-									<small class="result-translations">{result.translations}</small>
-								</button>
-							</form>
-						{/each}
-					{/if}
-				</div>
-
-				<div class="create-box">
-					<div class="editor-header">
-						<strong>{drafts[activeDraftKey]?.selectedWordId ? 'Update lemma' : 'Create new lemma'}</strong>
-						<div class="editor-actions">
-							{#if activeWordId}
+							</div>
+						{:else}
+							{#each searchResults as result}
 								<form
 									method="POST"
 									action={updateAction}
-									use:enhance={enhanceUpdateForm(activeToken.id, {
-										closeOnSuccess: !activeSegment,
-										invalidateOnSuccess: true
-									})}
+									class="lemma-hit-form"
+									use:enhance={enhanceUpdateForm(activeToken.id)}
 								>
 									<input type="hidden" name={entityIdField} value={entityId} />
 									<input type="hidden" name="tokenId" value={activeToken.id} />
 									{#if activeSegment}
 										<input type="hidden" name="segmentId" value={activeSegment.id} />
 									{/if}
-									<input type="hidden" name="wordId" value="" />
+									<input type="hidden" name="wordId" value={result.id} />
 									<input
 										type="hidden"
 										name="inContextTranslation"
 										value={drafts[activeToken.id]?.inContextTranslation ?? ''}
 									/>
-									<button type="submit" class="secondary-button">Clear lemma</button>
+									<button
+										type="submit"
+										class="lemma-hit"
+										class:active={activeWordId === result.id}
+										title={`${result.kalenjin} — ${result.translations}`}
+									>
+										<span class="lemma-hit-word">{result.kalenjin}</span>
+										<span class="lemma-hit-gloss">{result.translations}</span>
+									</button>
 								</form>
-							{/if}
+							{/each}
+						{/if}
+					</div>
+				</div>
 
-							{#if drafts[activeDraftKey]?.selectedWordId}
+				<!-- Mode switch row -->
+				<div class="lemma-mode-row">
+					<div class="pos-group">
+						<span class="pos-group-label">Part of speech</span>
+						<div class="pos-pills" role="radiogroup" aria-label="Part of speech">
+							{#each CORE_POS as pos}
+								{@const selected = currentPos === pos}
 								<button
 									type="button"
-									class="secondary-button"
-									onclick={() => resetEditorToCreate(activeToken)}
+									role="radio"
+									aria-checked={selected}
+									class="pos-pill"
+									class:selected
+									onclick={() => {
+										posOtherOpen = false;
+										updateDraft(
+											activeDraftKey,
+											'createPartOfSpeech',
+											selected ? '' : pos
+										);
+									}}
 								>
-									New lemma
+									{PART_OF_SPEECH_LABELS[pos]}
 								</button>
-							{/if}
+							{/each}
+							<div class="pos-other-wrap">
+								<button
+									type="button"
+									aria-pressed={otherSelected}
+									aria-haspopup="menu"
+									aria-expanded={posOtherOpen}
+									class="pos-pill pos-pill-other"
+									class:selected={otherSelected}
+									onclick={() => {
+										if (otherSelected) {
+											updateDraft(activeDraftKey, 'createPartOfSpeech', '');
+											posOtherOpen = false;
+										} else {
+											posOtherOpen = !posOtherOpen;
+										}
+									}}
+								>
+									<span>
+										{otherSelected
+											? PART_OF_SPEECH_LABELS[currentPos as PartOfSpeech]
+											: 'Other'}
+									</span>
+									<span class="pos-pill-caret" aria-hidden="true">▾</span>
+								</button>
+								{#if posOtherOpen}
+									<div class="pos-other-menu" role="menu">
+										{#each OTHER_POS as pos}
+											{@const itemSelected = currentPos === pos}
+											<button
+												type="button"
+												role="menuitemradio"
+												aria-checked={itemSelected}
+												class="pos-other-item"
+												class:selected={itemSelected}
+												onclick={() => {
+													updateDraft(
+														activeDraftKey,
+														'createPartOfSpeech',
+														itemSelected ? '' : pos
+													);
+													posOtherOpen = false;
+												}}
+											>
+												{PART_OF_SPEECH_LABELS[pos]}
+											</button>
+										{/each}
+									</div>
+								{/if}
+							</div>
+						</div>
+					</div>
+					<div class="lemma-mode-side">
+						{#if activeWord}
+							<a
+								href={`/dictionary/${activeWord.id}`}
+								target="_blank"
+								rel="noreferrer"
+								class="lemma-sideling"
+							>
+								Open entry ↗
+							</a>
+						{/if}
+						{#if activeWordId}
+							<form
+								method="POST"
+								action={updateAction}
+								use:enhance={enhanceUpdateForm(activeToken.id, {
+									closeOnSuccess: !activeSegment,
+									invalidateOnSuccess: true
+								})}
+							>
+								<input type="hidden" name={entityIdField} value={entityId} />
+								<input type="hidden" name="tokenId" value={activeToken.id} />
+								{#if activeSegment}
+									<input type="hidden" name="segmentId" value={activeSegment.id} />
+								{/if}
+								<input type="hidden" name="wordId" value="" />
+								<input
+									type="hidden"
+									name="inContextTranslation"
+									value={drafts[activeToken.id]?.inContextTranslation ?? ''}
+								/>
+								<button type="submit" class="btn ghost sm">Clear lemma</button>
+							</form>
+						{/if}
+					</div>
+				</div>
 
-							{#if !activeSegment && activeToken.surfaceForm.trim().includes(' ')}
-								<button type="button" class="secondary-button" onclick={() => void splitActiveGroup()}>
-									Split spaces
-								</button>
-							{/if}
+				<!-- Form -->
+				<form
+					method="POST"
+					action={createAction}
+					class="lemma-form"
+					use:enhance={enhanceCreateForm(activeToken.id)}
+				>
+					<input type="hidden" name={entityIdField} value={entityId} />
+					<input type="hidden" name="tokenId" value={activeToken.id} />
+					{#if activeSegment}
+						<input type="hidden" name="segmentId" value={activeSegment.id} />
+					{/if}
+					<input type="hidden" name="wordId" value={selectedWordInDraft} />
+					<input
+						type="hidden"
+						name="inContextTranslation"
+						value={drafts[activeToken.id]?.inContextTranslation ?? ''}
+					/>
+					<input
+						type="hidden"
+						name="partOfSpeech"
+						value={drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
+					/>
+
+					<div class="lemma-form-grid">
+						<div class="field">
+							<label for="lemma-field-kalenjin">Lemma</label>
+							<input
+								id="lemma-field-kalenjin"
+								class="input"
+								name="kalenjin"
+								required
+								value={createLemmaValue}
+								oninput={(event) =>
+									updateDraft(
+										activeDraftKey,
+										'createLemma',
+										(event.currentTarget as HTMLInputElement).value
+									)}
+							/>
+						</div>
+						<div class="field">
+							<label for="lemma-field-alt">Alternative spellings</label>
+							<input
+								id="lemma-field-alt"
+								class="input"
+								name="alternativeSpellings"
+								placeholder="comma, separated"
+								value={drafts[activeDraftKey]?.createAlternativeSpellings ?? ''}
+								oninput={(event) =>
+									updateDraft(
+										activeDraftKey,
+										'createAlternativeSpellings',
+										(event.currentTarget as HTMLInputElement).value
+									)}
+							/>
 						</div>
 					</div>
 
-					{#if (!activeSegment || isFirstSegmentActive) && activeToken.surfaceForm.length > 1}
-						<div class="split-box">
-							<div class="editor-header">
-								<strong>{activeToken.segments?.length ? 'Edit split' : 'Split written word'}</strong>
-								<button
-									type="button"
-									class="secondary-button"
-									disabled={splitMarkersFor(activeToken.id).length === 0}
-									onclick={() => void splitActiveGroup([...splitMarkersFor(activeToken.id)])}
-								>
-									Apply split
-								</button>
-							</div>
-							<div class="word-editor" aria-label={`Split ${activeToken.surfaceForm}`}>
-								{#each Array.from(activeToken.surfaceForm) as char, index}
-									<button
-										type="button"
-										class="letter-char"
-										onclick={() =>
-											index < activeToken.surfaceForm.length - 1
-												? toggleSplitMarker(activeToken.id, index + 1, activeToken.surfaceForm)
-												: null}
-										onmouseenter={() =>
-											(hoveredSplitMarker =
-												index < activeToken.surfaceForm.length - 1 ? index + 1 : null)}
-										onmouseleave={() => (hoveredSplitMarker = null)}
-										aria-label={`Split after ${char}`}
-									>
-										{char}
-									</button>
-									{#if index < activeToken.surfaceForm.length - 1}
-										<span
-											class="marker-inline"
-											class:active={splitMarkersFor(activeToken.id).includes(index + 1)}
-											class:hovered={hoveredSplitMarker === index + 1}
-										>
-											|
-										</span>
-									{/if}
-								{/each}
-							</div>
-							<small class="status-text split-preview">
-								{splitPreview(activeToken.surfaceForm, activeToken.id)}
-							</small>
-						</div>
-					{/if}
-
-					<form
-						method="POST"
-						action={createAction}
-						class="create-form"
-						use:enhance={enhanceCreateForm(activeToken.id)}
-					>
-						<input type="hidden" name={entityIdField} value={entityId} />
-						<input type="hidden" name="tokenId" value={activeToken.id} />
-						{#if activeSegment}
-							<input type="hidden" name="segmentId" value={activeSegment.id} />
-						{/if}
-						<input type="hidden" name="wordId" value={drafts[activeDraftKey]?.selectedWordId ?? ''} />
+					<div class="field lemma-full-field">
+						<label for="lemma-field-translations">Translations</label>
 						<input
-							type="hidden"
-							name="inContextTranslation"
-							value={drafts[activeToken.id]?.inContextTranslation ?? ''}
+							id="lemma-field-translations"
+							class="input"
+							name="translations"
+							required
+							placeholder="translation one; translation two"
+							value={createTranslationsValue}
+							oninput={(event) =>
+								updateDraft(
+									activeDraftKey,
+									'createTranslations',
+									(event.currentTarget as HTMLInputElement).value
+								)}
 						/>
+					</div>
 
-						<div class="lemma-row">
-							<label>
-								Lemma
-								<input
-									name="kalenjin"
-									required
-									value={drafts[activeDraftKey]?.createLemma ?? activeSurface}
-									oninput={(event) =>
-										updateDraft(activeDraftKey, 'createLemma', (event.currentTarget as HTMLInputElement).value)}
-								/>
-							</label>
+					<div class="field lemma-full-field">
+						<label for="lemma-field-notes">Notes</label>
+						<input
+							id="lemma-field-notes"
+							class="input"
+							name="notes"
+							placeholder="Optional"
+							value={drafts[activeDraftKey]?.createNotes ?? ''}
+							oninput={(event) =>
+								updateDraft(
+									activeDraftKey,
+									'createNotes',
+									(event.currentTarget as HTMLInputElement).value
+								)}
+						/>
+					</div>
 
-							<label>
-								Alternative spellings
-								<input
-									name="alternativeSpellings"
-									placeholder="alt1, alt2"
-									value={drafts[activeDraftKey]?.createAlternativeSpellings ?? ''}
-									oninput={(event) =>
-										updateDraft(
-											activeDraftKey,
-											'createAlternativeSpellings',
-											(event.currentTarget as HTMLInputElement).value
-										)}
-								/>
-							</label>
-						</div>
-
-						<label>
-							Translations
-							<input
-								name="translations"
-								required
-								placeholder="translations"
-								value={drafts[activeDraftKey]?.createTranslations ?? ''}
-								oninput={(event) =>
-									updateDraft(activeDraftKey, 'createTranslations', (event.currentTarget as HTMLInputElement).value)}
-							/>
-						</label>
-
-						<label>
-							Notes
-							<input
-								name="notes"
-								placeholder="notes (optional)"
-								value={drafts[activeDraftKey]?.createNotes ?? ''}
-								oninput={(event) =>
-									updateDraft(activeDraftKey, 'createNotes', (event.currentTarget as HTMLInputElement).value)}
-							/>
-						</label>
-
-						<button type="submit" disabled={createState[activeToken.id] === 'saving'}>
+					<!-- Footer -->
+					<div class="lemma-modal-foot">
+						<button type="button" class="btn ghost" onclick={() => closePicker()}>Cancel</button>
+						<button
+							type="submit"
+							class="btn"
+							disabled={!canSubmitCreate || createState[activeToken.id] === 'saving'}
+						>
 							{#if createState[activeToken.id] === 'saving'}
-								Saving...
-							{:else if drafts[activeDraftKey]?.selectedWordId}
-								Update + link
+								Saving…
+							{:else if selectedWordInDraft}
+								Update
 							{:else}
-								Create + link
+								Create
 							{/if}
 						</button>
-					</form>
-				</div>
+					</div>
+				</form>
 			</div>
 		</div>
 	{/if}
@@ -1358,236 +1614,588 @@
 	}
 
 	.modal-backdrop {
-		align-items: center;
-		background: var(--scrim);
+		align-items: flex-start;
+		/* Fixed semi-transparent black so the scrim reads the same in light
+		   and dark modes — matches the WOD confirm dialog backdrop on main. */
+		background: oklch(0 0 0 / 0.55);
 		display: flex;
 		inset: 0;
 		justify-content: center;
-		padding: 1rem;
+		overflow-y: auto;
+		padding: 48px 24px 24px;
 		position: fixed;
 		z-index: 40;
 	}
 
-	.picker-modal {
-		background: var(--paper);
+	/* ---------- Redesigned "Link root lemma" popup ---------- */
+	.lemma-modal {
+		background: var(--bg-raised);
 		border: 1px solid var(--line);
-		box-shadow: var(--shadow-md);
-		display: grid;
-		gap: 0.75rem;
-		padding: 0.75rem;
-		width: min(480px, calc(100vw - 2rem));
-	}
-
-	.merge-modal {
-		width: min(360px, calc(100vw - 2rem));
-	}
-
-	.picker-header {
-		align-items: center;
-		display: flex;
-		justify-content: space-between;
-		gap: 0.75rem;
-	}
-
-	.split-tabs {
-		border-bottom: 1px solid var(--line-soft);
-		display: flex;
-		gap: 0.35rem;
-		overflow-x: auto;
-		padding-bottom: 0.5rem;
-	}
-
-	.split-tab {
-		align-items: start;
-		background: var(--paper);
-		border: 1px solid var(--line);
-		display: grid;
-		gap: 0.1rem;
-		min-width: 78px;
-		padding: 0.35rem 0.45rem;
-		text-align: left;
-	}
-
-	.split-tab.active {
-		border-color: var(--info);
-		box-shadow: 0 0 0 1px var(--info);
-	}
-
-	.split-tab span {
-		font-weight: 700;
-	}
-
-	.split-tab small {
-		color: var(--ink-soft);
-		line-height: 1.15;
-	}
-
-	.results-list {
-		align-items: stretch;
-		display: flex;
-		gap: 0.35rem;
-		height: 76px;
-		overflow-x: auto;
-		overflow-y: hidden;
-	}
-
-	.results-list form {
-		flex: 0 0 auto;
-		margin: 0;
-	}
-
-	.results-list > .status-text {
-		align-self: center;
-	}
-
-	.loading-placeholder {
-		align-items: center;
-		display: flex;
-		height: 100%;
-		justify-content: center;
-		min-width: 42px;
-	}
-
-	.loading-spinner {
-		animation: spin 720ms linear infinite;
-		border: 2px solid var(--info-soft);
-		border-top-color: var(--info);
-		border-radius: 999px;
-		display: inline-block;
-		height: 18px;
-		width: 18px;
-	}
-
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
-
-	.result-button {
-		align-items: start;
-		background: var(--paper);
-		border: 1px solid var(--line);
-		display: grid;
-		gap: 0.15rem;
-		grid-template-columns: 1fr;
-		min-width: 120px;
-		max-width: 145px;
-		padding: 0.5rem 0.6rem;
-		text-align: left;
+		border-radius: var(--radius-lg);
+		box-shadow: 0 30px 60px -20px oklch(0.2 0.02 80 / 0.4);
+		max-width: 680px;
+		padding: 24px 26px 22px;
 		width: 100%;
 	}
 
-	.result-lemma {
-		font-weight: 600;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.result-translations {
-		color: var(--ink-soft);
-		display: block;
-		line-height: 1.2;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	.selected-result {
-		border-color: var(--info);
-		box-shadow: 0 0 0 1px var(--info);
-	}
-
-	.create-box {
-		border-top: 1px solid var(--line-soft);
-		display: grid;
-		gap: 0.35rem;
-		padding-top: 0.5rem;
-	}
-
-	.editor-header,
-	.editor-actions {
-		align-items: center;
+	/* Header */
+	.lemma-modal-head {
+		align-items: flex-start;
+		border-bottom: 1px solid var(--line-soft);
 		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
+		gap: 20px;
 		justify-content: space-between;
+		margin-bottom: 18px;
+		padding-bottom: 16px;
+	}
+	.lemma-modal-head-text {
+		min-width: 0;
+	}
+	.lemma-kicker {
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.16em;
+		margin-bottom: 6px;
+		text-transform: uppercase;
+	}
+	.lemma-modal-title {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
+		font-family: var(--font-display);
+		font-size: 24px;
+		font-weight: 500;
+		gap: 14px;
+		letter-spacing: -0.01em;
+		margin: 0;
+	}
+	.lemma-token-word {
+		color: var(--ink);
+	}
+	.lemma-token-gloss {
+		color: var(--ink-soft);
+		font-family: var(--font-display);
+		font-size: 16px;
+		font-style: italic;
+		font-weight: 400;
+	}
+	.icon-btn {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius);
+		color: var(--ink-mute);
+		cursor: pointer;
+		display: flex;
+		flex-shrink: 0;
+		font-size: 22px;
+		height: 32px;
+		justify-content: center;
+		line-height: 1;
+		margin: -4px -6px 0 0;
+		padding: 0;
+		width: 32px;
+	}
+	.icon-btn:hover {
+		background: var(--surface);
+		color: var(--ink);
 	}
 
-	.create-form {
-		display: grid;
-		gap: 0.5rem;
+	/* Splitter */
+	.splitter-block {
+		background: color-mix(in oklch, var(--surface) 50%, var(--bg-raised));
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		margin-bottom: 18px;
+		padding: 14px 16px 12px;
 	}
-
-	.split-box {
-		border-top: 1px solid var(--line-soft);
-		display: grid;
-		gap: 0.35rem;
-		padding-top: 0.5rem;
-	}
-
-	.word-editor {
+	.splitter-row-head {
 		align-items: center;
 		display: flex;
 		flex-wrap: wrap;
+		gap: 12px;
+		margin-bottom: 12px;
 	}
-
-	.letter-char {
-		background: none;
-		border: none;
-		cursor: pointer;
-		font-size: 1rem;
-		font-weight: 600;
-		padding: 0;
-	}
-
-	.marker-inline {
+	.splitter-label {
 		color: var(--ink-mute);
-		font-weight: 700;
-		margin: 0 0.1rem;
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.splitter-hint {
+		color: var(--ink-soft);
+		flex: 1;
+		font-size: 12px;
+		min-width: 0;
+	}
+	.splitter-hint :global(b) {
+		color: var(--ink);
+		font-weight: 600;
+	}
+	.splitter-clear {
+		margin-left: auto;
+	}
+	.splitter {
+		align-items: stretch;
+		background: var(--bg-raised);
+		border: 1px solid var(--line-soft);
+		border-radius: var(--radius);
+		display: flex;
+		gap: 2px;
+		overflow-x: auto;
+		padding: 8px 6px;
+	}
+	.splitter-char {
+		background: color-mix(in oklch, var(--bg-raised) 80%, transparent);
+		border: 0;
+		border-right: 2px solid transparent;
+		border-radius: 4px;
+		color: var(--ink);
+		cursor: pointer;
+		font-family: var(--font-display);
+		font-size: 28px;
+		font-weight: 500;
+		letter-spacing: 0;
+		min-width: 32px;
+		padding: 6px 10px;
+		text-align: center;
+		transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease,
+			transform 0.05s ease;
+	}
+	.splitter .splitter-char:not(:disabled):hover {
+		background: color-mix(in oklch, var(--accent) 32%, var(--bg-raised));
+		border-right-color: var(--accent);
+		color: var(--brand-ink);
+	}
+	.splitter-char:not(:disabled):active {
+		transform: translateY(1px);
+	}
+	.splitter-char:disabled {
+		cursor: default;
+	}
+	.splitter-char[data-active='true'] {
+		color: var(--brand-ink);
+	}
+	.splitter-split-marker {
+		align-self: stretch;
+		background-color: transparent;
+		background-image: repeating-linear-gradient(
+			to bottom,
+			var(--accent) 0 4px,
+			transparent 4px 7px
+		);
+		border-radius: 2px;
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
+		margin: 4px 4px;
+		width: 3px;
 	}
 
-	.marker-inline.active {
-		color: var(--success);
+	/* Part tints */
+	.part-tint-0 { --part-c: var(--brand); }
+	.part-tint-1 { --part-c: var(--accent); }
+	.part-tint-2 { --part-c: oklch(0.5 0.08 220); }
+	.part-tint-3 { --part-c: oklch(0.48 0.1 300); }
+	.splitter .splitter-char.part-tint-0 {
+		background: color-mix(in oklch, var(--brand) 10%, var(--bg-raised));
+	}
+	.splitter .splitter-char.part-tint-1 {
+		background: color-mix(in oklch, var(--accent) 10%, var(--bg-raised));
+	}
+	.splitter .splitter-char.part-tint-2 {
+		background: color-mix(in oklch, oklch(0.5 0.08 220) 10%, var(--bg-raised));
+	}
+	.splitter .splitter-char.part-tint-3 {
+		background: color-mix(in oklch, oklch(0.48 0.1 300) 10%, var(--bg-raised));
+	}
+	.splitter .splitter-char[data-active='true'].part-tint-0 {
+		background: color-mix(in oklch, var(--brand) 22%, var(--bg-raised));
+	}
+	.splitter .splitter-char[data-active='true'].part-tint-1 {
+		background: color-mix(in oklch, var(--accent) 22%, var(--bg-raised));
+	}
+	.splitter .splitter-char[data-active='true'].part-tint-2 {
+		background: color-mix(in oklch, oklch(0.5 0.08 220) 22%, var(--bg-raised));
+	}
+	.splitter .splitter-char[data-active='true'].part-tint-3 {
+		background: color-mix(in oklch, oklch(0.48 0.1 300) 22%, var(--bg-raised));
 	}
 
-	.marker-inline.hovered {
-		color: var(--info);
+	.part-tabs {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		margin-top: 10px;
+	}
+	.part-tab {
+		align-items: baseline;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-bottom-color: var(--line);
+		border-bottom-width: 3px;
+		border-radius: var(--radius) var(--radius) 0 0;
+		cursor: pointer;
+		display: inline-flex;
+		font: inherit;
+		gap: 8px;
+		padding: 8px 12px 7px;
+	}
+	.part-tabs-preview .part-tab {
+		cursor: default;
+		opacity: 0.85;
+	}
+	.part-tab .part-tab-num {
+		color: var(--ink-mute);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	.part-tab .part-tab-word {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 16px;
+		font-weight: 500;
+	}
+	.part-tab .part-tab-mark {
+		color: var(--part-c, var(--brand));
+		font-size: 10px;
+	}
+	.part-tab:hover {
+		border-color: var(--ink-mute);
+	}
+	.part-tab.active {
+		background: var(--bg-raised);
+		border-bottom-color: var(--part-c, var(--brand));
+	}
+	.part-tab.active .part-tab-word {
+		color: var(--brand-ink);
+	}
+	.part-tab.active .part-tab-num {
+		color: var(--part-c, var(--brand));
 	}
 
-	.split-preview {
-		font-family: var(--font-display, inherit);
+	/* Search + horizontal hit rail */
+	.lemma-search-block {
+		margin-bottom: 16px;
+	}
+	.lemma-search-input {
+		font-family: var(--font-display);
+		font-size: 17px;
+		width: 100%;
+	}
+	.lemma-hit-rail {
+		display: flex;
+		gap: 8px;
+		overflow-x: auto;
+		padding: 10px 2px 8px;
+		scrollbar-width: thin;
+	}
+	.lemma-hit-rail::-webkit-scrollbar { height: 8px; }
+	.lemma-hit-rail::-webkit-scrollbar-thumb {
+		background: var(--line);
+		border-radius: 4px;
+	}
+	.lemma-hit-form {
+		flex: 0 0 auto;
+		margin: 0;
+	}
+	.lemma-hit {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		cursor: pointer;
+		display: flex;
+		flex: 0 0 auto;
+		flex-direction: column;
+		font: inherit;
+		gap: 2px;
+		min-width: 140px;
+		padding: 10px 14px;
+		text-align: left;
+		transition: border-color 0.12s, background 0.12s;
+	}
+	.lemma-hit:hover {
+		background: var(--surface);
+		border-color: var(--ink-mute);
+	}
+	.lemma-hit.active {
+		background: var(--accent-soft);
+		border-color: var(--brand);
+		box-shadow: inset 0 0 0 1px var(--brand);
+	}
+	.lemma-hit-word {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 17px;
+		font-weight: 500;
+		letter-spacing: -0.005em;
+	}
+	.lemma-hit-gloss {
+		color: var(--ink-soft);
+		font-size: 12px;
+		max-width: 200px;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.lemma-hit-empty {
+		color: var(--ink-mute);
+		flex: 1;
+		font-size: 13px;
+		font-style: italic;
+		padding: 14px 10px;
+	}
+	.loading-spinner {
+		animation: spin 720ms linear infinite;
+		border: 2px solid var(--info-soft);
+		border-radius: 999px;
+		border-top-color: var(--info);
+		display: inline-block;
+		height: 18px;
+		vertical-align: middle;
+		width: 18px;
+	}
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
-	.lemma-row {
+	/* Mode switch row */
+	.lemma-mode-row {
+		align-items: flex-end;
+		border-bottom: 1px dotted var(--line);
+		border-top: 1px dotted var(--line);
+		display: flex;
+		gap: 16px;
+		justify-content: space-between;
+		margin-bottom: 14px;
+		padding: 12px 0;
+	}
+	.pos-group {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		gap: 8px;
+		min-width: 0;
+	}
+	.pos-group-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.lemma-mode-side {
+		align-items: center;
+		display: flex;
+		gap: 12px;
+	}
+	.lemma-mode-side form {
+		margin: 0;
+	}
+	.lemma-sideling {
+		color: var(--ink-soft);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+	.lemma-sideling:hover {
+		color: var(--brand);
+		text-decoration: none;
+	}
+
+	/* Form */
+	.lemma-form {
+		display: block;
+	}
+	.lemma-form-grid {
 		display: grid;
+		gap: 12px;
+		grid-template-columns: 1fr 1fr;
+	}
+	.lemma-full-field {
+		margin-top: 12px;
+	}
+	.field-label {
+		color: var(--ink);
+		display: block;
+		font-size: 12px;
+		font-weight: 500;
+		margin-bottom: 4px;
+	}
+	.pos-pills {
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 8px;
+	}
+	.pos-pill {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		color: var(--ink);
+		cursor: pointer;
+		flex: 1 1 0;
+		font-size: 14px;
+		font-weight: 500;
+		min-width: 0;
+		padding: 10px 14px;
+		text-align: center;
+		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+		white-space: nowrap;
+	}
+	.pos-pill:hover {
+		background: color-mix(in oklch, var(--brand) 8%, var(--paper));
+		border-color: color-mix(in oklch, var(--brand) 32%, var(--line));
+	}
+	.pos-pill.selected {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--paper);
+	}
+	.pos-pill.selected:hover {
+		background: var(--brand);
+		border-color: var(--brand);
+	}
+
+	.pos-other-wrap {
+		flex: 1 1 0;
+		min-width: 0;
+		position: relative;
+	}
+	.pos-other-wrap .pos-pill {
+		align-items: center;
+		display: flex;
+		gap: 6px;
+		justify-content: center;
+		width: 100%;
+	}
+	.pos-pill-caret {
+		font-size: 10px;
+		line-height: 1;
+		opacity: 0.7;
+	}
+	.pos-other-menu {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		box-shadow: var(--shadow-md);
+		display: flex;
+		flex-direction: column;
+		left: 0;
+		min-width: 100%;
+		overflow: hidden;
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 2;
+	}
+	.pos-other-item {
+		background: transparent;
+		border: 0;
+		color: var(--ink);
+		cursor: pointer;
+		font-size: 13px;
+		padding: 8px 12px;
+		text-align: left;
+	}
+	.pos-other-item:hover {
+		background: color-mix(in oklch, var(--brand) 10%, transparent);
+	}
+	.pos-other-item.selected {
+		background: color-mix(in oklch, var(--brand) 16%, transparent);
+		color: var(--brand-ink);
+		font-weight: 600;
+	}
+
+	/* Footer */
+	.lemma-modal-foot {
+		border-top: 1px solid var(--line-soft);
+		display: flex;
+		gap: 10px;
+		justify-content: flex-end;
+		margin-top: 20px;
+		padding-top: 16px;
+	}
+	.lemma-modal-foot .btn {
+		min-width: 140px;
+	}
+	.lemma-modal-foot .btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.45;
+	}
+
+	/* Merge confirm dialog — kept as a compact paper card */
+	.picker-modal {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		box-shadow: var(--shadow-md);
+		display: grid;
+		gap: 0.75rem;
+		padding: 1rem;
+		width: min(480px, calc(100vw - 2rem));
+	}
+	.merge-modal {
+		width: min(360px, calc(100vw - 2rem));
+	}
+	.inline-actions {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
 		gap: 0.5rem;
-		grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+		justify-content: flex-end;
 	}
 
 	.status-text {
 		color: var(--ink-soft);
 		margin: 0;
 	}
-
+	.error-text {
+		color: var(--danger);
+	}
 	label {
 		display: grid;
 		gap: 0.25rem;
 	}
-
 	input,
 	button {
 		font: inherit;
-		padding: 0.4rem 0.45rem;
 	}
-
 	.secondary-button {
 		background: var(--paper);
 		border: 1px solid var(--border-strong);
+		padding: 0.4rem 0.75rem;
 	}
 
-	.error-text {
-		color: var(--danger);
+	@media (max-width: 720px) {
+		.modal-backdrop {
+			padding: 24px 12px 12px;
+		}
+		.lemma-modal {
+			padding: 20px 18px 18px;
+		}
+		.lemma-form-grid {
+			grid-template-columns: 1fr;
+		}
+		.lemma-modal-title {
+			font-size: 20px;
+		}
+		.splitter-char {
+			font-size: 24px;
+			min-width: 28px;
+			padding: 4px 8px;
+		}
+		.lemma-mode-row {
+			align-items: stretch;
+			flex-direction: column;
+		}
+		.lemma-mode-side {
+			justify-content: flex-end;
+		}
+		.pos-pills {
+			flex-wrap: wrap;
+		}
 	}
 </style>

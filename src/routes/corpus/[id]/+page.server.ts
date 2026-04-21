@@ -1,5 +1,6 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { Prisma } from '@prisma/client';
+import { Prisma, type PartOfSpeech } from '@prisma/client';
+import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prisma } from '$lib/server/prisma';
@@ -21,6 +22,7 @@ function buildWordSelect() {
 		kalenjin: true,
 		translations: true,
 		notes: true,
+		partOfSpeech: true,
 		spellings: {
 			orderBy: [{ spelling: 'asc' as const }],
 			select: {
@@ -75,6 +77,7 @@ async function createOrUpdateLinkedWord(
 		translations: string;
 		notes?: string | null;
 		alternativeSpellings?: string | null;
+		partOfSpeech?: PartOfSpeech | null;
 	}
 ) {
 	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
@@ -87,6 +90,7 @@ async function createOrUpdateLinkedWord(
 				kalenjinNormalized: normalizeLemma(input.kalenjin),
 				translations: input.translations,
 				notes: input.notes ?? null,
+				partOfSpeech: input.partOfSpeech ?? null,
 				spellings: {
 					deleteMany: {},
 					createMany: spellings.length
@@ -106,6 +110,7 @@ async function createOrUpdateLinkedWord(
 			kalenjinNormalized: normalizeLemma(input.kalenjin),
 			translations: input.translations,
 			notes: input.notes ?? null,
+			partOfSpeech: input.partOfSpeech ?? null,
 			spellings: spellings.length
 				? {
 						createMany: {
@@ -286,6 +291,7 @@ export const actions: Actions = {
 		const notes = readOptionalText(formData, 'notes');
 		const alternativeSpellings = readOptionalText(formData, 'alternativeSpellings');
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
+		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -296,6 +302,14 @@ export const actions: Actions = {
 		if (sentenceId !== params.id) {
 			return fail(404, { error: 'Sentence not found.' });
 		}
+
+		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
+			return fail(400, { error: 'Invalid part of speech value.' });
+		}
+
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
 
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
 		const checkedSegmentId = segmentId
@@ -309,7 +323,8 @@ export const actions: Actions = {
 					kalenjin,
 					translations,
 					notes,
-					alternativeSpellings
+					alternativeSpellings,
+					partOfSpeech
 				});
 
 				if (checkedSegmentId) {

@@ -47,6 +47,12 @@ type Payload =
 	  }
 	| {
 			kind?: SentenceKind;
+			action?: 'unsplit';
+			sentenceId?: string;
+			tokenId?: string;
+	  }
+	| {
+			kind?: SentenceKind;
 			action?: 'surface';
 			sentenceId?: string;
 			tokenId?: string;
@@ -58,6 +64,7 @@ const WORD_SELECT = {
 	kalenjin: true,
 	translations: true,
 	notes: true,
+	partOfSpeech: true,
 	spellings: {
 		orderBy: [{ spelling: 'asc' as const }],
 		select: {
@@ -382,6 +389,24 @@ async function applySurface(
 	});
 }
 
+async function applyUnsplit(
+	tx: Prisma.TransactionClient,
+	kind: SentenceKind,
+	tokens: EditableToken[],
+	tokenId: string
+) {
+	if (!tokens.some((token) => token.id === tokenId)) {
+		throw new Error('Word not found.');
+	}
+
+	if (kind === 'story') {
+		await tx.storySentenceTokenSegment.deleteMany({ where: { tokenId } });
+		return;
+	}
+
+	await tx.exampleSentenceTokenSegment.deleteMany({ where: { tokenId } });
+}
+
 async function applySegments(
 	tx: Prisma.TransactionClient,
 	kind: SentenceKind,
@@ -457,6 +482,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				: [];
 
 			await prisma.$transaction((tx) => applySegments(tx, kind, tokens, tokenId, splitPoints));
+		} else if (action === 'unsplit') {
+			const tokenId = clean(payload.tokenId);
+
+			await prisma.$transaction((tx) => applyUnsplit(tx, kind, tokens, tokenId));
 		} else if (action === 'surface') {
 			const tokenId = clean(payload.tokenId);
 			const surfaceForm = clean(payload.surfaceForm);

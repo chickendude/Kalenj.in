@@ -22,6 +22,33 @@ Chirchir:\tMissing kot.\tGood evening, too.`);
 		]);
 	});
 
+	it('parses tab-delimited speaker columns without requiring colons', () => {
+		const sentences = parseStoryImportText(`Moning'otiot\tIyo, nyon yat kot.\tIyo, come open the house.
+Kwondo\tIyobu ano saisyek chebo kemoi.\tWhere are you coming from at these hours of the night?
+Chelang'at\tAchicha, piron kametnyun ndo ayat kot.\tNo, my mother will beat me if I open the house.`);
+
+		expect(sentences).toEqual([
+			{
+				sentenceOrder: 1,
+				speaker: "Moning'otiot",
+				kalenjin: 'Iyo, nyon yat kot.',
+				english: 'Iyo, come open the house.'
+			},
+			{
+				sentenceOrder: 2,
+				speaker: 'Kwondo',
+				kalenjin: 'Iyobu ano saisyek chebo kemoi.',
+				english: 'Where are you coming from at these hours of the night?'
+			},
+			{
+				sentenceOrder: 3,
+				speaker: "Chelang'at",
+				kalenjin: 'Achicha, piron kametnyun ndo ayat kot.',
+				english: 'No, my mother will beat me if I open the house.'
+			}
+		]);
+	});
+
 	it('parses lines without a speaker prefix', () => {
 		expect(parseStoryImportText('Chamgei nebo langat.\tGood evening.')).toEqual([
 			{

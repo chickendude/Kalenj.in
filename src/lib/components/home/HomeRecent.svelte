@@ -2,6 +2,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { firstTranslation } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type RecentWord = {
@@ -54,7 +55,7 @@
 								{#if word.partOfSpeech}
 									<span class="pos-chip tiny">{PART_OF_SPEECH_LABELS[word.partOfSpeech]}</span>
 								{/if}
-								<span class="recent-gloss">{firstTranslation(word.translations)}</span>
+								<span class="recent-gloss">{firstTranslation(stripWordLinks(word.translations))}</span>
 							</a>
 						</li>
 					{/each}

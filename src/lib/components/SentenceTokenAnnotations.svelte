@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -217,8 +218,8 @@
 					wordId: token.wordId,
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
-				wordTranslations: token.word?.translations ?? null,
-				wordNotes: token.word?.notes ?? null,
+				wordTranslations: token.word?.translations ? stripWordLinks(token.word.translations) : null,
+				wordNotes: token.word?.notes ? stripWordLinks(token.word.notes) : null,
 				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? [],
 				segments:
 					token.segments?.map((segment) => ({
@@ -226,8 +227,8 @@
 						surfaceForm: segment.surfaceForm,
 						wordId: segment.wordId,
 						wordKalenjin: segment.word?.kalenjin ?? null,
-						wordTranslations: segment.word?.translations ?? null,
-						wordNotes: segment.word?.notes ?? null,
+						wordTranslations: segment.word?.translations ? stripWordLinks(segment.word.translations) : null,
+						wordNotes: segment.word?.notes ? stripWordLinks(segment.word.notes) : null,
 						wordSpellings: segment.word?.spellings?.map((spelling) => spelling.spelling) ?? []
 					})) ?? []
 			}))
@@ -246,8 +247,8 @@
 				inContextTranslation: token.inContextTranslation ?? '',
 				selectedWordId: token.word?.id ?? '',
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
-				createTranslations: token.word?.translations ?? '',
-				createNotes: token.word?.notes ?? '',
+				createTranslations: stripWordLinks(token.word?.translations ?? ''),
+				createNotes: stripWordLinks(token.word?.notes ?? ''),
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
 				createPluralForm: token.word?.pluralForm ?? '',
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
@@ -258,8 +259,8 @@
 					inContextTranslation: '',
 					selectedWordId: segment.word?.id ?? '',
 					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
-					createTranslations: segment.word?.translations ?? '',
-					createNotes: segment.word?.notes ?? '',
+					createTranslations: stripWordLinks(segment.word?.translations ?? ''),
+					createNotes: stripWordLinks(segment.word?.notes ?? ''),
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
 					createPluralForm: segment.word?.pluralForm ?? '',
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
@@ -942,8 +943,13 @@
 						localTokens.find((token) => token.id === tokenUpdate.tokenId)?.surfaceForm ?? ''
 					),
 				createTranslations:
-					tokenUpdate.word?.translations ?? drafts[tokenUpdate.tokenId]?.createTranslations ?? '',
-				createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? '',
+					(tokenUpdate.word?.translations ? stripWordLinks(tokenUpdate.word.translations) : undefined) ??
+					drafts[tokenUpdate.tokenId]?.createTranslations ??
+					'',
+				createNotes:
+					(tokenUpdate.word?.notes ? stripWordLinks(tokenUpdate.word.notes) : undefined) ??
+					drafts[tokenUpdate.tokenId]?.createNotes ??
+					'',
 				createAlternativeSpellings:
 					tokenUpdate.word?.spellings
 						? serializeSpellings(tokenUpdate.word.spellings)
@@ -963,8 +969,14 @@
 						segment.word?.kalenjin ??
 						drafts[segment.id]?.createLemma ??
 						normalizeSearchQuery(segment.surfaceForm),
-					createTranslations: segment.word?.translations ?? drafts[segment.id]?.createTranslations ?? '',
-					createNotes: segment.word?.notes ?? drafts[segment.id]?.createNotes ?? '',
+					createTranslations:
+						(segment.word?.translations ? stripWordLinks(segment.word.translations) : undefined) ??
+						drafts[segment.id]?.createTranslations ??
+						'',
+					createNotes:
+						(segment.word?.notes ? stripWordLinks(segment.word.notes) : undefined) ??
+						drafts[segment.id]?.createNotes ??
+						'',
 					createAlternativeSpellings: segment.word?.spellings
 						? serializeSpellings(segment.word.spellings)
 						: drafts[segment.id]?.createAlternativeSpellings ?? '',
@@ -1273,10 +1285,10 @@
 										type="submit"
 										class="lemma-hit"
 										class:active={activeWordId === result.id}
-										title={`${result.kalenjin} — ${result.translations}`}
+										title={`${result.kalenjin} — ${stripWordLinks(result.translations)}`}
 									>
 										<span class="lemma-hit-word">{result.kalenjin}</span>
-										<span class="lemma-hit-gloss">{result.translations}</span>
+										<span class="lemma-hit-gloss">{stripWordLinks(result.translations)}</span>
 									</button>
 								</form>
 							{/each}

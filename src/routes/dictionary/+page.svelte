@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import { stripWordLinks } from '$lib/word-links';
 
 	let { data } = $props();
 
@@ -156,7 +157,7 @@
 						<td class="col-word">
 							<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
 						</td>
-						<td class="col-trans">{word.translations}</td>
+						<td class="col-trans">{stripWordLinks(word.translations)}</td>
 						<td class="col-pos">
 							{#if word.partOfSpeech}
 								<span class="pos-chip">{POS_LABELS[word.partOfSpeech]}</span>

@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
 	import { theme, toggleTheme } from '$lib/stores/theme';
+	import Toast from '$lib/components/Toast.svelte';
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
@@ -229,3 +230,5 @@
 <main class="shell">
 	{@render children()}
 </main>
+
+<Toast />

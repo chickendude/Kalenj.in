@@ -15,6 +15,7 @@
 	import { suggestCefrTargets } from '$lib/cefr-suggestions';
 	import { isUnsetSentenceEnglish } from '$lib/sentence-placeholders';
 	import { splitSentenceText } from '$lib/story-split';
+	import { stripWordLinks } from '$lib/word-links';
 
 	let { data, form } = $props();
 
@@ -1240,7 +1241,7 @@
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
 										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
 									{:else}
-										<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{getWordLocal(lessonWord).translations}</button>
+										<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{stripWordLinks(getWordLocal(lessonWord).translations)}</button>
 									{/if}
 									{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
 										<p class="error-text">{inlineWordError}</p>

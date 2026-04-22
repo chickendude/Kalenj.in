@@ -4,6 +4,7 @@ import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -128,22 +129,28 @@ export const actions: Actions = {
 		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
 		const spellings = prepareAlternativeSpellings(alternativeSpellings, kalenjin);
 
-		await prisma.word.update({
-			where: { id: params.id },
-			data: {
-				kalenjin,
-				kalenjinNormalized: normalizeLemma(kalenjin),
-				translations,
-				notes: notes || null,
-				partOfSpeech,
-				spellings: {
-					deleteMany: {},
-					createMany: spellings.length
-						? {
-								data: spellings
-							}
-						: undefined
+		await prisma.$transaction(async (tx) => {
+			await tx.word.update({
+				where: { id: params.id },
+				data: {
+					kalenjin,
+					kalenjinNormalized: normalizeLemma(kalenjin),
+					translations,
+					notes: notes || null,
+					partOfSpeech,
+					spellings: {
+						deleteMany: {},
+						createMany: spellings.length
+							? {
+									data: spellings
+								}
+							: undefined
+					}
 				}
+			});
+
+			if (kalenjin !== currentWord.kalenjin) {
+				await propagateKalenjinRename(tx, params.id, kalenjin);
 			}
 		});
 

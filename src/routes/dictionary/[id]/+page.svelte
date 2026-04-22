@@ -1,7 +1,12 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { parseTranslationList } from '$lib/translations';
+	import { renderWordLinks, stripWordLinks } from '$lib/word-links';
+	import { renderMarkdown } from '$lib/markdown';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { enhance } from '$app/forms';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	let { data, form } = $props();
@@ -27,10 +32,39 @@
 	};
 
 	const values = $derived(form?.values ?? data.word);
-	const alternativeSpellingsValue = $derived.by(() =>
-		form?.values?.alternativeSpellings ?? data.word.spellings.map((spelling) => spelling.spelling).join('\n')
+
+	let kalenjinValue = $state('');
+	let translationsValue = $state('');
+	let notesValue = $state('');
+	let partOfSpeechValue = $state<PartOfSpeech | ''>('');
+	let altSpellingsValue = $state('');
+
+	$effect(() => {
+		kalenjinValue = values.kalenjin ?? '';
+	});
+	$effect(() => {
+		translationsValue = values.translations ?? '';
+	});
+	$effect(() => {
+		notesValue = values.notes ?? '';
+	});
+	$effect(() => {
+		partOfSpeechValue = (values.partOfSpeech ?? '') as PartOfSpeech | '';
+	});
+	$effect(() => {
+		altSpellingsValue =
+			form?.values?.alternativeSpellings ??
+			data.word.spellings.map((spelling) => spelling.spelling).join(', ');
+	});
+
+	const translations = $derived(parseTranslationList(translationsValue));
+	const altSpellingsList = $derived(
+		altSpellingsValue
+			.split(',')
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0)
 	);
-	const translations = $derived(parseTranslationList(data.word.translations));
+	let altSpellingsOpen = $state(false);
 
 	let relatedQuery = $state('');
 	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
@@ -47,7 +81,7 @@
 	);
 
 	function firstTranslation(value: string): string {
-		return parseTranslationList(value)[0] ?? value;
+		return stripWordLinks(parseTranslationList(value)[0] ?? value);
 	}
 
 	async function runRelatedSearch(query: string) {
@@ -83,10 +117,14 @@
 		if (relatedSearchTimer) clearTimeout(relatedSearchTimer);
 		relatedSearchTimer = setTimeout(() => runRelatedSearch(value), 180);
 	}
+
+	$effect(() => {
+		if (form?.success) toast.success('Saved.');
+	});
 </script>
 
 <svelte:head>
-	<title>{data.word.kalenjin} — Kalenj.in</title>
+	<title>{kalenjinValue || data.word.kalenjin} — Kalenj.in</title>
 </svelte:head>
 
 <section>
@@ -102,13 +140,30 @@
 			<div class="entry-head">
 				<div class="entry-label">Kalenjin entry</div>
 				<div class="entry-title">
-					<h1>{data.word.kalenjin}</h1>
+					<h1>{kalenjinValue}</h1>
 				</div>
 				<div class="entry-meta">
-					{#if data.word.partOfSpeech}
-						<span class="pos-chip">{POS_LABELS[data.word.partOfSpeech]}</span>
+					{#if partOfSpeechValue}
+						<span class="pos-chip">{POS_LABELS[partOfSpeechValue]}</span>
+					{/if}
+					{#if altSpellingsList.length > 0}
+						<button
+							type="button"
+							class="alt-spellings-toggle"
+							aria-expanded={altSpellingsOpen}
+							aria-controls="alt-spellings-panel"
+							onclick={() => (altSpellingsOpen = !altSpellingsOpen)}
+						>
+							Also spelled ({altSpellingsList.length})
+							<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
+						</button>
 					{/if}
 				</div>
+				{#if altSpellingsOpen && altSpellingsList.length > 0}
+					<div id="alt-spellings-panel" class="alt-spellings-panel">
+						{altSpellingsList.join(', ')}
+					</div>
+				{/if}
 			</div>
 
 			<h2 class="section-title">Translations</h2>
@@ -116,14 +171,14 @@
 				{#each translations as translation, index}
 					<li>
 						<span class="num">{index + 1}.</span>
-						{translation}
+						{@html renderWordLinks(translation)}
 					</li>
 				{/each}
 			</ol>
 
-			{#if data.word.notes}
+			{#if notesValue.trim()}
 				<h2 class="section-title">Notes</h2>
-				<p class="muted" style="font-size: 15px; margin: 0;">{data.word.notes}</p>
+				<div class="notes-markdown muted">{@html renderMarkdown(notesValue)}</div>
 			{/if}
 
 			<h2 class="section-title">Related words</h2>
@@ -169,7 +224,7 @@
 					<tbody>
 						<tr>
 							<td>Part of speech</td>
-							<td>{data.word.partOfSpeech ? POS_LABELS[data.word.partOfSpeech] : '—'}</td>
+							<td>{partOfSpeechValue ? POS_LABELS[partOfSpeechValue] : '—'}</td>
 						</tr>
 						<tr>
 							<td>Translations</td>
@@ -189,47 +244,72 @@
 
 					{#if form?.error}
 						<div class="form-feedback error">{form.error}</div>
-					{:else if form?.success}
-						<div class="form-feedback success">Saved.</div>
 					{/if}
 
-					<form method="POST" action="?/update">
+					<form
+						method="POST"
+						action="?/update"
+						use:enhance={() => {
+							return async ({ update }) => {
+								await update({ reset: false });
+							};
+						}}
+					>
 						<div class="side-field">
 							<label for="kalenjin">Kalenjin</label>
-							<input id="kalenjin" name="kalenjin" class="side-input" required value={values.kalenjin ?? ''} />
+							<input
+								id="kalenjin"
+								name="kalenjin"
+								class="side-input"
+								required
+								bind:value={kalenjinValue}
+							/>
 						</div>
 						<div class="side-field">
 							<label for="translations">Translations</label>
-							<input
+							<WordLinkEditor
 								id="translations"
 								name="translations"
-								class="side-input"
+								className="side-input"
 								required
-								value={values.translations ?? ''}
 								placeholder="semicolon-separated"
+								bind:value={translationsValue}
 							/>
 						</div>
 						<div class="side-field">
 							<label for="alternativeSpellings">Alternative spellings</label>
-							<textarea
+							<input
 								id="alternativeSpellings"
 								name="alternativeSpellings"
-								class="side-textarea"
-								placeholder="One spelling per line"
-							>{alternativeSpellingsValue}</textarea>
+								type="text"
+								class="side-input"
+								placeholder="Comma-separated"
+								bind:value={altSpellingsValue}
+							/>
 						</div>
 						<div class="side-field">
 							<label for="partOfSpeech">Part of speech</label>
-							<select id="partOfSpeech" name="partOfSpeech" class="side-select">
+							<select
+								id="partOfSpeech"
+								name="partOfSpeech"
+								class="side-select"
+								bind:value={partOfSpeechValue}
+							>
 								<option value="">—</option>
 								{#each PARTS_OF_SPEECH as pos}
-									<option value={pos} selected={values.partOfSpeech === pos}>{POS_LABELS[pos]}</option>
+									<option value={pos}>{POS_LABELS[pos]}</option>
 								{/each}
 							</select>
 						</div>
 						<div class="side-field">
 							<label for="notes">Notes</label>
-							<textarea id="notes" name="notes" class="side-textarea">{values.notes ?? ''}</textarea>
+							<WordLinkEditor
+								id="notes"
+								name="notes"
+								className="side-textarea"
+								multiline
+								bind:value={notesValue}
+							/>
 						</div>
 						<div style="display: flex; gap: 8px; margin-top: 4px;">
 							<button type="submit" class="btn-sm">Save</button>
@@ -314,3 +394,87 @@
 		</aside>
 	</div>
 </section>
+
+<style>
+	.alt-spellings-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font: inherit;
+		font-size: 11px;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-soft);
+		font-weight: 500;
+		padding: 3px 8px;
+		border: 1px solid var(--line);
+		border-radius: 3px;
+		background: var(--bg-raised);
+		cursor: pointer;
+		transition: color 0.12s, background 0.12s;
+	}
+	.alt-spellings-toggle:hover {
+		color: var(--ink);
+		background: color-mix(in oklch, var(--bg-raised) 70%, var(--ink) 6%);
+	}
+	.alt-spellings-toggle .caret {
+		font-size: 10px;
+		opacity: 0.7;
+	}
+	.alt-spellings-panel {
+		margin-top: 12px;
+		font-size: 14px;
+		color: var(--ink-soft);
+		font-style: italic;
+	}
+	.notes-markdown :global(p) {
+		margin: 0 0 0.5em;
+		font-size: 15px;
+	}
+	.notes-markdown :global(p:last-child) {
+		margin-bottom: 0;
+	}
+	.notes-markdown :global(ul),
+	.notes-markdown :global(ol) {
+		margin: 0 0 0.5em;
+		padding-left: 1.5em;
+		font-size: 15px;
+	}
+	.notes-markdown :global(li) {
+		margin: 0.125em 0;
+	}
+	.notes-markdown :global(h1),
+	.notes-markdown :global(h2),
+	.notes-markdown :global(h3),
+	.notes-markdown :global(h4),
+	.notes-markdown :global(h5),
+	.notes-markdown :global(h6) {
+		margin: 0.75em 0 0.25em;
+		font-size: 1em;
+		font-weight: 600;
+	}
+	.notes-markdown :global(code) {
+		background: rgba(128, 128, 128, 0.15);
+		padding: 1px 4px;
+		border-radius: 3px;
+		font-size: 0.9em;
+	}
+	.notes-markdown :global(pre) {
+		background: rgba(128, 128, 128, 0.12);
+		padding: 8px 10px;
+		border-radius: 4px;
+		overflow-x: auto;
+		font-size: 13px;
+	}
+	.notes-markdown :global(blockquote) {
+		margin: 0.5em 0;
+		padding-left: 10px;
+		border-left: 3px solid rgba(128, 128, 128, 0.4);
+		color: var(--muted, #666);
+	}
+	.notes-markdown :global(hr) {
+		border: 0;
+		border-top: 1px solid rgba(128, 128, 128, 0.25);
+		margin: 0.75em 0;
+	}
+</style>

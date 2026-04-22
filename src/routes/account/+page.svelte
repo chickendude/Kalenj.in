@@ -1,8 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	$effect(() => {
+		if (form && 'success' in form && form.success) toast.success(form.success);
+	});
 </script>
 
 <svelte:head>
@@ -22,9 +27,6 @@
 
 	{#if form && 'error' in form && form.error}
 		<div class="form-feedback error">{form.error}</div>
-	{/if}
-	{#if form && 'success' in form && form.success}
-		<div class="form-feedback success">{form.success}</div>
 	{/if}
 
 	<form method="POST" action="?/changePassword" use:enhance class="auth-form">

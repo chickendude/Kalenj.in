@@ -127,7 +127,10 @@
 		createAction,
 		searchEndpoint,
 		tokenGroupEndpoint,
-		onTokensChange
+		onTokensChange,
+		onNavigatePrevSentence,
+		onNavigateNextSentence,
+		focusRequest
 	}: {
 		entityId: string;
 		entityIdField: string;
@@ -141,6 +144,9 @@
 		searchEndpoint: string;
 		tokenGroupEndpoint: string;
 		onTokensChange?: (tokens: SentenceToken[]) => void;
+		onNavigatePrevSentence?: () => void;
+		onNavigateNextSentence?: () => void;
+		focusRequest?: { position: 'first' | 'last'; nonce: number } | null;
 	} = $props();
 
 	let openTokenId = $state<string | null>(null);
@@ -180,6 +186,16 @@
 		);
 	const activeToken = $derived(localTokens.find((token) => token.id === openTokenId) ?? null);
 	const activeGroup = $derived(groups.find((group) => group.tokens[0]?.id === openTokenId) ?? null);
+	const activeGroupIndex = $derived(
+		activeGroup ? groups.findIndex((group) => group.key === activeGroup.key) : -1
+	);
+	const hasPrevWord = $derived(
+		activeGroupIndex > 0 || (activeGroupIndex === 0 && Boolean(onNavigatePrevSentence))
+	);
+	const hasNextWord = $derived(
+		(activeGroupIndex >= 0 && activeGroupIndex < groups.length - 1) ||
+			(activeGroupIndex === groups.length - 1 && Boolean(onNavigateNextSentence))
+	);
 	const activeSegment = $derived(
 		activeToken?.segments?.find((segment) => segment.id === activeSegmentId) ?? null
 	);
@@ -376,6 +392,24 @@
 		return () => window.clearTimeout(timeout);
 	});
 
+	let lastFocusRequestNonce = $state<number | null>(null);
+	$effect(() => {
+		if (!focusRequest) {
+			return;
+		}
+		if (focusRequest.nonce === lastFocusRequestNonce) {
+			return;
+		}
+		lastFocusRequestNonce = focusRequest.nonce;
+		const target =
+			focusRequest.position === 'first'
+				? groups[0]?.tokens[0]
+				: groups[groups.length - 1]?.tokens[0];
+		if (target) {
+			openPicker(target);
+		}
+	});
+
 	$effect(() => {
 		if (!openTokenId && !pendingMerge) {
 			return;
@@ -436,6 +470,23 @@
 		activatePickerToken(token, token.segments?.[0]?.id ?? null);
 	}
 
+	function gotoAdjacentWord(delta: 1 | -1) {
+		if (activeGroupIndex < 0) {
+			return;
+		}
+		const target = groups[activeGroupIndex + delta];
+		const nextToken = target?.tokens[0];
+		if (nextToken) {
+			openPicker(nextToken);
+			return;
+		}
+		const beyondHandler = delta === 1 ? onNavigateNextSentence : onNavigatePrevSentence;
+		if (beyondHandler) {
+			closePicker();
+			beyondHandler();
+		}
+	}
+
 	function focusMeaningInput(tokenId: string | null) {
 		if (!tokenId) {
 			return;
@@ -477,6 +528,13 @@
 			event.preventDefault();
 			event.stopPropagation();
 			closePicker();
+			return;
+		}
+
+		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+			event.preventDefault();
+			event.stopPropagation();
+			gotoAdjacentWord(event.key === 'ArrowRight' ? 1 : -1);
 			return;
 		}
 
@@ -1125,7 +1183,7 @@
 				<!-- Header -->
 				<div class="lemma-modal-head">
 					<div class="lemma-modal-head-text">
-						<div class="lemma-kicker">Root lemma</div>
+						<div class="lemma-kicker">{sentenceText}</div>
 						<h3 class="lemma-modal-title">
 							<span class="lemma-token-word">{stripSurroundingPunctuation(
 									activeGroup.fullSurface
@@ -1135,14 +1193,36 @@
 							{/if}
 						</h3>
 					</div>
-					<button
-						type="button"
-						class="icon-btn"
-						aria-label="Close"
-						onclick={() => closePicker()}
-					>
-						×
-					</button>
+					<div class="lemma-modal-head-actions">
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Previous word"
+							title="Previous word (Alt+←)"
+							disabled={!hasPrevWord}
+							onclick={() => gotoAdjacentWord(-1)}
+						>
+							‹
+						</button>
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Next word"
+							title="Next word (Alt+→)"
+							disabled={!hasNextWord}
+							onclick={() => gotoAdjacentWord(1)}
+						>
+							›
+						</button>
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Close"
+							onclick={() => closePicker()}
+						>
+							×
+						</button>
+					</div>
 				</div>
 
 				<!-- Splitter: character-level split control -->
@@ -1746,12 +1826,10 @@
 		min-width: 0;
 	}
 	.lemma-kicker {
-		color: var(--accent);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.16em;
-		margin-bottom: 6px;
-		text-transform: uppercase;
+		color: var(--ink-soft);
+		font-size: 13px;
+		line-height: 1.4;
+		margin-bottom: 8px;
 	}
 	.lemma-modal-title {
 		align-items: baseline;
@@ -1787,13 +1865,23 @@
 		height: 32px;
 		justify-content: center;
 		line-height: 1;
-		margin: -4px -6px 0 0;
 		padding: 0;
 		width: 32px;
 	}
-	.icon-btn:hover {
+	.icon-btn:hover:not(:disabled) {
 		background: var(--surface);
 		color: var(--ink);
+	}
+	.icon-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
+	.lemma-modal-head-actions {
+		align-items: center;
+		display: flex;
+		flex-shrink: 0;
+		gap: 2px;
+		margin: -4px -6px 0 0;
 	}
 
 	/* Splitter */

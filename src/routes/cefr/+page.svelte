@@ -386,6 +386,26 @@
 		max-width: none;
 	}
 
+	@media (max-width: 720px) {
+		.browse-form {
+			flex-wrap: wrap;
+		}
+		.browse-form label {
+			flex: 1 1 100%;
+		}
+		.target-row {
+			flex-wrap: wrap;
+		}
+		.target-inline-form {
+			flex: 1 1 100%;
+			flex-wrap: wrap;
+		}
+		.target-inline-form input {
+			flex: 1 1 100%;
+			min-width: 0;
+		}
+	}
+
 	.target-inline-form input {
 		flex: 1;
 	}

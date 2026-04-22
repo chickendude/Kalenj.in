@@ -3,10 +3,21 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { applyAction, enhance } from '$app/forms';
 	import { page } from '$app/state';
-	import { PART_OF_SPEECH_LABELS as POS_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
+
+	const POS_CORE = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
+	const POS_OTHER = [
+		'ADVERB',
+		'PRONOUN',
+		'PREPOSITION',
+		'CONJUNCTION',
+		'INTERJECTION',
+		'PHRASE',
+		'OTHER'
+	] as const satisfies readonly PartOfSpeech[];
 
 	let { data, form } = $props();
 
@@ -64,10 +75,37 @@
 		navigateTo(searchQuery, nextLanguage, data.pos);
 	}
 
-	function handlePosChange(event: Event) {
-		const value = (event.currentTarget as HTMLSelectElement).value;
-		navigateTo(searchQuery, data.language, value);
+	let posOtherOpen = $state(false);
+	let posOtherWrap = $state<HTMLDivElement | null>(null);
+
+	const posOtherSelected = $derived(
+		Boolean(data.pos) && (POS_OTHER as readonly string[]).includes(data.pos)
+	);
+
+	function selectPos(nextPos: string) {
+		posOtherOpen = false;
+		navigateTo(searchQuery, data.language, nextPos);
 	}
+
+	function togglePosOther() {
+		if (posOtherSelected) {
+			selectPos('');
+			return;
+		}
+		posOtherOpen = !posOtherOpen;
+	}
+
+	$effect(() => {
+		if (!posOtherOpen) return;
+		function onPointerDown(event: MouseEvent) {
+			const wrap = posOtherWrap;
+			if (!wrap) return;
+			if (event.target instanceof Node && wrap.contains(event.target)) return;
+			posOtherOpen = false;
+		}
+		window.addEventListener('pointerdown', onPointerDown, true);
+		return () => window.removeEventListener('pointerdown', onPointerDown, true);
+	});
 
 	let addWordOpen = $state(false);
 	let addWordError = $state<string | null>(null);
@@ -188,13 +226,65 @@
 		</div>
 
 		<div class="field">
-			<label for="pos">Part of speech</label>
-			<select id="pos" class="select" onchange={handlePosChange}>
-				<option value="" selected={!data.pos}>All</option>
-				{#each PARTS_OF_SPEECH as p}
-					<option value={p} selected={data.pos === p}>{POS_LABELS[p]}</option>
+			<span class="field-label">Part of speech</span>
+			<div class="pos-filter" role="radiogroup" aria-label="Filter by part of speech">
+				<button
+					type="button"
+					role="radio"
+					aria-checked={!data.pos}
+					class="pos-pill"
+					class:selected={!data.pos}
+					onclick={() => selectPos('')}
+				>
+					All
+				</button>
+				{#each POS_CORE as pos}
+					{@const selected = data.pos === pos}
+					<button
+						type="button"
+						role="radio"
+						aria-checked={selected}
+						class="pos-pill"
+						class:selected
+						onclick={() => selectPos(pos)}
+					>
+						{POS_LABELS[pos]}
+					</button>
 				{/each}
-			</select>
+				<div class="pos-other-wrap" bind:this={posOtherWrap}>
+					<button
+						type="button"
+						aria-pressed={posOtherSelected}
+						aria-haspopup="menu"
+						aria-expanded={posOtherOpen}
+						class="pos-pill pos-pill-other"
+						class:selected={posOtherSelected}
+						onclick={togglePosOther}
+					>
+						<span>
+							{posOtherSelected ? POS_LABELS[data.pos as PartOfSpeech] : 'Other'}
+						</span>
+						<span class="pos-pill-caret" aria-hidden="true">▾</span>
+					</button>
+					{#if posOtherOpen}
+						<div class="pos-other-menu" role="menu">
+							{#each POS_OTHER as pos}
+								{@const itemSelected = data.pos === pos}
+								<button
+									type="button"
+									role="menuitemradio"
+									aria-checked={itemSelected}
+									class="pos-other-item"
+									class:selected={itemSelected}
+									onclick={() => selectPos(pos)}
+								>
+									{POS_LABELS[pos]}
+								</button>
+							{/each}
+						</div>
+					{/if}
+				</div>
+			</div>
 		</div>
 	</div>
 
@@ -397,5 +487,91 @@
 		gap: 0.5rem;
 		justify-content: flex-end;
 		margin-top: 0.5rem;
+	}
+
+	.field-label {
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ink-mute);
+		font-weight: 600;
+	}
+
+	.pos-filter {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.pos-pill {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		color: var(--ink);
+		cursor: pointer;
+		font: inherit;
+		font-size: 14px;
+		font-weight: 500;
+		padding: 10px 14px;
+		text-align: center;
+		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+		white-space: nowrap;
+	}
+	.pos-pill:hover {
+		background: color-mix(in oklch, var(--brand) 8%, var(--bg-raised));
+		border-color: color-mix(in oklch, var(--brand) 32%, var(--line));
+	}
+	.pos-pill.selected,
+	.pos-pill.selected:hover {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--on-brand);
+	}
+	.pos-other-wrap {
+		position: relative;
+	}
+	.pos-other-wrap .pos-pill {
+		align-items: center;
+		display: inline-flex;
+		gap: 6px;
+		justify-content: center;
+	}
+	.pos-pill-caret {
+		font-size: 10px;
+		line-height: 1;
+		opacity: 0.7;
+	}
+	.pos-other-menu {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		box-shadow: 0 8px 24px oklch(0 0 0 / 0.08);
+		display: flex;
+		flex-direction: column;
+		left: 0;
+		min-width: 100%;
+		overflow: hidden;
+		position: absolute;
+		top: calc(100% + 6px);
+		width: max-content;
+		z-index: 5;
+	}
+	.pos-other-item {
+		background: transparent;
+		border: 0;
+		color: var(--ink);
+		cursor: pointer;
+		font: inherit;
+		font-size: 13px;
+		padding: 8px 12px;
+		text-align: left;
+		white-space: nowrap;
+	}
+	.pos-other-item:hover {
+		background: color-mix(in oklch, var(--brand) 10%, transparent);
+	}
+	.pos-other-item.selected {
+		background: color-mix(in oklch, var(--brand) 16%, transparent);
+		color: var(--brand-ink);
+		font-weight: 600;
 	}
 </style>

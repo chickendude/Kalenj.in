@@ -16,7 +16,6 @@
 			{ href: '/corpus', label: 'Corpus' }
 		];
 		if (data.user) {
-			items.push({ href: '/cefr', label: 'CEFR' });
 			items.push({ href: '/lessons', label: 'Lessons' });
 		}
 		return items;

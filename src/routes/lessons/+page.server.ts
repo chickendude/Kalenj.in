@@ -9,6 +9,7 @@ import {
 import {
 	parseCefrLevelValue,
 	parseLessonTypeValue,
+	parseLineSeparatedEntries,
 	parseVocabularyLessonTypeValue,
 	readOptionalText,
 	readText
@@ -17,8 +18,48 @@ import { prisma } from '$lib/server/prisma';
 import { validateStoryImportText } from '$lib/story-import';
 import { syncStorySentences } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
+import {
+	loadCefrBrowse,
+	parseCefrSortOption,
+	type CefrCoverageFilter,
+	type CefrSortOption
+} from '$lib/server/cefr-browse';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
+
+function buildLessonsUrl(
+	level: string,
+	query: string,
+	sort: CefrSortOption,
+	page = 1,
+	coverage: CefrCoverageFilter = 'all',
+	pos: string[] = []
+): string {
+	const params = new URLSearchParams();
+	params.set('level', level);
+
+	if (query) {
+		params.set('q', query);
+	}
+
+	if (sort !== 'alpha-asc') {
+		params.set('sort', sort);
+	}
+
+	if (page > 1) {
+		params.set('page', String(page));
+	}
+
+	if (coverage !== 'all') {
+		params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+	}
+
+	if (pos.length > 0) {
+		params.set('pos', pos.join(','));
+	}
+
+	return `/lessons?${params.toString()}`;
+}
 
 async function shiftLessonsForInsert(
 	tx: Prisma.TransactionClient,
@@ -186,14 +227,37 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }]
 	});
 
-	const uninstructedWordsMap = await getUninstructedWordsByLessonId(selectedLevel, lessons);
+	const [uninstructedWordsMap, cefrBrowse, cefrLevelCounts, cefrCoveredCounts] = await Promise.all([
+		getUninstructedWordsByLessonId(selectedLevel, lessons),
+		loadCefrBrowse(url.searchParams, selectedLevel),
+		prisma.cefrEnglishTarget.groupBy({
+			by: ['level'],
+			_count: { _all: true }
+		}),
+		prisma.cefrEnglishTarget.groupBy({
+			by: ['level'],
+			where: {
+				coveredByLessonWordId: {
+					not: null
+				}
+			},
+			_count: { _all: true }
+		})
+	]);
+
+	const cefrTotalByLevel = new Map(cefrLevelCounts.map((entry) => [entry.level, entry._count._all]));
+	const cefrCoveredByLevel = new Map(
+		cefrCoveredCounts.map((entry) => [entry.level, entry._count._all])
+	);
 
 	return {
 		levels: CEFR_LEVELS,
 		selectedLevel,
 		levelSummaries: CEFR_LEVELS.map((level) => ({
 			level,
-			lessonCount: lessons.filter((lesson) => lesson.level === level).length
+			lessonCount: lessons.filter((lesson) => lesson.level === level).length,
+			cefrTotalCount: cefrTotalByLevel.get(level) ?? 0,
+			cefrCoveredCount: cefrCoveredByLevel.get(level) ?? 0
 		})),
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES,
@@ -204,7 +268,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				.filter((lesson) => lesson.level === selectedLevel)
 				.map((lesson) => lesson.lessonOrder)
 		),
-		uninstructedWordsByLessonId: Object.fromEntries(uninstructedWordsMap)
+		uninstructedWordsByLessonId: Object.fromEntries(uninstructedWordsMap),
+		cefrBrowse
 	};
 };
 
@@ -411,5 +476,97 @@ export const actions: Actions = {
 		}
 
 		redirect(303, `/lessons/${lessonId}`);
+	},
+	replaceCefrTargets: async ({ request, locals }) => {
+		requireEditor(locals);
+		const formData = await request.formData();
+		const level = parseCefrLevelValue(readText(formData, 'level'));
+		const returnQuery = readText(formData, 'returnQuery');
+		const returnSort = parseCefrSortOption(readText(formData, 'returnSort'));
+		const englishEntries = parseLineSeparatedEntries(readText(formData, 'englishList'));
+
+		if (!level || englishEntries.length === 0) {
+			return fail(400, {
+				error: 'Level and at least one English reference are required.',
+				values: {
+					level: readText(formData, 'level'),
+					englishList: readText(formData, 'englishList')
+				}
+			});
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				const [existingForLevel, existingForEntries] = await Promise.all([
+					tx.cefrEnglishTarget.findMany({
+						where: { level },
+						select: { id: true, english: true }
+					}),
+					tx.cefrEnglishTarget.findMany({
+						where: {
+							english: {
+								in: englishEntries
+							}
+						},
+						select: { id: true, english: true, level: true }
+					})
+				]);
+
+				const existingForEntriesByEnglish = new Map(
+					existingForEntries.map((entry) => [entry.english, entry])
+				);
+				const submittedWords = new Set(englishEntries);
+
+				const idsToDelete = existingForLevel
+					.filter((entry) => !submittedWords.has(entry.english))
+					.map((entry) => entry.id);
+				const idsToMove = existingForEntries
+					.filter((entry) => entry.level !== level)
+					.map((entry) => entry.id);
+				const wordsToCreate = englishEntries.filter(
+					(english) => !existingForEntriesByEnglish.has(english)
+				);
+
+				if (idsToDelete.length > 0) {
+					await tx.cefrEnglishTarget.deleteMany({
+						where: {
+							id: {
+								in: idsToDelete
+							}
+						}
+					});
+				}
+
+				if (idsToMove.length > 0) {
+					await tx.cefrEnglishTarget.updateMany({
+						where: {
+							id: {
+								in: idsToMove
+							}
+						},
+						data: { level }
+					});
+				}
+
+				if (wordsToCreate.length > 0) {
+					await tx.cefrEnglishTarget.createMany({
+						data: wordsToCreate.map((english) => ({
+							level,
+							english
+						}))
+					});
+				}
+			});
+		} catch (error) {
+			return fail(400, {
+				error: 'Could not replace CEFR targets for this level.',
+				values: {
+					level,
+					englishList: readText(formData, 'englishList')
+				}
+			});
+		}
+
+		redirect(303, buildLessonsUrl(level, returnQuery, returnSort));
 	}
 };

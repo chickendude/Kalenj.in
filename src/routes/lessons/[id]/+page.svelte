@@ -2,6 +2,7 @@
 	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
+	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
 	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
@@ -21,12 +22,39 @@
 
 	let { data, form } = $props();
 
+	type CefrUrlChanges = {
+		query?: string;
+		sort?: 'alpha-asc' | 'alpha-desc';
+		page?: number;
+		coverage?: 'all' | 'covered' | 'uncovered';
+		pos?: string[];
+	};
+
+	function buildLessonCefrUrl(changes: CefrUrlChanges = {}): string {
+		const params = new URLSearchParams();
+		const query = changes.query ?? data.cefrBrowse.query;
+		const sort = changes.sort ?? data.cefrBrowse.sort;
+		const page = changes.page ?? data.cefrBrowse.page;
+		const coverage = changes.coverage ?? data.cefrBrowse.coverageFilter;
+		const pos = changes.pos ?? data.cefrBrowse.posFilters;
+
+		if (query) params.set('q', query);
+		if (sort !== 'alpha-asc') params.set('sort', sort);
+		if (page > 1) params.set('page', String(page));
+		if (coverage !== 'all') params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+		if (pos.length > 0) params.set('pos', pos.join(','));
+
+		const qs = params.toString();
+		return qs ? `/lessons/${data.lesson.id}?${qs}` : `/lessons/${data.lesson.id}`;
+	}
+
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
 	type StorySentence = NonNullable<typeof data.lesson.story>['sentences'][number];
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showAddWordForm = $state(false);
+	let vocabPanelsOpen = $state(false);
 
 	type AddWordPickerState = {
 		selectedWord: {
@@ -1163,12 +1191,34 @@
 		</section>
 	{:else}
 		{#if data.vocabWordCoverage}
-			<WordCoveragePanel
-				title="Next story coverage"
-				entries={data.vocabWordCoverage.words}
-				storyLesson={data.vocabWordCoverage.storyLesson}
-				quickAddAction="?/quickAddWord"
-			/>
+			<div class="lesson-vocab-top" class:expanded={vocabPanelsOpen}>
+				<div class="lesson-vocab-top-main">
+					<WordCoveragePanel
+						title="Next story coverage"
+						entries={data.vocabWordCoverage.words}
+						storyLesson={data.vocabWordCoverage.storyLesson}
+						quickAddAction="?/quickAddWord"
+						bind:open={vocabPanelsOpen}
+					/>
+				</div>
+				<CefrBrowseSidebar
+					level={data.lesson.level}
+					query={data.cefrBrowse.query}
+					sort={data.cefrBrowse.sort}
+					coverageFilter={data.cefrBrowse.coverageFilter}
+					posFilters={data.cefrBrowse.posFilters}
+					posOptions={data.cefrBrowse.posOptions}
+					targets={data.cefrBrowse.targets}
+					page={data.cefrBrowse.page}
+					totalPages={data.cefrBrowse.totalPages}
+					filteredCount={data.cefrBrowse.filteredCount}
+					totalCount={data.cefrBrowse.totalCount}
+					coveredCount={data.cefrBrowse.coveredCount}
+					buildUrl={buildLessonCefrUrl}
+					collapsible
+					bind:expanded={vocabPanelsOpen}
+				/>
+			</div>
 		{/if}
 
 		<div class="words-head">
@@ -1566,6 +1616,42 @@
 	.lesson-page {
 		display: grid;
 		gap: 1rem;
+	}
+
+	.lesson-vocab-top {
+		display: grid;
+		gap: 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.lesson-vocab-top-main {
+		min-width: 0;
+	}
+
+	.lesson-vocab-top :global(.coverage-card),
+	.lesson-vocab-top :global(.cefr-sidebar) {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
+	.lesson-vocab-top :global(.coverage-list),
+	.lesson-vocab-top :global(.cefr-target-list) {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	@media (min-width: 1100px) {
+		.lesson-vocab-top {
+			grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+			align-items: stretch;
+		}
+
+		.lesson-vocab-top.expanded :global(.coverage-card),
+		.lesson-vocab-top.expanded :global(.cefr-sidebar) {
+			height: 520px;
+		}
 	}
 
 	.lesson-head-row {

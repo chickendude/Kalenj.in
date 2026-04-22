@@ -10,7 +10,6 @@ import {
 	parseCefrLevelValue,
 	parseLessonTypeValue,
 	parseLineSeparatedEntries,
-	parsePositiveInteger,
 	parseVocabularyLessonTypeValue,
 	readOptionalText,
 	readText
@@ -19,49 +18,14 @@ import { prisma } from '$lib/server/prisma';
 import { validateStoryImportText } from '$lib/story-import';
 import { syncStorySentences } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
+import {
+	loadCefrBrowse,
+	parseCefrSortOption,
+	type CefrCoverageFilter,
+	type CefrSortOption
+} from '$lib/server/cefr-browse';
 import type { Prisma } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
-
-const CEFR_PAGE_SIZE = 100;
-const CEFR_SORT_OPTIONS = ['alpha-asc', 'alpha-desc'] as const;
-type CefrSortOption = (typeof CEFR_SORT_OPTIONS)[number];
-
-const CEFR_COVERAGE_FILTERS = ['all', 'covered', 'uncovered'] as const;
-type CefrCoverageFilter = (typeof CEFR_COVERAGE_FILTERS)[number];
-
-function parseCefrSortOption(value: string | null): CefrSortOption {
-	return value === 'alpha-desc' ? 'alpha-desc' : 'alpha-asc';
-}
-
-function parseCefrCoverageFilter(value: string | null): CefrCoverageFilter {
-	return value === 'covered' || value === 'uncovered' ? value : 'all';
-}
-
-function parseCefrPosFilters(value: string | null): string[] {
-	if (!value) return [];
-
-	return [
-		...new Set(
-			value
-				.split(',')
-				.map((token) => token.trim().toLowerCase())
-				.filter(Boolean)
-		)
-	];
-}
-
-function extractPosTokens(english: string): string[] {
-	const match = english.match(/\(([^)]+)\)/);
-
-	if (!match) {
-		return [];
-	}
-
-	return match[1]
-		.split('/')
-		.map((token) => token.trim().toLowerCase())
-		.filter(Boolean);
-}
 
 function buildLessonsUrl(
 	level: string,
@@ -250,17 +214,6 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 	requireEditor(locals);
 	const selectedLevel =
 		parseCefrLevelValue(url.searchParams.get('level') ?? '') ?? CEFR_LEVELS[0];
-	const cefrQuery = (url.searchParams.get('q') ?? '').trim();
-	const cefrSort = parseCefrSortOption(url.searchParams.get('sort'));
-	const requestedCefrPage = parsePositiveInteger(url.searchParams.get('page'));
-	const coveredParam = url.searchParams.get('covered');
-	const cefrCoverageFilter: CefrCoverageFilter =
-		coveredParam === 'yes'
-			? 'covered'
-			: coveredParam === 'no'
-				? 'uncovered'
-				: 'all';
-	const cefrPosFilters = parseCefrPosFilters(url.searchParams.get('pos'));
 
 	const lessons = await prisma.lesson.findMany({
 		include: {
@@ -274,9 +227,9 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }]
 	});
 
-	const uninstructedWordsMap = await getUninstructedWordsByLessonId(selectedLevel, lessons);
-
-	const [cefrLevelCounts, cefrCoveredCounts, cefrLevelTargets] = await Promise.all([
+	const [uninstructedWordsMap, cefrBrowse, cefrLevelCounts, cefrCoveredCounts] = await Promise.all([
+		getUninstructedWordsByLessonId(selectedLevel, lessons),
+		loadCefrBrowse(url.searchParams, selectedLevel),
 		prisma.cefrEnglishTarget.groupBy({
 			by: ['level'],
 			_count: { _all: true }
@@ -289,73 +242,8 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				}
 			},
 			_count: { _all: true }
-		}),
-		prisma.cefrEnglishTarget.findMany({
-			where: { level: selectedLevel },
-			include: {
-				coveredByLessonWord: {
-					include: {
-						lessonSection: {
-							include: {
-								lesson: true
-							}
-						}
-					}
-				}
-			},
-			orderBy: [{ english: cefrSort === 'alpha-desc' ? 'desc' : 'asc' }]
 		})
 	]);
-
-	const posTokenCounts = new Map<string, number>();
-	const targetsWithPos = cefrLevelTargets.map((target) => {
-		const tokens = extractPosTokens(target.english);
-		for (const token of tokens) {
-			posTokenCounts.set(token, (posTokenCounts.get(token) ?? 0) + 1);
-		}
-		return { target, posTokens: tokens };
-	});
-
-	const posFilterSet = new Set(cefrPosFilters);
-	const queryLower = cefrQuery.toLowerCase();
-
-	const filteredTargets = targetsWithPos
-		.filter(({ target }) => {
-			if (queryLower && !target.english.toLowerCase().includes(queryLower)) {
-				return false;
-			}
-			if (cefrCoverageFilter === 'covered' && !target.coveredByLessonWord) {
-				return false;
-			}
-			if (cefrCoverageFilter === 'uncovered' && target.coveredByLessonWord) {
-				return false;
-			}
-			return true;
-		})
-		.filter(({ posTokens }) => {
-			if (posFilterSet.size === 0) {
-				return true;
-			}
-			if (posFilterSet.has('(none)')) {
-				if (posTokens.length === 0) {
-					return true;
-				}
-			}
-			return posTokens.some((token) => posFilterSet.has(token));
-		})
-		.map(({ target }) => target);
-
-	const cefrFilteredCount = filteredTargets.length;
-	const cefrTotalPages = Math.max(1, Math.ceil(cefrFilteredCount / CEFR_PAGE_SIZE));
-	const cefrPage = Math.min(requestedCefrPage, cefrTotalPages);
-	const cefrTargets = filteredTargets.slice(
-		(cefrPage - 1) * CEFR_PAGE_SIZE,
-		cefrPage * CEFR_PAGE_SIZE
-	);
-
-	const cefrPosOptions = [...posTokenCounts.entries()]
-		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-		.map(([token, count]) => ({ token, count }));
 
 	const cefrTotalByLevel = new Map(cefrLevelCounts.map((entry) => [entry.level, entry._count._all]));
 	const cefrCoveredByLevel = new Map(
@@ -381,17 +269,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 				.map((lesson) => lesson.lessonOrder)
 		),
 		uninstructedWordsByLessonId: Object.fromEntries(uninstructedWordsMap),
-		cefrQuery,
-		cefrSort,
-		cefrSortOptions: CEFR_SORT_OPTIONS,
-		cefrCoverageFilter,
-		cefrPosFilters,
-		cefrPosOptions,
-		cefrTargets,
-		cefrPage,
-		cefrPageSize: CEFR_PAGE_SIZE,
-		cefrFilteredCount,
-		cefrTotalPages
+		cefrBrowse
 	};
 };
 

@@ -12,15 +12,16 @@
 		title,
 		entries,
 		storyLesson = null,
-		quickAddAction = null
+		quickAddAction = null,
+		open = $bindable(false)
 	}: {
 		title: string;
 		entries: CoverageEntry[];
 		storyLesson?: { id: string; title: string } | null;
 		quickAddAction?: string | null;
+		open?: boolean;
 	} = $props();
 
-	let showPanel = $state(false);
 	let showAll = $state(false);
 	let addedWordIds = $state(new Set<string>());
 
@@ -28,8 +29,8 @@
 	const visibleEntries = $derived(showAll ? entries : entries.filter((e) => !e.introduced));
 
 	function toggle() {
-		showPanel = !showPanel;
-		if (!showPanel) showAll = false;
+		open = !open;
+		if (!open) showAll = false;
 	}
 
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
@@ -48,9 +49,9 @@
 {#if entries.length}
 	<section class="coverage-card">
 		<div class="coverage-card-header">
-			<button type="button" class="coverage-toggle" aria-expanded={showPanel} onclick={toggle}>
+			<button type="button" class="coverage-toggle" aria-expanded={open} onclick={toggle}>
 				<strong>{title}</strong>
-				<span class="coverage-chevron" aria-hidden="true">{showPanel ? '▲' : '▼'}</span>
+				<span class="coverage-chevron" aria-hidden="true">{open ? '▲' : '▼'}</span>
 			</button>
 			<p class="coverage-summary">
 				{#if storyLesson}
@@ -65,7 +66,7 @@
 			</p>
 		</div>
 
-		{#if showPanel}
+		{#if open}
 			<div class="coverage-filter">
 				<label class="coverage-filter-label">
 					<input type="checkbox" bind:checked={showAll} />

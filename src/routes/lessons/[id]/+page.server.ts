@@ -24,6 +24,7 @@ import {
 	createOrUpdateLinkedWord,
 	readPresentTenseFromFormData
 } from '$lib/server/lemma-words';
+import { loadCefrBrowse } from '$lib/server/cefr-browse';
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -525,7 +526,7 @@ async function getVocabWordCoverage(lesson: {
 	};
 }
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, url, locals }) => {
 	requireEditor(locals);
 	await backfillMissingStoryTokens(params.id);
 
@@ -544,9 +545,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		error(404, 'Lesson not found');
 	}
 
-	const [storyWordCoverage, vocabWordCoverage] = await Promise.all([
+	const [storyWordCoverage, vocabWordCoverage, cefrBrowse] = await Promise.all([
 		getStoryWordCoverage(lesson),
-		getVocabWordCoverage(lesson)
+		getVocabWordCoverage(lesson),
+		loadCefrBrowse(url.searchParams, lesson.level)
 	]);
 
 	return {
@@ -555,6 +557,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		cefrTargets,
 		storyWordCoverage,
 		vocabWordCoverage,
+		cefrBrowse,
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};

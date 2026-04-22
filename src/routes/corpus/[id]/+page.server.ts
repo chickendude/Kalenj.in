@@ -1,11 +1,14 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { Prisma, type PartOfSpeech } from '@prisma/client';
+import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
-import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import {
+	buildWordSelect,
+	createOrUpdateLinkedWord,
+	readPresentTenseFromFormData
+} from '$lib/server/lemma-words';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -15,25 +18,6 @@ function readText(formData: FormData, key: string): string {
 function readOptionalText(formData: FormData, key: string): string | null {
 	const value = readText(formData, key);
 	return value.length > 0 ? value : null;
-}
-
-function buildWordSelect() {
-	return {
-		id: true,
-		kalenjin: true,
-		translations: true,
-		notes: true,
-		partOfSpeech: true,
-		pluralForm: true,
-		spellings: {
-			orderBy: [{ spelling: 'asc' as const }],
-			select: {
-				id: true,
-				spelling: true,
-				spellingNormalized: true
-			}
-		}
-	};
 }
 
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
@@ -76,67 +60,6 @@ async function ensureSentenceTokenSegment(
 		wordId: segment.wordId,
 		normalizedForm: segment.normalizedForm
 	};
-}
-
-async function createOrUpdateLinkedWord(
-	tx: Prisma.TransactionClient,
-	input: {
-		wordId?: string | null;
-		kalenjin: string;
-		translations: string;
-		notes?: string | null;
-		alternativeSpellings?: string | null;
-		partOfSpeech?: PartOfSpeech | null;
-		pluralForm?: string | null;
-	}
-) {
-	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
-	const pluralForm = input.pluralForm ?? null;
-	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
-
-	if (input.wordId) {
-		return tx.word.update({
-			where: { id: input.wordId },
-			data: {
-				kalenjin: input.kalenjin,
-				kalenjinNormalized: normalizeLemma(input.kalenjin),
-				translations: input.translations,
-				notes: input.notes ?? null,
-				partOfSpeech: input.partOfSpeech ?? null,
-				pluralForm,
-				pluralFormNormalized,
-				spellings: {
-					deleteMany: {},
-					createMany: spellings.length
-						? {
-								data: spellings
-							}
-						: undefined
-				}
-			},
-			select: buildWordSelect()
-		});
-	}
-
-	return tx.word.create({
-		data: {
-			kalenjin: input.kalenjin,
-			kalenjinNormalized: normalizeLemma(input.kalenjin),
-			translations: input.translations,
-			notes: input.notes ?? null,
-			partOfSpeech: input.partOfSpeech ?? null,
-			pluralForm,
-			pluralFormNormalized,
-			spellings: spellings.length
-				? {
-						createMany: {
-							data: spellings
-						}
-					}
-				: undefined
-		},
-		select: buildWordSelect()
-	});
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -332,6 +255,9 @@ export const actions: Actions = {
 			? (partOfSpeechRaw as PartOfSpeech)
 			: null;
 
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
 		const checkedSegment = segmentId
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
@@ -346,7 +272,8 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
+					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					presentTense
 				});
 
 				if (checkedSegment) {

@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
+	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks, stripWordLinks } from '$lib/word-links';
 	import { renderMarkdown } from '$lib/markdown';
@@ -18,18 +18,7 @@
 		partOfSpeech: PartOfSpeech | null;
 	};
 
-	const POS_LABELS: Record<PartOfSpeech, string> = {
-		NOUN: 'Noun',
-		VERB: 'Verb',
-		ADJECTIVE: 'Adjective',
-		ADVERB: 'Adverb',
-		PRONOUN: 'Pronoun',
-		PREPOSITION: 'Preposition',
-		CONJUNCTION: 'Conjunction',
-		INTERJECTION: 'Interjection',
-		PHRASE: 'Phrase',
-		OTHER: 'Other'
-	};
+	const POS_LABELS = PART_OF_SPEECH_LABELS;
 
 	const values = $derived(form?.values ?? data.word);
 
@@ -38,6 +27,13 @@
 	let notesValue = $state('');
 	let partOfSpeechValue = $state<PartOfSpeech | ''>('');
 	let altSpellingsValue = $state('');
+	let pluralFormValue = $state('');
+	let presentAnee = $state('');
+	let presentInyee = $state('');
+	let presentInee = $state('');
+	let presentEchek = $state('');
+	let presentOkwek = $state('');
+	let presentIchek = $state('');
 
 	$effect(() => {
 		kalenjinValue = values.kalenjin ?? '';
@@ -56,6 +52,17 @@
 			form?.values?.alternativeSpellings ??
 			data.word.spellings.map((spelling) => spelling.spelling).join(', ');
 	});
+	$effect(() => {
+		pluralFormValue = (values as { pluralForm?: string | null }).pluralForm ?? '';
+	});
+	$effect(() => {
+		presentAnee = data.word.presentAnee ?? '';
+		presentInyee = data.word.presentInyee ?? '';
+		presentInee = data.word.presentInee ?? '';
+		presentEchek = data.word.presentEchek ?? '';
+		presentOkwek = data.word.presentOkwek ?? '';
+		presentIchek = data.word.presentIchek ?? '';
+	});
 
 	const translations = $derived(parseTranslationList(translationsValue));
 	const altSpellingsList = $derived(
@@ -65,6 +72,24 @@
 			.filter((s) => s.length > 0)
 	);
 	let altSpellingsOpen = $state(false);
+
+	const showPlural = $derived(
+		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
+			Boolean(data.word.pluralForm)
+	);
+	const showConjugations = $derived(
+		data.word.partOfSpeech === 'VERB' &&
+			(Boolean(data.word.presentAnee) ||
+				Boolean(data.word.presentInyee) ||
+				Boolean(data.word.presentInee) ||
+				Boolean(data.word.presentEchek) ||
+				Boolean(data.word.presentOkwek) ||
+				Boolean(data.word.presentIchek))
+	);
+	const needsPluralInput = $derived(
+		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
+	);
+	const needsConjugationInputs = $derived(partOfSpeechValue === 'VERB');
 
 	let relatedQuery = $state('');
 	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
@@ -146,6 +171,12 @@
 					{#if partOfSpeechValue}
 						<span class="pos-chip">{POS_LABELS[partOfSpeechValue]}</span>
 					{/if}
+					{#if showPlural}
+						<span class="plural-chip">
+							<span class="plural-label">Plural</span>
+							<span class="plural-value">{data.word.pluralForm}</span>
+						</span>
+					{/if}
 					{#if altSpellingsList.length > 0}
 						<button
 							type="button"
@@ -175,6 +206,36 @@
 					</li>
 				{/each}
 			</ol>
+
+			{#if showConjugations}
+				<h2 class="section-title">Present tense</h2>
+				<div class="conjugation-grid">
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentAnee ?? '—'}</span>
+						<span class="conj-pronoun">anee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentEchek ?? '—'}</span>
+						<span class="conj-pronoun">echek</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentInyee ?? '—'}</span>
+						<span class="conj-pronoun">inyee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentOkwek ?? '—'}</span>
+						<span class="conj-pronoun">okwek</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentInee ?? '—'}</span>
+						<span class="conj-pronoun">inee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{data.word.presentIchek ?? '—'}</span>
+						<span class="conj-pronoun">ichek</span>
+					</div>
+				</div>
+			{/if}
 
 			{#if notesValue.trim()}
 				<h2 class="section-title">Notes</h2>
@@ -226,6 +287,18 @@
 							<td>Part of speech</td>
 							<td>{partOfSpeechValue ? POS_LABELS[partOfSpeechValue] : '—'}</td>
 						</tr>
+						{#if data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE'}
+							<tr>
+								<td>Plural</td>
+								<td>{data.word.pluralForm ?? '—'}</td>
+							</tr>
+						{/if}
+						{#if data.word.partOfSpeech === 'VERB'}
+							<tr>
+								<td>Conjugations</td>
+								<td>{showConjugations ? 'Present tense' : '—'}</td>
+							</tr>
+						{/if}
 						<tr>
 							<td>Translations</td>
 							<td>{translations.length}</td>
@@ -301,6 +374,95 @@
 								{/each}
 							</select>
 						</div>
+						{#if needsPluralInput}
+							<div class="side-field">
+								<label for="pluralForm">Plural</label>
+								<input
+									id="pluralForm"
+									name="pluralForm"
+									type="text"
+									class="side-input"
+									placeholder="e.g. chego"
+									bind:value={pluralFormValue}
+								/>
+							</div>
+						{:else}
+							<input type="hidden" name="pluralForm" value="" />
+						{/if}
+						{#if needsConjugationInputs}
+							<div class="side-field">
+								<span class="conjugation-sub">Present tense</span>
+								<div class="conjugation-input-grid">
+									<div class="conj-input-field">
+										<label for="presentAnee">anee</label>
+										<input
+											id="presentAnee"
+											name="presentAnee"
+											type="text"
+											class="side-input"
+											bind:value={presentAnee}
+										/>
+									</div>
+									<div class="conj-input-field">
+										<label for="presentEchek">echek</label>
+										<input
+											id="presentEchek"
+											name="presentEchek"
+											type="text"
+											class="side-input"
+											bind:value={presentEchek}
+										/>
+									</div>
+									<div class="conj-input-field">
+										<label for="presentInyee">inyee</label>
+										<input
+											id="presentInyee"
+											name="presentInyee"
+											type="text"
+											class="side-input"
+											bind:value={presentInyee}
+										/>
+									</div>
+									<div class="conj-input-field">
+										<label for="presentOkwek">okwek</label>
+										<input
+											id="presentOkwek"
+											name="presentOkwek"
+											type="text"
+											class="side-input"
+											bind:value={presentOkwek}
+										/>
+									</div>
+									<div class="conj-input-field">
+										<label for="presentInee">inee</label>
+										<input
+											id="presentInee"
+											name="presentInee"
+											type="text"
+											class="side-input"
+											bind:value={presentInee}
+										/>
+									</div>
+									<div class="conj-input-field">
+										<label for="presentIchek">ichek</label>
+										<input
+											id="presentIchek"
+											name="presentIchek"
+											type="text"
+											class="side-input"
+											bind:value={presentIchek}
+										/>
+									</div>
+								</div>
+							</div>
+						{:else}
+							<input type="hidden" name="presentAnee" value="" />
+							<input type="hidden" name="presentInyee" value="" />
+							<input type="hidden" name="presentInee" value="" />
+							<input type="hidden" name="presentEchek" value="" />
+							<input type="hidden" name="presentOkwek" value="" />
+							<input type="hidden" name="presentIchek" value="" />
+						{/if}
 						<div class="side-field">
 							<label for="notes">Notes</label>
 							<WordLinkEditor
@@ -476,5 +638,83 @@
 		border: 0;
 		border-top: 1px solid rgba(128, 128, 128, 0.25);
 		margin: 0.75em 0;
+	}
+
+	.plural-chip {
+		align-items: baseline;
+		background: color-mix(in oklch, var(--accent) 14%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--line));
+		border-radius: 999px;
+		display: inline-flex;
+		gap: 6px;
+		padding: 2px 10px;
+	}
+	.plural-label {
+		color: var(--ink-mute);
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	.plural-value {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 14px;
+		font-weight: 500;
+	}
+	.conjugation-grid {
+		display: grid;
+		gap: 8px 24px;
+		grid-template-columns: 1fr 1fr;
+		margin: 0 0 4px;
+	}
+	.conj-cell {
+		align-items: baseline;
+		border-bottom: 1px solid var(--line);
+		display: flex;
+		gap: 8px;
+		padding: 8px 0;
+	}
+	.conj-verb {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 15px;
+	}
+	.conj-pronoun {
+		color: var(--ink-mute);
+		font-family: var(--font-display);
+		font-size: 13px;
+		font-style: italic;
+	}
+	.conjugation-sub {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+	}
+	.conjugation-input-grid {
+		display: grid;
+		gap: 8px 12px;
+		grid-template-columns: 1fr 1fr;
+		margin-top: 6px;
+	}
+	.conj-input-field {
+		display: grid;
+		gap: 4px;
+	}
+	.conj-input-field label {
+		color: var(--ink-mute);
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-style: italic;
+	}
+	@media (max-width: 640px) {
+		.conjugation-grid {
+			grid-template-columns: 1fr;
+		}
+		.conjugation-input-grid {
+			grid-template-columns: 1fr;
+		}
 	}
 </style>

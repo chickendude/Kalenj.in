@@ -16,6 +16,12 @@ export type KalenjinSearchWord = {
 	notes: string | null;
 	pluralForm: string | null;
 	pluralFormNormalized: string | null;
+	presentAnee: string | null;
+	presentInyee: string | null;
+	presentInee: string | null;
+	presentEchek: string | null;
+	presentOkwek: string | null;
+	presentIchek: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 	spellings?: Array<{

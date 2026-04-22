@@ -48,6 +48,11 @@ type SearchForm = {
 	usageCount?: number;
 };
 
+type SearchQueryVariant = {
+	normalized: string;
+	scoreOffset: number;
+};
+
 /**
  * Build a search pattern for Kalenjin letters that are commonly interchanged:
  * a/o and k/g anywhere, plus p/b only at word endings.
@@ -94,6 +99,35 @@ function matchesEquivalentSearch(form: string, query: string, mode: 'exact' | 'p
 
 function buildEquivalentSqlSearchPattern(query: string): string {
 	return buildEquivalentSearchRegexSource(query, true);
+}
+
+function searchQueryVariants(normalizedQuery: string): SearchQueryVariant[] {
+	const variants: SearchQueryVariant[] = [{ normalized: normalizedQuery, scoreOffset: 0 }];
+
+	if (normalizedQuery.startsWith('ko') && normalizedQuery.length > 3) {
+		const stem = normalizedQuery.slice(2);
+		if (stem.length > 1 && stem !== normalizedQuery) {
+			variants.push({ normalized: stem, scoreOffset: 3 });
+		}
+	}
+
+	return variants;
+}
+
+function sqlTextArray(values: string[]): Prisma.Sql {
+	return Prisma.sql`ARRAY[${Prisma.join(values)}]::text[]`;
+}
+
+function sqlEqualsAny(column: Prisma.Sql, values: string[]): Prisma.Sql {
+	return Prisma.sql`${column} = ANY (${sqlTextArray(values)})`;
+}
+
+function sqlLikeAny(column: Prisma.Sql, patterns: string[]): Prisma.Sql {
+	return Prisma.sql`${column} LIKE ANY (${sqlTextArray(patterns)})`;
+}
+
+function sqlRegexAny(column: Prisma.Sql, patterns: string[]): Prisma.Sql {
+	return Prisma.sql`${column} ~ ANY (${sqlTextArray(patterns)})`;
 }
 
 export function normalizeKalenjinSearchQuery(query: string): string {
@@ -209,7 +243,11 @@ export function scoreKalenjinWordMatch(word: KalenjinSearchWord, query: string):
 	}
 
 	return Math.min(
-		...collectSearchForms(word).map((form) => scoreSearchFormMatch(form, normalizedQuery))
+		...collectSearchForms(word).flatMap((form) =>
+			searchQueryVariants(normalizedQuery).map(
+				(variant) => scoreSearchFormMatch(form, variant.normalized) + variant.scoreOffset
+			)
+		)
 	);
 }
 
@@ -263,8 +301,10 @@ export async function searchWordsByKalenjin(
 		});
 	}
 
-	const containsQuery = `%${normalizedQuery}%`;
-	const prefixQuery = `${normalizedQuery}%`;
+	const queryVariants = searchQueryVariants(normalizedQuery);
+	const exactQueries = queryVariants.map((variant) => variant.normalized);
+	const containsQueries = queryVariants.map((variant) => `%${variant.normalized}%`);
+	const prefixQueries = queryVariants.map((variant) => `${variant.normalized}%`);
 	const candidateLimit = Math.max(limit * 12, 150);
 	let candidateRows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
 		WITH textual_candidates AS (
@@ -275,21 +315,21 @@ export async function searchWordsByKalenjin(
 				0 AS "sourceRank",
 				MIN(
 					CASE
-						WHEN w."kalenjinNormalized" = ${normalizedQuery} THEN 0
-						WHEN COALESCE(w."pluralFormNormalized", '') = ${normalizedQuery} THEN 1
-						WHEN COALESCE(ws."spellingNormalized", '') = ${normalizedQuery} THEN 2
-						WHEN w."kalenjinNormalized" LIKE ${prefixQuery} THEN 3
-						WHEN COALESCE(w."pluralFormNormalized", '') LIKE ${prefixQuery} THEN 4
-						WHEN COALESCE(ws."spellingNormalized", '') LIKE ${prefixQuery} THEN 5
+						WHEN ${sqlEqualsAny(Prisma.sql`w."kalenjinNormalized"`, exactQueries)} THEN 0
+						WHEN ${sqlEqualsAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, exactQueries)} THEN 1
+						WHEN ${sqlEqualsAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, exactQueries)} THEN 2
+						WHEN ${sqlLikeAny(Prisma.sql`w."kalenjinNormalized"`, prefixQueries)} THEN 3
+						WHEN ${sqlLikeAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, prefixQueries)} THEN 4
+						WHEN ${sqlLikeAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, prefixQueries)} THEN 5
 						ELSE 6
 					END
 				) AS "matchRank"
 			FROM "Word" w
 			LEFT JOIN "WordSpelling" ws ON ws."wordId" = w.id
 			WHERE
-				w."kalenjinNormalized" LIKE ${containsQuery}
-				OR COALESCE(w."pluralFormNormalized", '') LIKE ${containsQuery}
-				OR COALESCE(ws."spellingNormalized", '') LIKE ${containsQuery}
+				${sqlLikeAny(Prisma.sql`w."kalenjinNormalized"`, containsQueries)}
+				OR ${sqlLikeAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, containsQueries)}
+				OR ${sqlLikeAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, containsQueries)}
 			GROUP BY w.id
 			ORDER BY "matchRank", w.id
 			LIMIT ${candidateLimit}
@@ -301,13 +341,13 @@ export async function searchWordsByKalenjin(
 				owf."usageCount" AS "observedUsageCount",
 				1 AS "sourceRank",
 				CASE
-					WHEN owf."normalizedForm" = ${normalizedQuery} THEN 0
-					WHEN owf."normalizedForm" LIKE ${prefixQuery} THEN 3
+					WHEN ${sqlEqualsAny(Prisma.sql`owf."normalizedForm"`, exactQueries)} THEN 0
+					WHEN ${sqlLikeAny(Prisma.sql`owf."normalizedForm"`, prefixQueries)} THEN 3
 					ELSE 6
 				END AS "matchRank"
 			FROM "ObservedWordForm" owf
 			WHERE
-				owf."normalizedForm" LIKE ${containsQuery}
+				${sqlLikeAny(Prisma.sql`owf."normalizedForm"`, containsQueries)}
 			ORDER BY owf."wordId", "matchRank", owf."usageCount" DESC, owf."normalizedForm"
 		),
 		observed_candidates AS (
@@ -326,9 +366,11 @@ export async function searchWordsByKalenjin(
 	`);
 
 	if (candidateRows.length === 0) {
-		const equivalentSearchPattern = buildEquivalentSqlSearchPattern(normalizedQuery);
-		const exactEquivalentSearchPattern = `^${equivalentSearchPattern}$`;
-		const prefixEquivalentSearchPattern = `^${equivalentSearchPattern}`;
+		const equivalentSearchPatterns = queryVariants.map((variant) =>
+			buildEquivalentSqlSearchPattern(variant.normalized)
+		);
+		const exactEquivalentSearchPatterns = equivalentSearchPatterns.map((pattern) => `^${pattern}$`);
+		const prefixEquivalentSearchPatterns = equivalentSearchPatterns.map((pattern) => `^${pattern}`);
 
 		candidateRows = await prisma.$queryRaw<CandidateRow[]>(Prisma.sql`
 			WITH textual_candidates AS (
@@ -339,21 +381,21 @@ export async function searchWordsByKalenjin(
 					0 AS "sourceRank",
 					MIN(
 						CASE
-							WHEN w."kalenjinNormalized" ~ ${exactEquivalentSearchPattern} THEN 2
-							WHEN COALESCE(w."pluralFormNormalized", '') ~ ${exactEquivalentSearchPattern} THEN 3
-							WHEN COALESCE(ws."spellingNormalized", '') ~ ${exactEquivalentSearchPattern} THEN 4
-							WHEN w."kalenjinNormalized" ~ ${prefixEquivalentSearchPattern} THEN 6
-							WHEN COALESCE(w."pluralFormNormalized", '') ~ ${prefixEquivalentSearchPattern} THEN 7
-							WHEN COALESCE(ws."spellingNormalized", '') ~ ${prefixEquivalentSearchPattern} THEN 8
+							WHEN ${sqlRegexAny(Prisma.sql`w."kalenjinNormalized"`, exactEquivalentSearchPatterns)} THEN 2
+							WHEN ${sqlRegexAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, exactEquivalentSearchPatterns)} THEN 3
+							WHEN ${sqlRegexAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, exactEquivalentSearchPatterns)} THEN 4
+							WHEN ${sqlRegexAny(Prisma.sql`w."kalenjinNormalized"`, prefixEquivalentSearchPatterns)} THEN 6
+							WHEN ${sqlRegexAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, prefixEquivalentSearchPatterns)} THEN 7
+							WHEN ${sqlRegexAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, prefixEquivalentSearchPatterns)} THEN 8
 							ELSE 10
 						END
 					) AS "matchRank"
 				FROM "Word" w
 				LEFT JOIN "WordSpelling" ws ON ws."wordId" = w.id
 				WHERE
-					w."kalenjinNormalized" ~ ${equivalentSearchPattern}
-					OR COALESCE(w."pluralFormNormalized", '') ~ ${equivalentSearchPattern}
-					OR COALESCE(ws."spellingNormalized", '') ~ ${equivalentSearchPattern}
+					${sqlRegexAny(Prisma.sql`w."kalenjinNormalized"`, equivalentSearchPatterns)}
+					OR ${sqlRegexAny(Prisma.sql`COALESCE(w."pluralFormNormalized", '')`, equivalentSearchPatterns)}
+					OR ${sqlRegexAny(Prisma.sql`COALESCE(ws."spellingNormalized", '')`, equivalentSearchPatterns)}
 				GROUP BY w.id
 				ORDER BY "matchRank", w.id
 				LIMIT ${candidateLimit}
@@ -365,13 +407,13 @@ export async function searchWordsByKalenjin(
 					owf."usageCount" AS "observedUsageCount",
 					1 AS "sourceRank",
 					CASE
-						WHEN owf."normalizedForm" ~ ${exactEquivalentSearchPattern} THEN 2
-						WHEN owf."normalizedForm" ~ ${prefixEquivalentSearchPattern} THEN 6
+						WHEN ${sqlRegexAny(Prisma.sql`owf."normalizedForm"`, exactEquivalentSearchPatterns)} THEN 2
+						WHEN ${sqlRegexAny(Prisma.sql`owf."normalizedForm"`, prefixEquivalentSearchPatterns)} THEN 6
 						ELSE 10
 					END AS "matchRank"
 				FROM "ObservedWordForm" owf
 				WHERE
-					owf."normalizedForm" ~ ${equivalentSearchPattern}
+					${sqlRegexAny(Prisma.sql`owf."normalizedForm"`, equivalentSearchPatterns)}
 				ORDER BY owf."wordId", "matchRank", owf."usageCount" DESC, owf."normalizedForm"
 			),
 			observed_candidates AS (

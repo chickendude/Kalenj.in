@@ -151,6 +151,19 @@ describe('scoreKalenjinWordMatch', () => {
 		expect(scoreKalenjinWordMatch(word, 'aame')).toBe(1.5);
 	});
 
+	it('matches ko-prefixed searches against the root lemma stem', () => {
+		const word = makeSearchWord({
+			id: '4',
+			kalenjin: 'kwany',
+			kalenjinNormalized: 'kwany',
+			translations: 'scrape'
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'kokwa')).toBeLessThan(Number.POSITIVE_INFINITY);
+		expect(scoreKalenjinWordMatch(word, 'kokwan')).toBeLessThan(Number.POSITIVE_INFINITY);
+		expect(scoreKalenjinWordMatch(word, 'kokwany')).toBeLessThan(Number.POSITIVE_INFINITY);
+	});
+
 	it('uses observed form frequency to break ties', () => {
 		const occasional = makeSearchWord({
 			id: '4',
@@ -323,6 +336,22 @@ describe('searchWordsByKalenjin', () => {
 			})
 		);
 		expect(result.map((word) => word.id)).toEqual(['4', '5']);
+	});
+
+	it('includes a ko-stripped query variant in SQL candidates', async () => {
+		const word = makeSearchWord({
+			id: '6',
+			kalenjin: 'kwany',
+			kalenjinNormalized: 'kwany',
+			translations: 'scrape'
+		});
+		const prisma = makePrisma(['6'], [word]);
+
+		const result = await searchWordsByKalenjin(prisma, 'kokwan', 10);
+		const sql = prisma.$queryRaw.mock.calls[0][0] as { values?: unknown[] };
+
+		expect(sql.values).toContain('%kwan%');
+		expect(result.map((entry) => entry.id)).toEqual(['6']);
 	});
 
 	it('respects the limit parameter on the final results', async () => {

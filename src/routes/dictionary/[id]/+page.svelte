@@ -279,32 +279,6 @@
 		</div>
 
 		<aside>
-			<div class="side-card">
-				<h3>At a glance</h3>
-				<table class="glance-table">
-					<tbody>
-						<tr>
-							<td>Part of speech</td>
-							<td>{partOfSpeechValue ? POS_LABELS[partOfSpeechValue] : '—'}</td>
-						</tr>
-						{#if data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE'}
-							<tr>
-								<td>Plural</td>
-								<td>{data.word.pluralForm ?? '—'}</td>
-							</tr>
-						{/if}
-						<tr>
-							<td>Translations</td>
-							<td>{translations.length}</td>
-						</tr>
-						<tr>
-							<td>Examples</td>
-							<td>{data.word.sentences.length}</td>
-						</tr>
-					</tbody>
-				</table>
-			</div>
-
 			{#if data.user}
 				<div class="side-card">
 					<h3>Edit entry</h3>

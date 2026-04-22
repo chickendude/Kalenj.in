@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { stripWordLinks } from '$lib/word-links';
 
 	type CoverageEntry = {
 		word: { id: string; kalenjin: string; translations: string };
@@ -78,7 +79,7 @@
 							<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
 								{entry.word.kalenjin}
 							</a>
-							<span class="coverage-translations">{entry.word.translations}</span>
+							<span class="coverage-translations">{stripWordLinks(entry.word.translations)}</span>
 						</div>
 						<div class="coverage-sentences">
 							{#each entry.sentences as sentence}

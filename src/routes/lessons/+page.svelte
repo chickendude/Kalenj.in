@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { formatLessonType, formatVocabularyLessonType } from '$lib/course';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
+	import { stripWordLinks } from '$lib/word-links';
 
 	let { data, form } = $props();
 	type LessonFormValues = {
@@ -274,7 +275,7 @@
 									<li>
 										<a href={`/dictionary/${word.id}`} class="uninstructed-word">
 											<span class="kal">{word.kalenjin}</span>
-											<span class="en">{word.translations}</span>
+											<span class="en">{stripWordLinks(word.translations)}</span>
 										</a>
 									</li>
 								{/each}

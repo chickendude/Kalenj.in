@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 
 	let { form } = $props();
+
+	let translationsValue = $state('');
+	let notesValue = $state('');
+	$effect(() => {
+		translationsValue = form?.values?.translations ?? '';
+	});
+	$effect(() => {
+		notesValue = form?.values?.notes ?? '';
+	});
 </script>
 
 <section>
@@ -20,26 +30,27 @@
 
 		<label>
 			Translations (English) *
-			<input
+			<WordLinkEditor
 				name="translations"
 				required
-				value={form?.values?.translations ?? ''}
 				placeholder="semicolon-separated translations"
+				bind:value={translationsValue}
 			/>
 		</label>
 
 		<label>
 			Alternative spellings
-			<textarea
+			<input
+				type="text"
 				name="alternativeSpellings"
-				rows="3"
-				placeholder="One spelling per line"
-			>{form?.values?.alternativeSpellings ?? ''}</textarea>
+				placeholder="Comma-separated"
+				value={form?.values?.alternativeSpellings ?? ''}
+			/>
 		</label>
 
 		<label>
 			Notes
-			<textarea name="notes" rows="3">{form?.values?.notes ?? ''}</textarea>
+			<WordLinkEditor name="notes" multiline rows={3} bind:value={notesValue} />
 		</label>
 
 		<label>
@@ -74,7 +85,6 @@
 	}
 
 	input,
-	textarea,
 	select,
 	button {
 		font: inherit;

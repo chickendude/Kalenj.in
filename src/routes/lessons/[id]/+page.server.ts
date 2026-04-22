@@ -20,6 +20,7 @@ import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { stripWordLinks } from '$lib/word-links';
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -1515,7 +1516,7 @@ export const actions: Actions = {
 						lessonSectionId: lessonSection.id,
 						wordId: word.id,
 						kalenjin: word.kalenjin,
-						translations: word.translations,
+						translations: stripWordLinks(word.translations),
 						itemOrder
 					}
 				});

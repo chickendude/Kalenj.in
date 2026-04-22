@@ -2,6 +2,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
 	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';
 	import type { PartOfSpeech } from '@prisma/client';
 
@@ -42,7 +43,7 @@
 		day: 'numeric'
 	});
 
-	const translationList = $derived(parseTranslationList(word.translations));
+	const translationList = $derived(parseTranslationList(stripWordLinks(word.translations)));
 
 	const altSpellings = $derived(
 		word.spellings

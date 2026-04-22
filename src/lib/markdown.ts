@@ -14,7 +14,12 @@ function renderInline(text: string): string {
 
 	result = result.replace(
 		/\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/[^\s)]*)\)/g,
-		(_, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+		(_, label, url) => {
+			const isInternalDictLink = /^\/dictionary\/[a-z0-9]+$/.test(url);
+			return isInternalDictLink
+				? `<a href="${url}">${label}</a>`
+				: `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+		}
 	);
 
 	result = result.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');

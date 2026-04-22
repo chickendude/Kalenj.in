@@ -4,6 +4,7 @@
 	import { cubicOut } from 'svelte/easing';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { firstTranslation } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { WordSearchHit } from './search/+server';
 	import type { ActionData, PageData } from './$types';
 
@@ -265,8 +266,8 @@
 						{/if}
 					</div>
 				</td>
-				<td class="wod-admin-gloss" title={row.word.translations}>
-					{row.word.translations}
+				<td class="wod-admin-gloss" title={stripWordLinks(row.word.translations)}>
+					{stripWordLinks(row.word.translations)}
 				</td>
 				<td>
 					<div class="row-actions">
@@ -324,7 +325,7 @@
 															</span>
 														{/if}
 														<span class="wod-admin-hit-gloss">
-															{firstTranslation(hit.translations)}
+															{firstTranslation(stripWordLinks(hit.translations))}
 														</span>
 													</div>
 													<div class="wod-admin-hit-meta">

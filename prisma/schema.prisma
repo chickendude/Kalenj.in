@@ -86,6 +86,12 @@ model Word {
   notes        String?
   pluralForm   String?
   pluralFormNormalized String?
+  presentAnee   String?
+  presentInyee  String?
+  presentInee   String?
+  presentEchek  String?
+  presentOkwek  String?
+  presentIchek  String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sentences    WordSentence[]

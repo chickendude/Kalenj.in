@@ -4,8 +4,10 @@
 	import type { ActionResult } from '@sveltejs/kit';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
+	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
+	import type { PartOfSpeech } from '@prisma/client';
 	import {
 		VOCABULARY_LESSON_TYPES,
 		formatLessonType,
@@ -25,6 +27,55 @@
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showAddWordForm = $state(false);
+
+	type AddWordPickerState = {
+		selectedWord: {
+			id: string;
+			kalenjin: string;
+			translations: string;
+			partOfSpeech?: PartOfSpeech | string | null;
+		} | null;
+		mode: 'search' | 'create';
+		draftKalenjin: string;
+		draftTranslations: string;
+		draftAlternativeSpellings: string;
+		draftNotes: string;
+		draftPartOfSpeech: PartOfSpeech | '';
+		draftPluralForm: string;
+		draftPresentAnee: string;
+		draftPresentInyee: string;
+		draftPresentInee: string;
+		draftPresentEchek: string;
+		draftPresentOkwek: string;
+		draftPresentIchek: string;
+		sentenceKalenjin: string;
+		sentenceEnglish: string;
+		error: string | null;
+	};
+
+	function emptyAddWordState(): AddWordPickerState {
+		return {
+			selectedWord: null,
+			mode: 'search',
+			draftKalenjin: '',
+			draftTranslations: '',
+			draftAlternativeSpellings: '',
+			draftNotes: '',
+			draftPartOfSpeech: '',
+			draftPluralForm: '',
+			draftPresentAnee: '',
+			draftPresentInyee: '',
+			draftPresentInee: '',
+			draftPresentEchek: '',
+			draftPresentOkwek: '',
+			draftPresentIchek: '',
+			sentenceKalenjin: '',
+			sentenceEnglish: '',
+			error: null
+		};
+	}
+
+	let addWordState = $state<AddWordPickerState>(emptyAddWordState());
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
 	let inlineStoryValue = $state('');
 	let inlineStoryError = $state<string | null>(null);
@@ -684,7 +735,13 @@
 	}
 
 	function toggleAddWordForm() {
-		showAddWordForm = !showAddWordForm;
+		if (showAddWordForm) {
+			showAddWordForm = false;
+			addWordState = emptyAddWordState();
+		} else {
+			addWordState = emptyAddWordState();
+			showAddWordForm = true;
+		}
 	}
 
 	function enhanceAddWordForm() {
@@ -696,8 +753,18 @@
 			update: EnhancedUpdate;
 		}) => {
 			if (result.type === 'success') {
-				await update({ reset: true, invalidateAll: true });
+				await update({ reset: false, invalidateAll: true });
 				showAddWordForm = false;
+				addWordState = emptyAddWordState();
+				return;
+			}
+			if (result.type === 'failure') {
+				const data = result.data;
+				const message =
+					data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+						? (data.error as string)
+						: 'Could not create lesson word.';
+				addWordState = { ...addWordState, error: message };
 				return;
 			}
 			await applyAction(result);
@@ -1139,32 +1206,66 @@
 
 		{#if showAddWordForm}
 			<section class="card">
-				<form method="POST" action="?/createWord" class="editor-form compact-form" use:enhance={enhanceAddWordForm}>
+				<form
+					method="POST"
+					action="?/createWord"
+					class="editor-form compact-form add-word-form"
+					use:enhance={enhanceAddWordForm}
+				>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
 
-					<div class="two-column-grid">
+					<LemmaSearchPicker
+						searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+						idPrefix="lesson-add-word"
+						bind:selectedWord={addWordState.selectedWord}
+						bind:mode={addWordState.mode}
+						bind:draftKalenjin={addWordState.draftKalenjin}
+						bind:draftTranslations={addWordState.draftTranslations}
+						bind:draftAlternativeSpellings={addWordState.draftAlternativeSpellings}
+						bind:draftNotes={addWordState.draftNotes}
+						bind:draftPartOfSpeech={addWordState.draftPartOfSpeech}
+						bind:draftPluralForm={addWordState.draftPluralForm}
+						bind:draftPresentAnee={addWordState.draftPresentAnee}
+						bind:draftPresentInyee={addWordState.draftPresentInyee}
+						bind:draftPresentInee={addWordState.draftPresentInee}
+						bind:draftPresentEchek={addWordState.draftPresentEchek}
+						bind:draftPresentOkwek={addWordState.draftPresentOkwek}
+						bind:draftPresentIchek={addWordState.draftPresentIchek}
+					/>
+
+					<div class="add-word-sentence">
 						<label>
-							Word
-							<input name="kalenjin" required autocomplete="off" />
+							Example sentence
+							<textarea
+								name="sentenceKalenjin"
+								required
+								rows="2"
+								bind:value={addWordState.sentenceKalenjin}
+							></textarea>
 						</label>
 
 						<label>
-							Translation
-							<input name="translations" required placeholder="semicolon-separated translations" />
+							Sentence translation
+							<textarea
+								name="sentenceEnglish"
+								required
+								rows="2"
+								bind:value={addWordState.sentenceEnglish}
+							></textarea>
 						</label>
 					</div>
 
-					<label>
-						Example sentence
-						<textarea name="sentenceKalenjin" required rows="2"></textarea>
-					</label>
+					{#if addWordState.error}
+						<p class="error-text">{addWordState.error}</p>
+					{/if}
 
-					<label>
-						Sentence translation
-						<textarea name="sentenceEnglish" required rows="2"></textarea>
-					</label>
-
-					<button type="submit" class="btn">Create lesson word</button>
+					<div class="add-word-actions">
+						<button type="submit" class="btn">
+							{addWordState.selectedWord
+								? `Add "${addWordState.selectedWord.kalenjin}" to lesson`
+								: 'Create lesson word'}
+						</button>
+					</div>
 				</form>
 			</section>
 		{/if}
@@ -2332,15 +2433,34 @@
 		min-width: 16rem;
 	}
 
-	.two-column-grid {
+	.add-word-form {
 		display: grid;
-		gap: 0.75rem;
+		gap: 16px;
 	}
 
-	@media (min-width: 900px) {
-		.two-column-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
-		}
+	.add-word-sentence {
+		border-top: 1px dotted var(--line);
+		display: grid;
+		gap: 0.75rem;
+		padding-top: 16px;
+	}
+
+	.add-word-sentence label {
+		display: grid;
+		gap: 4px;
+	}
+
+	.add-word-sentence textarea {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		font: inherit;
+		padding: 8px 10px;
+	}
+
+	.add-word-actions {
+		display: flex;
+		justify-content: flex-end;
 	}
 
 	@media (max-width: 800px) {

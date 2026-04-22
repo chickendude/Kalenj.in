@@ -1,0 +1,129 @@
+import { Prisma, type PartOfSpeech } from '@prisma/client';
+import { prepareAlternativeSpellings } from './kalenjin-word-search';
+import { normalizeLemma } from './normalize-lemma';
+
+export const PRESENT_TENSE_KEYS = [
+	'presentAnee',
+	'presentInyee',
+	'presentInee',
+	'presentEchek',
+	'presentOkwek',
+	'presentIchek'
+] as const;
+
+export type PresentTenseKey = (typeof PRESENT_TENSE_KEYS)[number];
+
+export type PresentTenseConjugations = Record<PresentTenseKey, string | null>;
+
+const EMPTY_PRESENT_TENSE: PresentTenseConjugations = {
+	presentAnee: null,
+	presentInyee: null,
+	presentInee: null,
+	presentEchek: null,
+	presentOkwek: null,
+	presentIchek: null
+};
+
+export function buildWordSelect() {
+	return {
+		id: true,
+		kalenjin: true,
+		translations: true,
+		notes: true,
+		partOfSpeech: true,
+		pluralForm: true,
+		presentAnee: true,
+		presentInyee: true,
+		presentInee: true,
+		presentEchek: true,
+		presentOkwek: true,
+		presentIchek: true,
+		spellings: {
+			orderBy: [{ spelling: 'asc' as const }],
+			select: {
+				id: true,
+				spelling: true,
+				spellingNormalized: true
+			}
+		}
+	};
+}
+
+export type LemmaWordInput = {
+	wordId?: string | null;
+	kalenjin: string;
+	translations: string;
+	notes?: string | null;
+	alternativeSpellings?: string | null;
+	partOfSpeech?: PartOfSpeech | null;
+	pluralForm?: string | null;
+	presentTense?: PresentTenseConjugations | null;
+};
+
+export function readPresentTenseFromFormData(formData: FormData): PresentTenseConjugations {
+	const read = (key: PresentTenseKey): string | null => {
+		const raw = String(formData.get(key) ?? '').trim();
+		return raw.length > 0 ? raw : null;
+	};
+
+	return {
+		presentAnee: read('presentAnee'),
+		presentInyee: read('presentInyee'),
+		presentInee: read('presentInee'),
+		presentEchek: read('presentEchek'),
+		presentOkwek: read('presentOkwek'),
+		presentIchek: read('presentIchek')
+	};
+}
+
+export async function createOrUpdateLinkedWord(
+	tx: Prisma.TransactionClient,
+	input: LemmaWordInput
+) {
+	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
+	const pluralForm =
+		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE'
+			? input.pluralForm ?? null
+			: null;
+	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
+	const presentTense: PresentTenseConjugations =
+		input.partOfSpeech === 'VERB' && input.presentTense
+			? input.presentTense
+			: EMPTY_PRESENT_TENSE;
+
+	if (input.wordId) {
+		return tx.word.update({
+			where: { id: input.wordId },
+			data: {
+				kalenjin: input.kalenjin,
+				kalenjinNormalized: normalizeLemma(input.kalenjin),
+				translations: input.translations,
+				notes: input.notes ?? null,
+				partOfSpeech: input.partOfSpeech ?? null,
+				pluralForm,
+				pluralFormNormalized,
+				...presentTense,
+				spellings: {
+					deleteMany: {},
+					createMany: spellings.length ? { data: spellings } : undefined
+				}
+			},
+			select: buildWordSelect()
+		});
+	}
+
+	return tx.word.create({
+		data: {
+			kalenjin: input.kalenjin,
+			kalenjinNormalized: normalizeLemma(input.kalenjin),
+			translations: input.translations,
+			notes: input.notes ?? null,
+			partOfSpeech: input.partOfSpeech ?? null,
+			pluralForm,
+			pluralFormNormalized,
+			...presentTense,
+			spellings: spellings.length ? { createMany: { data: spellings } } : undefined
+		},
+		select: buildWordSelect()
+	});
+}

@@ -19,6 +19,12 @@ function makeWord(overrides: Partial<{
 		notes: null,
 		pluralForm: overrides.pluralForm ?? null,
 		pluralFormNormalized: overrides.pluralFormNormalized ?? null,
+		presentAnee: null,
+		presentInyee: null,
+		presentInee: null,
+		presentEchek: null,
+		presentOkwek: null,
+		presentIchek: null,
 		createdAt: new Date('2026-01-01T00:00:00.000Z'),
 		updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		spellings: overrides.spellings ?? []

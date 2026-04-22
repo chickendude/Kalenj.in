@@ -2,8 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
-import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -25,40 +24,54 @@ export const actions: Actions = {
 		const alternativeSpellings = readText(formData, 'alternativeSpellings');
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
+		const pluralFormRaw = readText(formData, 'pluralForm');
+
+		const values = {
+			kalenjin,
+			translations,
+			alternativeSpellings,
+			notes,
+			partOfSpeech: partOfSpeechRaw,
+			pluralForm: pluralFormRaw
+		};
 
 		if (!kalenjin || !translations) {
 			return fail(400, {
 				error: 'Kalenjin and translations are required.',
-				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
+				values
 			});
 		}
 
 		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
 			return fail(400, {
 				error: 'Invalid part of speech value.',
-				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
+				values
 			});
 		}
 
-		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
-		const spellings = prepareAlternativeSpellings(alternativeSpellings, kalenjin);
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
 
-		const word = await prisma.word.create({
-			data: {
+		const pluralForm =
+			(partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE') && pluralFormRaw
+				? pluralFormRaw
+				: null;
+
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
+		const word = await prisma.$transaction((tx) =>
+			createOrUpdateLinkedWord(tx, {
 				kalenjin,
-				kalenjinNormalized: normalizeLemma(kalenjin),
 				translations,
 				notes: notes || null,
+				alternativeSpellings,
 				partOfSpeech,
-				spellings: spellings.length
-					? {
-							createMany: {
-								data: spellings
-							}
-						}
-					: undefined
-			}
-		});
+				pluralForm,
+				presentTense
+			})
+		);
 
 		redirect(303, `/dictionary/${word.id}`);
 	}

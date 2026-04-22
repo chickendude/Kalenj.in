@@ -14,95 +14,18 @@ import {
 	formatSentenceInUseError
 } from '$lib/server/example-sentence-dedupe';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
-import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { stripWordLinks } from '$lib/word-links';
+import {
+	buildWordSelect,
+	createOrUpdateLinkedWord,
+	readPresentTenseFromFormData
+} from '$lib/server/lemma-words';
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
-
-function buildWordSelect() {
-	return {
-		id: true,
-		kalenjin: true,
-		translations: true,
-		notes: true,
-		partOfSpeech: true,
-		pluralForm: true,
-		spellings: {
-			orderBy: [{ spelling: 'asc' as const }],
-			select: {
-				id: true,
-				spelling: true,
-				spellingNormalized: true
-			}
-		}
-	};
-}
-
-async function createOrUpdateLinkedWord(
-	tx: Prisma.TransactionClient,
-	input: {
-		wordId?: string | null;
-		kalenjin: string;
-		translations: string;
-		notes?: string | null;
-		alternativeSpellings?: string | null;
-		partOfSpeech?: PartOfSpeech | null;
-		pluralForm?: string | null;
-	}
-) {
-	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
-	const pluralForm = input.pluralForm ?? null;
-	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
-
-	if (input.wordId) {
-		return tx.word.update({
-			where: { id: input.wordId },
-			data: {
-				kalenjin: input.kalenjin,
-				kalenjinNormalized: normalizeLemma(input.kalenjin),
-				translations: input.translations,
-				notes: input.notes ?? null,
-				partOfSpeech: input.partOfSpeech ?? null,
-				pluralForm,
-				pluralFormNormalized,
-				spellings: {
-					deleteMany: {},
-					createMany: spellings.length
-						? {
-								data: spellings
-							}
-						: undefined
-				}
-			},
-			select: buildWordSelect()
-		});
-	}
-
-	return tx.word.create({
-		data: {
-			kalenjin: input.kalenjin,
-			kalenjinNormalized: normalizeLemma(input.kalenjin),
-			translations: input.translations,
-			notes: input.notes ?? null,
-			partOfSpeech: input.partOfSpeech ?? null,
-			pluralForm,
-			pluralFormNormalized,
-			spellings: spellings.length
-				? {
-						createMany: {
-							data: spellings
-						}
-					}
-				: undefined
-		},
-		select: buildWordSelect()
-	});
-}
 
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
@@ -837,8 +760,13 @@ export const actions: Actions = {
 		requireEditor(locals);
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
-		const kalenjin = readText(formData, 'kalenjin');
-		const translations = readText(formData, 'translations');
+		const existingWordId = readText(formData, 'wordId');
+		const kalenjinInput = readText(formData, 'kalenjin');
+		const translationsInput = readText(formData, 'translations');
+		const alternativeSpellings = readText(formData, 'alternativeSpellings');
+		const notes = readText(formData, 'notes');
+		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
+		const pluralFormRaw = readText(formData, 'pluralForm');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceNotes = readOptionalText(formData, 'sentenceNotes');
@@ -847,11 +775,45 @@ export const actions: Actions = {
 		const notesMarkdown = readOptionalText(formData, 'notesMarkdown');
 		const cefrTargetIds = readStringList(formData, 'cefrTargetIds');
 
-		if (!lessonId || !kalenjin || !translations || !sentenceKalenjin || !sentenceEnglish) {
+		if (!lessonId || !sentenceKalenjin || !sentenceEnglish) {
 			return fail(400, {
-				error: 'Lesson, word, translation, sentence text, and sentence translation are required.'
+				error: 'Lesson, sentence text, and sentence translation are required.'
 			});
 		}
+
+		let existingWord: {
+			id: string;
+			kalenjin: string;
+			translations: string;
+		} | null = null;
+
+		if (existingWordId) {
+			existingWord = await prisma.word.findUnique({
+				where: { id: existingWordId },
+				select: { id: true, kalenjin: true, translations: true }
+			});
+			if (!existingWord) {
+				return fail(400, { error: 'Selected lemma no longer exists.' });
+			}
+		} else if (!kalenjinInput || !translationsInput) {
+			return fail(400, {
+				error: 'Lemma and translations are required to create a new word.'
+			});
+		}
+
+		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
+			return fail(400, { error: 'Invalid part of speech value.' });
+		}
+
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
+		const pluralForm =
+			(partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE') && pluralFormRaw
+				? pluralFormRaw
+				: null;
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
 		try {
 			const lessonWord = await prisma.$transaction(async (tx) => {
@@ -877,11 +839,24 @@ export const actions: Actions = {
 					sentenceId = sentence.id;
 				}
 
+				const word = existingWord
+					? existingWord
+					: await createOrUpdateLinkedWord(tx, {
+							kalenjin: kalenjinInput,
+							translations: translationsInput,
+							notes: notes || null,
+							alternativeSpellings,
+							partOfSpeech,
+							pluralForm,
+							presentTense
+						});
+
 				const createdLessonWord = await tx.lessonWord.create({
 					data: {
 						lessonSectionId: lessonSection.id,
-						kalenjin,
-						translations,
+						wordId: word.id,
+						kalenjin: word.kalenjin,
+						translations: word.translations,
 						itemOrder,
 						sentenceId,
 						sentenceTranslation,
@@ -896,6 +871,11 @@ export const actions: Actions = {
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
 			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {
+			if (createError instanceof Prisma.PrismaClientKnownRequestError && createError.code === 'P2002') {
+				return fail(400, {
+					error: 'This lemma is already in the lesson.'
+				});
+			}
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create lesson word.'
@@ -1178,6 +1158,9 @@ export const actions: Actions = {
 			? await ensureStorySentenceTokenSegment(storySentenceId, checkedToken.id, segmentId)
 			: null;
 
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
@@ -1188,7 +1171,8 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm:
-						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
+						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					presentTense
 				});
 
 				if (checkedSegment) {
@@ -1403,6 +1387,9 @@ export const actions: Actions = {
 			? await ensureExampleSentenceTokenSegment(sentenceId, checkedToken.id, segmentId)
 			: null;
 
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
@@ -1413,7 +1400,8 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm:
-						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
+						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					presentTense
 				});
 
 				if (checkedSegment) {

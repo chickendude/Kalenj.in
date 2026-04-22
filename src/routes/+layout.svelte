@@ -32,6 +32,8 @@
 
 	let menuOpen = $state(false);
 	let menuRoot: HTMLDivElement | undefined = $state();
+	let navOpen = $state(false);
+	let navRoot: HTMLDivElement | undefined = $state();
 
 	function toggleMenu() {
 		menuOpen = !menuOpen;
@@ -39,6 +41,14 @@
 
 	function closeMenu() {
 		menuOpen = false;
+	}
+
+	function toggleNav() {
+		navOpen = !navOpen;
+	}
+
+	function closeNav() {
+		navOpen = false;
 	}
 
 	$effect(() => {
@@ -51,6 +61,26 @@
 		}
 		function onKey(event: KeyboardEvent) {
 			if (event.key === 'Escape') menuOpen = false;
+		}
+
+		document.addEventListener('pointerdown', onPointerDown);
+		document.addEventListener('keydown', onKey);
+		return () => {
+			document.removeEventListener('pointerdown', onPointerDown);
+			document.removeEventListener('keydown', onKey);
+		};
+	});
+
+	$effect(() => {
+		if (!navOpen) return;
+
+		function onPointerDown(event: PointerEvent) {
+			if (navRoot && !navRoot.contains(event.target as Node)) {
+				navOpen = false;
+			}
+		}
+		function onKey(event: KeyboardEvent) {
+			if (event.key === 'Escape') navOpen = false;
 		}
 
 		document.addEventListener('pointerdown', onPointerDown);
@@ -114,17 +144,54 @@
 				<span class="brand-sub">Dictionary &amp; Corpus</span>
 			</span>
 		</a>
-		<nav class="topbar-nav" aria-label="Primary navigation">
-			{#each navItems as item}
-				<a
-					href={item.href}
-					class:active={isActive(item.href)}
-					aria-current={isActive(item.href) ? 'page' : undefined}
+		<div class="topbar-nav-wrap" bind:this={navRoot}>
+			<button
+				type="button"
+				class="nav-toggle"
+				aria-label={navOpen ? 'Close menu' : 'Open menu'}
+				aria-expanded={navOpen}
+				aria-controls="primary-nav"
+				onclick={toggleNav}
+			>
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
 				>
-					{item.label}
-				</a>
-			{/each}
-		</nav>
+					{#if navOpen}
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					{:else}
+						<path d="M4 6h16" />
+						<path d="M4 12h16" />
+						<path d="M4 18h16" />
+					{/if}
+				</svg>
+			</button>
+			<nav
+				id="primary-nav"
+				class="topbar-nav"
+				class:open={navOpen}
+				aria-label="Primary navigation"
+			>
+				{#each navItems as item}
+					<a
+						href={item.href}
+						class:active={isActive(item.href)}
+						aria-current={isActive(item.href) ? 'page' : undefined}
+						onclick={closeNav}
+					>
+						{item.label}
+					</a>
+				{/each}
+			</nav>
+		</div>
 		<button
 			type="button"
 			class="theme-toggle"

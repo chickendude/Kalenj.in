@@ -14,7 +14,10 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"db:generate": "prisma generate",
 		"db:migrate": "prisma migrate dev",
+		"db:deploy": "prisma migrate deploy",
+		"postdb:deploy": "npm run backfill:observed-forms",
 		"db:studio": "prisma studio",
+		"backfill:observed-forms": "tsx scripts/backfill-observed-word-forms.ts",
 		"create-admin": "tsx scripts/create-admin.ts",
 		"check": "npm run lint",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"

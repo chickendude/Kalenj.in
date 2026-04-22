@@ -15,6 +15,7 @@ import {
 } from '$lib/server/example-sentence-dedupe';
 import { syncExampleSentenceTokens, syncStorySentenceTokens } from '$lib/server/sentence-annotations';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
@@ -232,28 +233,38 @@ async function ensureStorySentence(
 	}
 }
 
-async function ensureStorySentenceToken(storySentenceId: string, tokenId: string): Promise<string> {
+async function ensureStorySentenceToken(
+	storySentenceId: string,
+	tokenId: string
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const token = await prisma.storySentenceToken.findUnique({
 		where: { id: tokenId },
-		select: { storySentenceId: true }
+		select: { id: true, storySentenceId: true, wordId: true, normalizedForm: true }
 	});
 
 	if (!token || token.storySentenceId !== storySentenceId) {
 		error(404, 'Sentence token not found for this story sentence.');
 	}
 
-	return tokenId;
+	return {
+		id: token.id,
+		wordId: token.wordId,
+		normalizedForm: token.normalizedForm
+	};
 }
 
 async function ensureStorySentenceTokenSegment(
 	storySentenceId: string,
 	tokenId: string,
 	segmentId: string
-): Promise<string> {
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const segment = await prisma.storySentenceTokenSegment.findUnique({
 		where: { id: segmentId },
 		select: {
+			id: true,
 			tokenId: true,
+			wordId: true,
+			normalizedForm: true,
 			token: {
 				select: { storySentenceId: true }
 			}
@@ -264,7 +275,11 @@ async function ensureStorySentenceTokenSegment(
 		error(404, 'Token segment not found for this story sentence.');
 	}
 
-	return segmentId;
+	return {
+		id: segment.id,
+		wordId: segment.wordId,
+		normalizedForm: segment.normalizedForm
+	};
 }
 
 async function ensureExampleSentenceForLessonWord(
@@ -294,28 +309,38 @@ async function ensureExampleSentenceForLessonWord(
 	return { sentenceId: token.exampleSentenceId };
 }
 
-async function ensureExampleSentenceToken(exampleSentenceId: string, tokenId: string): Promise<string> {
+async function ensureExampleSentenceToken(
+	exampleSentenceId: string,
+	tokenId: string
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
-		select: { exampleSentenceId: true }
+		select: { id: true, exampleSentenceId: true, wordId: true, normalizedForm: true }
 	});
 
 	if (!token || token.exampleSentenceId !== exampleSentenceId) {
 		error(404, 'Sentence token not found for this lesson word.');
 	}
 
-	return tokenId;
+	return {
+		id: token.id,
+		wordId: token.wordId,
+		normalizedForm: token.normalizedForm
+	};
 }
 
 async function ensureExampleSentenceTokenSegment(
 	exampleSentenceId: string,
 	tokenId: string,
 	segmentId: string
-): Promise<string> {
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const segment = await prisma.exampleSentenceTokenSegment.findUnique({
 		where: { id: segmentId },
 		select: {
+			id: true,
 			tokenId: true,
+			wordId: true,
+			normalizedForm: true,
 			token: {
 				select: { exampleSentenceId: true }
 			}
@@ -326,7 +351,11 @@ async function ensureExampleSentenceTokenSegment(
 		error(404, 'Token segment not found for this lesson word.');
 	}
 
-	return segmentId;
+	return {
+		id: segment.id,
+		wordId: segment.wordId,
+		normalizedForm: segment.normalizedForm
+	};
 }
 
 async function getLessonDetail(lessonId: string) {
@@ -1030,25 +1059,22 @@ export const actions: Actions = {
 
 		await ensureStorySentence(story.storyId, storySentenceId);
 
-		const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
-		const checkedSegmentId = segmentId
-			? await ensureStorySentenceTokenSegment(storySentenceId, checkedTokenId, segmentId)
+		const checkedToken = await ensureStorySentenceToken(storySentenceId, tokenId);
+		const checkedSegment = segmentId
+			? await ensureStorySentenceTokenSegment(storySentenceId, checkedToken.id, segmentId)
 			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
-			if (checkedSegmentId) {
-				await tx.storySentenceTokenSegment.update({
-					where: { id: checkedSegmentId },
+			if (checkedSegment) {
+				const updatedSegment = await tx.storySentenceTokenSegment.update({
+					where: { id: checkedSegment.id },
 					data: { wordId },
-					include: {
-						word: {
-							select: buildWordSelect()
-						}
-					}
+					select: { wordId: true, normalizedForm: true }
 				});
+				await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 
 				const token = await tx.storySentenceToken.findUniqueOrThrow({
-					where: { id: checkedTokenId },
+					where: { id: checkedToken.id },
 					include: {
 						word: {
 							select: buildWordSelect()
@@ -1069,7 +1095,7 @@ export const actions: Actions = {
 			}
 
 			const token = await tx.storySentenceToken.update({
-				where: { id: checkedTokenId },
+				where: { id: checkedToken.id },
 				data: {
 					wordId,
 					inContextTranslation
@@ -1089,6 +1115,7 @@ export const actions: Actions = {
 				}
 			});
 
+			await replaceObservedWordForm(tx, checkedToken, token);
 			await syncStorySentenceToCorpus(tx, storySentenceId);
 			return token;
 		});
@@ -1145,9 +1172,9 @@ export const actions: Actions = {
 		}
 
 		await ensureStorySentence(story.storyId, storySentenceId);
-		const checkedTokenId = await ensureStorySentenceToken(storySentenceId, tokenId);
-		const checkedSegmentId = segmentId
-			? await ensureStorySentenceTokenSegment(storySentenceId, checkedTokenId, segmentId)
+		const checkedToken = await ensureStorySentenceToken(storySentenceId, tokenId);
+		const checkedSegment = segmentId
+			? await ensureStorySentenceTokenSegment(storySentenceId, checkedToken.id, segmentId)
 			: null;
 
 		try {
@@ -1163,23 +1190,27 @@ export const actions: Actions = {
 						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
-				if (checkedSegmentId) {
-					await tx.storySentenceTokenSegment.update({
-						where: { id: checkedSegmentId },
-						data: { wordId: word.id }
+				if (checkedSegment) {
+					const updatedSegment = await tx.storySentenceTokenSegment.update({
+						where: { id: checkedSegment.id },
+						data: { wordId: word.id },
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 				} else {
-					await tx.storySentenceToken.update({
-						where: { id: checkedTokenId },
+					const updatedStoryToken = await tx.storySentenceToken.update({
+						where: { id: checkedToken.id },
 						data: {
 							wordId: word.id,
 							inContextTranslation
-						}
+						},
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedToken, updatedStoryToken);
 				}
 
 				const token = await tx.storySentenceToken.findUniqueOrThrow({
-					where: { id: checkedTokenId },
+					where: { id: checkedToken.id },
 					include: {
 						word: {
 							select: buildWordSelect()
@@ -1204,7 +1235,7 @@ export const actions: Actions = {
 				createStorySentenceWordSuccess: true,
 				tokenUpdates: [
 					{
-						tokenId: checkedTokenId,
+						tokenId: checkedToken.id,
 						wordId: token.wordId,
 						inContextTranslation: token.inContextTranslation,
 						word: token.word,
@@ -1233,17 +1264,19 @@ export const actions: Actions = {
 		}
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
-		const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
-		const checkedSegmentId = segmentId
-			? await ensureExampleSentenceTokenSegment(sentenceId, checkedTokenId, segmentId)
+		const checkedToken = await ensureExampleSentenceToken(sentenceId, tokenId);
+		const checkedSegment = segmentId
+			? await ensureExampleSentenceTokenSegment(sentenceId, checkedToken.id, segmentId)
 			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
-			if (checkedSegmentId) {
-				await tx.exampleSentenceTokenSegment.update({
-					where: { id: checkedSegmentId },
-					data: { wordId }
+			if (checkedSegment) {
+				const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+					where: { id: checkedSegment.id },
+					data: { wordId },
+					select: { wordId: true, normalizedForm: true }
 				});
+				await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 
 				if (wordId) {
 					await tx.wordSentence.upsert({
@@ -1262,7 +1295,7 @@ export const actions: Actions = {
 				}
 
 				return tx.exampleSentenceToken.findUniqueOrThrow({
-					where: { id: checkedTokenId },
+					where: { id: checkedToken.id },
 					include: {
 						word: {
 							select: buildWordSelect()
@@ -1280,7 +1313,7 @@ export const actions: Actions = {
 			}
 
 			const updatedToken = await tx.exampleSentenceToken.update({
-				where: { id: checkedTokenId },
+				where: { id: checkedToken.id },
 				data: {
 					wordId,
 					inContextTranslation
@@ -1299,6 +1332,8 @@ export const actions: Actions = {
 					}
 				}
 			});
+
+			await replaceObservedWordForm(tx, checkedToken, updatedToken);
 
 			if (wordId) {
 				await tx.wordSentence.upsert({
@@ -1362,9 +1397,9 @@ export const actions: Actions = {
 			: null;
 
 		const { sentenceId } = await ensureExampleSentenceForLessonWord(lessonWordId, tokenId);
-		const checkedTokenId = await ensureExampleSentenceToken(sentenceId, tokenId);
-		const checkedSegmentId = segmentId
-			? await ensureExampleSentenceTokenSegment(sentenceId, checkedTokenId, segmentId)
+		const checkedToken = await ensureExampleSentenceToken(sentenceId, tokenId);
+		const checkedSegment = segmentId
+			? await ensureExampleSentenceTokenSegment(sentenceId, checkedToken.id, segmentId)
 			: null;
 
 		try {
@@ -1380,19 +1415,23 @@ export const actions: Actions = {
 						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
-				if (checkedSegmentId) {
-					await tx.exampleSentenceTokenSegment.update({
-						where: { id: checkedSegmentId },
-						data: { wordId: word.id }
+				if (checkedSegment) {
+					const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+						where: { id: checkedSegment.id },
+						data: { wordId: word.id },
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 				} else {
-					await tx.exampleSentenceToken.update({
-						where: { id: checkedTokenId },
+					const updatedSentenceToken = await tx.exampleSentenceToken.update({
+						where: { id: checkedToken.id },
 						data: {
 							wordId: word.id,
 							inContextTranslation
-						}
+						},
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedToken, updatedSentenceToken);
 				}
 
 				await tx.wordSentence.upsert({
@@ -1410,7 +1449,7 @@ export const actions: Actions = {
 				});
 
 				const token = await tx.exampleSentenceToken.findUniqueOrThrow({
-					where: { id: checkedTokenId },
+					where: { id: checkedToken.id },
 					include: {
 						word: {
 							select: buildWordSelect()
@@ -1433,7 +1472,7 @@ export const actions: Actions = {
 				createExampleSentenceWordSuccess: true,
 				tokenUpdates: [
 					{
-						tokenId: checkedTokenId,
+						tokenId: checkedToken.id,
 						wordId: token.wordId,
 						inContextTranslation: token.inContextTranslation,
 						word: token.word,

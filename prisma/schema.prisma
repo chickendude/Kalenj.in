@@ -98,6 +98,7 @@ model Word {
   wordOfDayEntries WordOfTheDay[]
   relatedWords RelatedWord[] @relation("RelatedWordSource")
   relatedToWords RelatedWord[] @relation("RelatedWordTarget")
+  observedForms ObservedWordForm[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
@@ -140,6 +141,24 @@ model RelatedWord {
 
   @@unique([wordId, relatedWordId])
   @@index([relatedWordId])
+}
+
+// Derived search table for prior surface-form -> lemma links. User-facing edit paths
+// maintain it incrementally; run `npm run backfill:observed-forms` after migrations,
+// imports, or background sync jobs to reconcile drift from bulk token rewrites.
+model ObservedWordForm {
+  normalizedForm String
+  wordId         String
+  usageCount     Int      @default(1)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  word           Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([normalizedForm, wordId])
+  @@index([wordId])
+  @@index([normalizedForm(ops: raw("gin_trgm_ops"))], type: Gin, map: "ObservedWordForm_normalizedForm_trgm_idx")
 }
 
 model ExampleSentence {

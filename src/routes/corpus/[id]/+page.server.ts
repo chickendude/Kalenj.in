@@ -3,6 +3,7 @@ import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
@@ -38,7 +39,7 @@ function buildWordSelect() {
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
-		select: { id: true, exampleSentenceId: true }
+		select: { id: true, exampleSentenceId: true, wordId: true, normalizedForm: true }
 	});
 
 	if (!token || token.exampleSentenceId !== sentenceId) {
@@ -52,11 +53,14 @@ async function ensureSentenceTokenSegment(
 	sentenceId: string,
 	tokenId: string,
 	segmentId: string
-): Promise<string> {
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const segment = await prisma.exampleSentenceTokenSegment.findUnique({
 		where: { id: segmentId },
 		select: {
+			id: true,
 			tokenId: true,
+			wordId: true,
+			normalizedForm: true,
 			token: {
 				select: { exampleSentenceId: true }
 			}
@@ -67,7 +71,11 @@ async function ensureSentenceTokenSegment(
 		error(404, 'Token segment not found for this sentence.');
 	}
 
-	return segmentId;
+	return {
+		id: segment.id,
+		wordId: segment.wordId,
+		normalizedForm: segment.normalizedForm
+	};
 }
 
 async function createOrUpdateLinkedWord(
@@ -189,16 +197,18 @@ export const actions: Actions = {
 		}
 
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
-		const checkedSegmentId = segmentId
+		const checkedSegment = segmentId
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
 			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
-			if (checkedSegmentId) {
-				await tx.exampleSentenceTokenSegment.update({
-					where: { id: checkedSegmentId },
-					data: { wordId }
+			if (checkedSegment) {
+				const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+					where: { id: checkedSegment.id },
+					data: { wordId },
+					select: { wordId: true, normalizedForm: true }
 				});
+				await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 
 				if (wordId) {
 					await tx.wordSentence.upsert({
@@ -254,6 +264,8 @@ export const actions: Actions = {
 					}
 				}
 			});
+
+			await replaceObservedWordForm(tx, sentenceToken, updatedToken);
 
 			if (wordId) {
 				await tx.wordSentence.upsert({
@@ -321,7 +333,7 @@ export const actions: Actions = {
 			: null;
 
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
-		const checkedSegmentId = segmentId
+		const checkedSegment = segmentId
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
 			: null;
 
@@ -337,19 +349,23 @@ export const actions: Actions = {
 					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
 				});
 
-				if (checkedSegmentId) {
-					await tx.exampleSentenceTokenSegment.update({
-						where: { id: checkedSegmentId },
-						data: { wordId: word.id }
+				if (checkedSegment) {
+					const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+						where: { id: checkedSegment.id },
+						data: { wordId: word.id },
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 				} else {
-					await tx.exampleSentenceToken.update({
+					const updatedSentenceToken = await tx.exampleSentenceToken.update({
 						where: { id: tokenId },
 						data: {
 							wordId: word.id,
 							inContextTranslation
-						}
+						},
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, sentenceToken, updatedSentenceToken);
 				}
 
 				await tx.wordSentence.upsert({

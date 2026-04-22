@@ -146,6 +146,9 @@
 	$effect(() => {
 		if (form?.success) toast.success('Saved.');
 	});
+	$effect(() => {
+		if (form?.relatedWordSuccess) toast.success('Related words updated.');
+	});
 </script>
 
 <svelte:head>
@@ -452,8 +455,6 @@
 
 					{#if form?.relatedWordError}
 						<div class="form-feedback error">{form.relatedWordError}</div>
-					{:else if form?.relatedWordSuccess}
-						<div class="form-feedback success">Related words updated.</div>
 					{/if}
 
 					{#if data.word.relatedWords.length === 0}
@@ -466,7 +467,15 @@
 										<span>{link.word.kalenjin}</span>
 										<small>{firstTranslation(link.word.translations)}</small>
 									</a>
-									<form method="POST" action="?/removeRelatedWord">
+									<form
+										method="POST"
+										action="?/removeRelatedWord"
+										use:enhance={() => {
+											return async ({ update }) => {
+												await update({ reset: false });
+											};
+										}}
+									>
 										<input type="hidden" name="relatedWordId" value={link.word.id} />
 										<button type="submit" class="btn-sm ghost">Remove</button>
 									</form>
@@ -497,7 +506,15 @@
 							<ul class="related-search-results">
 								{#each attachableRelatedResults as result (result.id)}
 									<li>
-										<form method="POST" action="?/addRelatedWord">
+										<form
+											method="POST"
+											action="?/addRelatedWord"
+											use:enhance={() => {
+												return async ({ update }) => {
+													await update({ reset: false });
+												};
+											}}
+										>
 											<input type="hidden" name="relatedWordId" value={result.id} />
 											<button type="submit" class="related-search-button">
 												<span>

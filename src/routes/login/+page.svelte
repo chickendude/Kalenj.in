@@ -12,7 +12,7 @@
 <div class="auth-shell">
 	<div class="auth-card">
 		<h1>Sign in</h1>
-		<p class="auth-sub">Editor and admin access only.</p>
+		<p class="auth-sub">Editors only.</p>
 
 		{#if form?.error}
 			<div class="form-feedback error">{form.error}</div>

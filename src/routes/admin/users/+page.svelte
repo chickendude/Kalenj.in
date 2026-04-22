@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -7,6 +8,16 @@
 	let resetOpenFor = $state<string | null>(null);
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+
+	$effect(() => {
+		if (form && 'createSuccess' in form && form.createSuccess) toast.success(form.createSuccess);
+	});
+	$effect(() => {
+		if (form && 'resetSuccess' in form && form.resetSuccess) toast.success(form.resetSuccess);
+	});
+	$effect(() => {
+		if (form && 'deleteSuccess' in form && form.deleteSuccess) toast.success(form.deleteSuccess);
+	});
 </script>
 
 <svelte:head>
@@ -30,9 +41,6 @@
 
 	{#if form && 'createError' in form && form.createError}
 		<div class="form-feedback error">{form.createError}</div>
-	{/if}
-	{#if form && 'createSuccess' in form && form.createSuccess}
-		<div class="form-feedback success">{form.createSuccess}</div>
 	{/if}
 
 	<form method="POST" action="?/createUser" use:enhance class="form-grid">
@@ -84,14 +92,8 @@
 {#if form && 'resetError' in form && form.resetError}
 	<div class="form-feedback error">{form.resetError}</div>
 {/if}
-{#if form && 'resetSuccess' in form && form.resetSuccess}
-	<div class="form-feedback success">{form.resetSuccess}</div>
-{/if}
 {#if form && 'deleteError' in form && form.deleteError}
 	<div class="form-feedback error">{form.deleteError}</div>
-{/if}
-{#if form && 'deleteSuccess' in form && form.deleteSuccess}
-	<div class="form-feedback success">{form.deleteSuccess}</div>
 {/if}
 
 <table class="users-table">

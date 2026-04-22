@@ -2,8 +2,16 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 
 	let { data, form } = $props();
+
+	$effect(() => {
+		if (form?.updateCorpusSentenceTokenSuccess) toast.success('Saved sentence annotation.');
+	});
+	$effect(() => {
+		if (form?.createCorpusSentenceWordSuccess) toast.success('Created lemma and linked it.');
+	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
 
@@ -118,10 +126,6 @@
 
 	{#if form?.error}
 		<div class="form-feedback error">{form.error}</div>
-	{:else if form?.updateCorpusSentenceTokenSuccess}
-		<div class="form-feedback success">Saved sentence annotation.</div>
-	{:else if form?.createCorpusSentenceWordSuccess}
-		<div class="form-feedback success">Created lemma and linked it.</div>
 	{/if}
 
 	{#if data.user}

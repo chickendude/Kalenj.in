@@ -104,7 +104,6 @@
 							{@const storyLesson = sentence.storySentence?.story?.lesson}
 							{@const fromStory = Boolean(sentence.storySentence)}
 							{@const inUse = sentence.lessonWords.length > 0 || fromStory}
-							{@const showError = form?.error && form?.failedId === sentence.id}
 							{@const otherIds = group.sentences
 								.filter((s) => s.id !== sentence.id)
 								.map((s) => s.id)}
@@ -152,9 +151,6 @@
 											<span class="tag tag-free">Not linked</span>
 										{/if}
 									</div>
-									{#if showError}
-										<div class="row-error">{form.error}</div>
-									{/if}
 								</div>
 								<div class="sentence-actions">
 									<a class="btn ghost sm" href={`/corpus/${sentence.id}`}>Open</a>
@@ -369,12 +365,6 @@
 	}
 	.tag .extra {
 		color: var(--ink-mute);
-	}
-
-	.row-error {
-		color: var(--danger, #c0392b);
-		font-size: 13px;
-		margin-top: 8px;
 	}
 
 	.sentence-actions {

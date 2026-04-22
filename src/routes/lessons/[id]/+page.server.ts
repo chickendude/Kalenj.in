@@ -545,11 +545,23 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		error(404, 'Lesson not found');
 	}
 
-	const [storyWordCoverage, vocabWordCoverage, cefrBrowse] = await Promise.all([
+	const [storyWordCoverage, vocabWordCoverage, cefrBrowse, levelLessons] = await Promise.all([
 		getStoryWordCoverage(lesson),
 		getVocabWordCoverage(lesson),
-		loadCefrBrowse(url.searchParams, lesson.level)
+		loadCefrBrowse(url.searchParams, lesson.level),
+		prisma.lesson.findMany({
+			where: { level: lesson.level },
+			orderBy: { lessonOrder: 'asc' },
+			select: { id: true, title: true, lessonOrder: true, type: true }
+		})
 	]);
+
+	const currentIndex = levelLessons.findIndex((entry) => entry.id === lesson.id);
+	const prevLesson = currentIndex > 0 ? levelLessons[currentIndex - 1] : null;
+	const nextLesson =
+		currentIndex >= 0 && currentIndex < levelLessons.length - 1
+			? levelLessons[currentIndex + 1]
+			: null;
 
 	return {
 		lesson,
@@ -558,6 +570,9 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		storyWordCoverage,
 		vocabWordCoverage,
 		cefrBrowse,
+		prevLesson,
+		nextLesson,
+		levelLessons,
 		lessonTypes: LESSON_TYPES,
 		vocabularyTypes: VOCABULARY_LESSON_TYPES
 	};

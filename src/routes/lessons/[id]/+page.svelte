@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -109,6 +109,55 @@
 	let inlineStoryError = $state<string | null>(null);
 	let storySentences = $state<StorySentence[]>([]);
 	let inlineStoryInput = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
+	let storyFocusRequests = $state<
+		Record<string, { position: 'first' | 'last'; nonce: number }>
+	>({});
+	let storyFocusNonce = 0;
+
+	function focusStorySentence(targetSentenceId: string, position: 'first' | 'last') {
+		storyFocusNonce += 1;
+		storyFocusRequests = {
+			...storyFocusRequests,
+			[targetSentenceId]: {
+				position,
+				nonce: storyFocusNonce
+			}
+		};
+	}
+
+	let exampleFocusRequests = $state<
+		Record<string, { position: 'first' | 'last'; nonce: number }>
+	>({});
+	let exampleFocusNonce = 0;
+
+	function focusExampleSentence(targetSentenceId: string, position: 'first' | 'last') {
+		exampleFocusNonce += 1;
+		exampleFocusRequests = {
+			...exampleFocusRequests,
+			[targetSentenceId]: {
+				position,
+				nonce: exampleFocusNonce
+			}
+		};
+	}
+
+	function findAdjacentLessonWordWithSentence(
+		currentLessonWordId: string,
+		direction: 'prev' | 'next'
+	) {
+		const index = orderedLessonWords.findIndex((word) => word.id === currentLessonWordId);
+		if (index < 0) {
+			return null;
+		}
+		const step = direction === 'next' ? 1 : -1;
+		for (let i = index + step; i >= 0 && i < orderedLessonWords.length; i += step) {
+			const candidate = orderedLessonWords[i];
+			if (candidate.sentence) {
+				return candidate;
+			}
+		}
+		return null;
+	}
 
 	type InlineLessonWordField = 'sentenceKalenjin' | 'sentenceEnglish' | 'notesMarkdown';
 	type LessonWordLocalState = {
@@ -160,6 +209,13 @@
 	let vocabularyTypeError = $state<string | null>(null);
 	let vocabTypeOpen = $state(false);
 	let vocabTypeWrap = $state<HTMLSpanElement | null>(null);
+	let lessonNavOpen = $state(false);
+	let lessonNavWrap = $state<HTMLSpanElement | null>(null);
+
+	beforeNavigate(() => {
+		lessonNavOpen = false;
+		vocabTypeOpen = false;
+	});
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
@@ -329,13 +385,30 @@
 		}
 	}
 
+	function handleLessonNavWindowClick(event: MouseEvent) {
+		if (!lessonNavOpen) return;
+		const target = event.target;
+		if (lessonNavWrap && target instanceof Node && lessonNavWrap.contains(target)) return;
+		lessonNavOpen = false;
+	}
+
+	function handleLessonNavWindowKey(event: KeyboardEvent) {
+		if (event.key === 'Escape' && lessonNavOpen) {
+			lessonNavOpen = false;
+		}
+	}
+
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		window.addEventListener('mousedown', handleVocabTypeWindowClick);
 		window.addEventListener('keydown', handleVocabTypeWindowKey);
+		window.addEventListener('mousedown', handleLessonNavWindowClick);
+		window.addEventListener('keydown', handleLessonNavWindowKey);
 		return () => {
 			window.removeEventListener('mousedown', handleVocabTypeWindowClick);
 			window.removeEventListener('keydown', handleVocabTypeWindowKey);
+			window.removeEventListener('mousedown', handleLessonNavWindowClick);
+			window.removeEventListener('keydown', handleLessonNavWindowKey);
 		};
 	});
 
@@ -916,6 +989,7 @@
 <section class="lesson-page">
 	<div class="lesson-head-row">
 		<div class="page-header-main">
+			<a href="/lessons" class="back-link">← Back to lessons</a>
 			<div class="kicker">
 				{#if lessonType === 'VOCABULARY'}
 					{@const currentVocabType = lessonVocabularyType || 'VOCAB'}
@@ -930,7 +1004,6 @@
 							<span class="vocab-type-label">
 								{formatVocabularyLessonType(currentVocabType)}
 							</span>
-							<span class="vocab-type-chevron" aria-hidden="true">▾</span>
 						</button>
 						{#if vocabTypeOpen}
 							<ul class="vocab-type-menu" role="listbox">
@@ -954,7 +1027,70 @@
 				{:else}
 					{formatLessonType(lessonType)} lesson
 				{/if}
-				· Lesson {data.lesson.lessonOrder}
+				·
+				{#if data.prevLesson}
+					<a
+						href="/lessons/{data.prevLesson.id}"
+						class="lesson-nav-icon"
+						aria-label={`Previous lesson: ${data.prevLesson.title}`}
+						title={`Previous lesson: ${data.prevLesson.title}`}
+					>
+						←
+					</a>
+				{/if}
+				<span class="lesson-nav-select-wrap" bind:this={lessonNavWrap}>
+					<button
+						type="button"
+						class="lesson-nav-trigger"
+						aria-haspopup="listbox"
+						aria-expanded={lessonNavOpen}
+						onclick={() => (lessonNavOpen = !lessonNavOpen)}
+					>
+						Lesson {data.lesson.lessonOrder}
+					</button>
+					{#if lessonNavOpen}
+						<ul class="lesson-nav-menu" role="listbox">
+							{#each data.levelLessons as entry}
+								{@const isCurrent = entry.id === data.lesson.id}
+								<li>
+									{#if isCurrent}
+										<span
+											class="lesson-nav-option lesson-nav-option--current"
+											class:lesson-nav-option--vocab={entry.type === 'VOCABULARY'}
+											class:lesson-nav-option--story={entry.type === 'STORY'}
+											aria-current="true"
+										>
+											<span class="lesson-nav-option-number">{entry.lessonOrder}.</span>
+											<span class="lesson-nav-option-title">{entry.title}</span>
+										</span>
+									{:else}
+										<a
+											href="/lessons/{entry.id}"
+											role="option"
+											aria-selected="false"
+											class="lesson-nav-option"
+											class:lesson-nav-option--vocab={entry.type === 'VOCABULARY'}
+											class:lesson-nav-option--story={entry.type === 'STORY'}
+										>
+											<span class="lesson-nav-option-number">{entry.lessonOrder}.</span>
+											<span class="lesson-nav-option-title">{entry.title}</span>
+										</a>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</span>
+				{#if data.nextLesson}
+					<a
+						href="/lessons/{data.nextLesson.id}"
+						class="lesson-nav-icon"
+						aria-label={`Next lesson: ${data.nextLesson.title}`}
+						title={`Next lesson: ${data.nextLesson.title}`}
+					>
+						→
+					</a>
+				{/if}
 			</div>
 			{#if titleEditing}
 				<input
@@ -979,7 +1115,6 @@
 			{/if}
 		</div>
 		<div class="lesson-head-actions">
-			<a href="/lessons" class="back-link">← Back to lessons</a>
 			<form
 				method="POST"
 				action="?/deleteLesson"
@@ -1032,6 +1167,10 @@
 			{:else}
 				{#each storySentences as sentence, sentenceIndex}
 					{@const prev = sentenceIndex > 0 ? storySentences[sentenceIndex - 1] : null}
+					{@const next =
+						sentenceIndex < storySentences.length - 1
+							? storySentences[sentenceIndex + 1]
+							: null}
 					{@const showSpeaker = !prev || prev.speaker !== sentence.speaker}
 					{@const canSplit = splitSentenceText(sentence.kalenjin).length > 1}
 					{@const canMerge = sentenceIndex < storySentences.length - 1}
@@ -1069,6 +1208,13 @@
 								createAction="?/createStorySentenceWord"
 								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
 								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+								focusRequest={storyFocusRequests[sentence.id] ?? null}
+								onNavigatePrevSentence={prev
+									? () => focusStorySentence(prev.id, 'last')
+									: undefined}
+								onNavigateNextSentence={next
+									? () => focusStorySentence(next.id, 'first')
+									: undefined}
 							/>
 						</div>
 						<div class="row-actions">
@@ -1404,6 +1550,14 @@
 								{:else if !lessonWord.sentence}
 									<button type="button" class="inline-edit-button empty-sentence-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
 								{:else}
+									{@const prevExampleWord = findAdjacentLessonWordWithSentence(
+										lessonWord.id,
+										'prev'
+									)}
+									{@const nextExampleWord = findAdjacentLessonWordWithSentence(
+										lessonWord.id,
+										'next'
+									)}
 									<div class="sentence-annotation-shell">
 										<SentenceTokenAnnotations
 											entityId={lessonWord.id}
@@ -1417,6 +1571,15 @@
 											createAction="?/createExampleSentenceWord"
 											searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
 											tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+											focusRequest={exampleFocusRequests[lessonWord.sentence.id] ?? null}
+											onNavigatePrevSentence={prevExampleWord?.sentence
+												? () =>
+														focusExampleSentence(prevExampleWord.sentence!.id, 'last')
+												: undefined}
+											onNavigateNextSentence={nextExampleWord?.sentence
+												? () =>
+														focusExampleSentence(nextExampleWord.sentence!.id, 'first')
+												: undefined}
 										/>
 										<button
 											type="button"
@@ -1674,6 +1837,22 @@
 		gap: 0.5rem;
 	}
 
+	.page-header-main > :global(.back-link) {
+		margin-top: -24px;
+		margin-bottom: 8px;
+	}
+
+	.lesson-nav-icon {
+		color: inherit;
+		display: inline-block;
+		padding: 0.5em 0.6em;
+		margin: -0.5em 0;
+		text-decoration: none;
+	}
+	.lesson-nav-icon:hover {
+		color: var(--brand);
+	}
+
 	.lesson-delete-form {
 		margin: 0;
 	}
@@ -1765,16 +1944,6 @@
 		outline: none;
 	}
 
-	.vocab-type-chevron {
-		color: var(--ink-mute);
-		font-size: 0.85em;
-		transition: transform 0.12s ease;
-	}
-
-	.vocab-type-trigger[aria-expanded='true'] .vocab-type-chevron {
-		transform: translateY(1px) rotate(180deg);
-	}
-
 	.vocab-type-menu {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
@@ -1816,6 +1985,106 @@
 
 	.vocab-type-option--selected {
 		color: var(--brand);
+	}
+
+	.lesson-nav-select-wrap {
+		display: inline-block;
+		position: relative;
+	}
+
+	.lesson-nav-trigger {
+		background: transparent;
+		border: 0;
+		border-bottom: 1px dotted currentColor;
+		color: inherit;
+		cursor: pointer;
+		font: inherit;
+		letter-spacing: inherit;
+		padding: 0 2px;
+		text-transform: inherit;
+	}
+
+	.lesson-nav-trigger:hover,
+	.lesson-nav-trigger:focus-visible {
+		color: var(--brand);
+		outline: none;
+	}
+
+	.lesson-nav-menu {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: 0 12px 28px -14px oklch(0.2 0.02 80 / 0.28);
+		left: 0;
+		list-style: none;
+		margin: 6px 0 0;
+		max-height: 60vh;
+		min-width: 280px;
+		overflow-y: auto;
+		padding: 4px;
+		position: absolute;
+		top: 100%;
+		z-index: 30;
+	}
+
+	.lesson-nav-option {
+		align-items: baseline;
+		background: transparent;
+		border: 0;
+		border-left: 3px solid transparent;
+		border-radius: calc(var(--radius) - 2px);
+		color: var(--ink);
+		cursor: pointer;
+		display: flex;
+		font-family: var(--font-body);
+		font-size: 13px;
+		font-weight: 500;
+		gap: 8px;
+		letter-spacing: 0;
+		padding: 8px 12px;
+		text-align: left;
+		text-decoration: none;
+		text-transform: none;
+		white-space: nowrap;
+		width: 100%;
+	}
+
+	.lesson-nav-option:hover,
+	.lesson-nav-option:focus-visible {
+		background: var(--surface);
+		outline: none;
+	}
+
+	.lesson-nav-option--vocab {
+		border-left-color: var(--brand);
+	}
+
+	.lesson-nav-option--story {
+		border-left-color: var(--accent);
+	}
+
+	.lesson-nav-option--current {
+		color: var(--muted);
+		cursor: default;
+		opacity: 0.6;
+	}
+
+	.lesson-nav-option--current:hover {
+		background: transparent;
+	}
+
+	.lesson-nav-option-number {
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+		min-width: 1.75em;
+	}
+
+	.lesson-nav-option--current .lesson-nav-option-number {
+		color: inherit;
+	}
+
+	.lesson-nav-option-title {
+		color: inherit;
 	}
 
 	.card {

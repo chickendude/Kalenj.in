@@ -293,12 +293,6 @@
 								<td>{data.word.pluralForm ?? '—'}</td>
 							</tr>
 						{/if}
-						{#if data.word.partOfSpeech === 'VERB'}
-							<tr>
-								<td>Conjugations</td>
-								<td>{showConjugations ? 'Present tense' : '—'}</td>
-							</tr>
-						{/if}
 						<tr>
 							<td>Translations</td>
 							<td>{translations.length}</td>
@@ -664,16 +658,15 @@
 	}
 	.conjugation-grid {
 		display: grid;
-		gap: 8px 24px;
-		grid-template-columns: 1fr 1fr;
+		gap: 2px 20px;
+		grid-template-columns: max-content max-content;
 		margin: 0 0 4px;
 	}
 	.conj-cell {
 		align-items: baseline;
-		border-bottom: 1px solid var(--line);
 		display: flex;
 		gap: 8px;
-		padding: 8px 0;
+		padding: 2px 0;
 	}
 	.conj-verb {
 		color: var(--ink);

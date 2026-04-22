@@ -23,6 +23,11 @@ const mocks = vi.hoisted(() => {
 			delete: vi.fn(),
 			create: vi.fn(),
 			deleteMany: vi.fn()
+		},
+		observedWordForm: {
+			upsert: vi.fn(),
+			updateMany: vi.fn(),
+			deleteMany: vi.fn()
 		}
 	};
 
@@ -48,6 +53,11 @@ const mocks = vi.hoisted(() => {
 			findMany: vi.fn(),
 			update: vi.fn()
 		},
+		observedWordForm: {
+			upsert: vi.fn(),
+			updateMany: vi.fn(),
+			deleteMany: vi.fn()
+		},
 		$transaction: vi.fn()
 	};
 
@@ -64,11 +74,13 @@ function resetMocks() {
 		mocks.prisma.exampleSentence,
 		mocks.prisma.storySentenceToken,
 		mocks.prisma.exampleSentenceToken,
+		mocks.prisma.observedWordForm,
 		mocks.tx.storySentence,
 		mocks.tx.storySentenceToken,
 		mocks.tx.exampleSentence,
 		mocks.tx.wordSentence,
-		mocks.tx.exampleSentenceToken
+		mocks.tx.exampleSentenceToken,
+		mocks.tx.observedWordForm
 	]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
@@ -222,6 +234,50 @@ describe('POST /lessons/[id]/token-groups', () => {
 		});
 	});
 
+	it('rejects merging story tokens that already have lexical segments', async () => {
+		mocks.prisma.lesson.findUnique.mockResolvedValue({ storyId: 'story-1' });
+		mocks.prisma.storySentence.findUnique.mockResolvedValue({
+			id: 'story-sentence-1',
+			storyId: 'story-1'
+		});
+		mocks.prisma.storySentenceToken.findMany.mockResolvedValueOnce([
+			{
+				id: 'token-a',
+				tokenOrder: 0,
+				surfaceForm: 'Oh',
+				normalizedForm: 'oh',
+				wordId: null,
+				inContextTranslation: 'wow',
+				segments: [{ wordId: 'word-oh', normalizedForm: 'oh' }]
+			},
+			{
+				id: 'token-b',
+				tokenOrder: 1,
+				surfaceForm: 'eh',
+				normalizedForm: 'eh',
+				wordId: 'word-b',
+				inContextTranslation: 'hey',
+				segments: []
+			}
+		]);
+
+		const response = await post({
+			kind: 'story',
+			action: 'merge',
+			sentenceId: 'story-sentence-1',
+			sourceTokenId: 'token-a',
+			targetTokenId: 'token-b'
+		});
+
+		expect(response.status).toBe(400);
+		await expect(response.json()).resolves.toEqual({
+			error: 'Remove lexical segments before merging these words.'
+		});
+		expect(mocks.tx.storySentenceToken.delete).not.toHaveBeenCalled();
+		expect(mocks.tx.storySentenceToken.update).not.toHaveBeenCalled();
+		expect(mocks.tx.observedWordForm.updateMany).not.toHaveBeenCalled();
+	});
+
 	it('splits an example token through the example sentence path', async () => {
 		mocks.prisma.lessonWord.findFirst.mockResolvedValue({ id: 'lesson-word-1' });
 		mocks.prisma.exampleSentenceToken.findMany
@@ -353,7 +409,7 @@ describe('POST /lessons/[id]/token-groups', () => {
 		});
 
 		expect(response.status).toBe(200);
-		expect(mocks.prisma.exampleSentenceToken.update).toHaveBeenCalledWith({
+		expect(mocks.tx.exampleSentenceToken.update).toHaveBeenCalledWith({
 			where: { id: 'token-b' },
 			data: {
 				surfaceForm: 'eeh',

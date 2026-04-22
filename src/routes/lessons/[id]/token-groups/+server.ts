@@ -12,7 +12,11 @@ import {
 	planSplitTokenGroup,
 	planUpdateTokenGroupSurface
 } from '$lib/server/token-group-edit';
-import { normalizeToken } from '$lib/server/tokenize';
+import {
+	recordObservedWordForm,
+	removeObservedWordForm,
+	replaceObservedWordForm
+} from '$lib/server/observed-word-forms';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
@@ -20,8 +24,13 @@ import { requireEditor } from '$lib/server/guards';
 type SentenceKind = 'story' | 'example';
 type EditableToken = OrderedToken & {
 	surfaceForm: string;
+	normalizedForm: string;
 	wordId: string | null;
 	inContextTranslation: string | null;
+	segments: Array<{
+		wordId: string | null;
+		normalizedForm: string;
+	}>;
 };
 type SplitRow = {
 	id: string | null;
@@ -127,8 +136,15 @@ async function loadEditableTokens(kind: SentenceKind, sentenceId: string): Promi
 		id: true,
 		tokenOrder: true,
 		surfaceForm: true,
+		normalizedForm: true,
 		wordId: true,
-		inContextTranslation: true
+		inContextTranslation: true,
+		segments: {
+			select: {
+				wordId: true,
+				normalizedForm: true
+			}
+		}
 	};
 
 	if (kind === 'story') {
@@ -215,6 +231,26 @@ async function setTemporaryOrders(
 	}
 }
 
+function observedLinksForToken(token: EditableToken) {
+	return [
+		{ wordId: token.wordId, normalizedForm: token.normalizedForm },
+		...(token.segments ?? []).map((segment) => ({
+			wordId: segment.wordId,
+			normalizedForm: segment.normalizedForm
+		}))
+	];
+}
+
+async function removeObservedLinksForToken(tx: Prisma.TransactionClient, token: EditableToken) {
+	for (const link of observedLinksForToken(token)) {
+		await removeObservedWordForm(tx, link);
+	}
+}
+
+function hasLexicalSegments(token: EditableToken): boolean {
+	return (token.segments ?? []).length > 0;
+}
+
 async function applyMerge(
 	tx: Prisma.TransactionClient,
 	kind: SentenceKind,
@@ -223,6 +259,14 @@ async function applyMerge(
 	targetTokenId: string
 ) {
 	const merge = planMergeTokenGroups(tokens, sourceTokenId, targetTokenId);
+	const mergedTokens = tokens.filter(
+		(token) => token.id === merge.keepTokenId || token.id === merge.removeTokenId
+	);
+
+	if (mergedTokens.some(hasLexicalSegments)) {
+		throw new Error('Remove lexical segments before merging these words.');
+	}
+
 	const finalTokens = assignSequentialTokenOrders(
 		tokens
 			.filter((token) => token.id !== merge.removeTokenId)
@@ -258,6 +302,13 @@ async function applyMerge(
 				}
 			});
 		}
+		for (const token of mergedTokens) {
+			await removeObservedLinksForToken(tx, token);
+		}
+		await recordObservedWordForm(tx, {
+			wordId: merge.wordId,
+			normalizedForm: merge.normalizedForm
+		});
 		return;
 	}
 
@@ -278,6 +329,13 @@ async function applyMerge(
 			}
 		});
 	}
+	for (const token of mergedTokens) {
+		await removeObservedLinksForToken(tx, token);
+	}
+	await recordObservedWordForm(tx, {
+		wordId: merge.wordId,
+		normalizedForm: merge.normalizedForm
+	});
 }
 
 async function applySplit(
@@ -301,12 +359,17 @@ async function applySplit(
 					{
 						id: token.id,
 						surfaceForm: token.surfaceForm,
-						normalizedForm: normalizeToken(token.surfaceForm),
+						normalizedForm: token.normalizedForm,
 						inContextTranslation: token.inContextTranslation
 					}
 				]
 	);
 	const finalRows = assignSequentialTokenOrders(splitRows);
+	const splitToken = tokens.find((token) => token.id === split.tokenId);
+
+	if (splitToken && hasLexicalSegments(splitToken)) {
+		throw new Error('Remove lexical segments before splitting this word.');
+	}
 
 	await setTemporaryOrders(tx, kind, tokens);
 
@@ -334,6 +397,14 @@ async function applySplit(
 				});
 			}
 		}
+		if (splitToken) {
+			await removeObservedLinksForToken(tx, splitToken);
+			const keptRow = finalRows.find((row) => row.id === splitToken.id);
+			await recordObservedWordForm(tx, {
+				wordId: splitToken.wordId,
+				normalizedForm: keptRow?.normalizedForm
+			});
+		}
 		return;
 	}
 
@@ -360,33 +431,58 @@ async function applySplit(
 			});
 		}
 	}
+
+	if (splitToken) {
+		await removeObservedLinksForToken(tx, splitToken);
+		const keptRow = finalRows.find((row) => row.id === splitToken.id);
+		await recordObservedWordForm(tx, {
+			wordId: splitToken.wordId,
+			normalizedForm: keptRow?.normalizedForm
+		});
+	}
 }
 
 async function applySurface(
+	tx: Prisma.TransactionClient,
 	kind: SentenceKind,
 	tokens: EditableToken[],
 	tokenId: string,
 	surfaceForm: string
 ) {
 	const update = planUpdateTokenGroupSurface(tokens, tokenId, surfaceForm);
+	const token = tokens.find((entry) => entry.id === tokenId);
 
 	if (kind === 'story') {
-		await prisma.storySentenceToken.update({
+		await tx.storySentenceToken.update({
 			where: { id: update.id },
 			data: {
 				surfaceForm: update.surfaceForm,
 				normalizedForm: update.normalizedForm
 			}
 		});
+		await replaceObservedWordForm(tx, {
+			wordId: token?.wordId,
+			normalizedForm: token?.normalizedForm
+		}, {
+			wordId: token?.wordId,
+			normalizedForm: update.normalizedForm
+		});
 		return;
 	}
 
-	await prisma.exampleSentenceToken.update({
+	await tx.exampleSentenceToken.update({
 		where: { id: update.id },
 		data: {
 			surfaceForm: update.surfaceForm,
 			normalizedForm: update.normalizedForm
 		}
+	});
+	await replaceObservedWordForm(tx, {
+		wordId: token?.wordId,
+		normalizedForm: token?.normalizedForm
+	}, {
+		wordId: token?.wordId,
+		normalizedForm: update.normalizedForm
 	});
 }
 
@@ -396,15 +492,22 @@ async function applyUnsplit(
 	tokens: EditableToken[],
 	tokenId: string
 ) {
-	if (!tokens.some((token) => token.id === tokenId)) {
+	const token = tokens.find((token) => token.id === tokenId);
+	if (!token) {
 		throw new Error('Word not found.');
 	}
 
 	if (kind === 'story') {
+		for (const segment of token.segments ?? []) {
+			await removeObservedWordForm(tx, segment);
+		}
 		await tx.storySentenceTokenSegment.deleteMany({ where: { tokenId } });
 		return;
 	}
 
+	for (const segment of token.segments ?? []) {
+		await removeObservedWordForm(tx, segment);
+	}
 	await tx.exampleSentenceTokenSegment.deleteMany({ where: { tokenId } });
 }
 
@@ -416,6 +519,11 @@ async function applySegments(
 	splitPoints: number[]
 ) {
 	const segments = planTokenLexicalSegments(tokens, tokenId, splitPoints);
+	const token = tokens.find((token) => token.id === tokenId);
+
+	if (token) {
+		await removeObservedLinksForToken(tx, token);
+	}
 
 	if (kind === 'story') {
 		await tx.storySentenceToken.update({
@@ -429,6 +537,12 @@ async function applySegments(
 				...segment
 			}))
 		});
+		for (const segment of segments) {
+			await recordObservedWordForm(tx, {
+				wordId: segment.wordId ?? null,
+				normalizedForm: segment.normalizedForm
+			});
+		}
 		return;
 	}
 
@@ -443,6 +557,12 @@ async function applySegments(
 			...segment
 		}))
 	});
+	for (const segment of segments) {
+		await recordObservedWordForm(tx, {
+			wordId: segment.wordId ?? null,
+			normalizedForm: segment.normalizedForm
+		});
+	}
 }
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
@@ -491,7 +611,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			const tokenId = clean(payload.tokenId);
 			const surfaceForm = clean(payload.surfaceForm);
 
-			await applySurface(kind, tokens, tokenId, surfaceForm);
+			await prisma.$transaction((tx) => applySurface(tx, kind, tokens, tokenId, surfaceForm));
 		} else {
 			return json({ error: 'Action is required.' }, { status: 400 });
 		}

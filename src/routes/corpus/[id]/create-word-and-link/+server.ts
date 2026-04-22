@@ -1,6 +1,7 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -14,7 +15,7 @@ type CreateWordPayload = {
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
-		select: { id: true, exampleSentenceId: true }
+		select: { id: true, exampleSentenceId: true, wordId: true, normalizedForm: true }
 	});
 
 	if (!token || token.exampleSentenceId !== sentenceId) {
@@ -46,41 +47,47 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const token = await ensureSentenceToken(params.id, tokenId);
 
-	const word = await prisma.word.create({
-		data: {
-			kalenjin,
-			kalenjinNormalized: normalizeLemma(kalenjin),
-			translations,
-			notes: notes || null
-		},
-		select: {
-			id: true,
-			kalenjin: true,
-			translations: true,
-			partOfSpeech: true,
-			notes: true,
-			createdAt: true,
-			updatedAt: true
-		}
-	});
+	const word = await prisma.$transaction(async (tx) => {
+		const word = await tx.word.create({
+			data: {
+				kalenjin,
+				kalenjinNormalized: normalizeLemma(kalenjin),
+				translations,
+				notes: notes || null
+			},
+			select: {
+				id: true,
+				kalenjin: true,
+				translations: true,
+				partOfSpeech: true,
+				notes: true,
+				createdAt: true,
+				updatedAt: true
+			}
+		});
 
-	await prisma.exampleSentenceToken.update({
-		where: { id: tokenId },
-		data: { wordId: word.id }
-	});
+		const updatedToken = await tx.exampleSentenceToken.update({
+			where: { id: tokenId },
+			data: { wordId: word.id },
+			select: { wordId: true, normalizedForm: true }
+		});
+		await replaceObservedWordForm(tx, token, updatedToken);
 
-	await prisma.wordSentence.upsert({
-		where: {
-			wordId_exampleSentenceId: {
+		await tx.wordSentence.upsert({
+			where: {
+				wordId_exampleSentenceId: {
+					wordId: word.id,
+					exampleSentenceId: token.exampleSentenceId
+				}
+			},
+			update: {},
+			create: {
 				wordId: word.id,
 				exampleSentenceId: token.exampleSentenceId
 			}
-		},
-		update: {},
-		create: {
-			wordId: word.id,
-			exampleSentenceId: token.exampleSentenceId
-		}
+		});
+
+		return word;
 	});
 
 	return json({

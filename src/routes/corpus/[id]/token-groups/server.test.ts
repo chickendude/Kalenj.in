@@ -11,6 +11,11 @@ const mocks = vi.hoisted(() => {
 		exampleSentenceTokenSegment: {
 			deleteMany: vi.fn(),
 			createMany: vi.fn()
+		},
+		observedWordForm: {
+			upsert: vi.fn(),
+			updateMany: vi.fn(),
+			deleteMany: vi.fn()
 		}
 	};
 
@@ -22,6 +27,11 @@ const mocks = vi.hoisted(() => {
 		exampleSentenceToken: {
 			findMany: vi.fn(),
 			update: vi.fn()
+		},
+		observedWordForm: {
+			upsert: vi.fn(),
+			updateMany: vi.fn(),
+			deleteMany: vi.fn()
 		},
 		$transaction: vi.fn()
 	};
@@ -35,8 +45,10 @@ function resetMocks() {
 	for (const model of [
 		mocks.prisma.exampleSentence,
 		mocks.prisma.exampleSentenceToken,
+		mocks.prisma.observedWordForm,
 		mocks.tx.exampleSentenceToken,
-		mocks.tx.exampleSentenceTokenSegment
+		mocks.tx.exampleSentenceTokenSegment,
+		mocks.tx.observedWordForm
 	]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
@@ -146,6 +158,34 @@ describe('POST /corpus/[id]/token-groups', () => {
 				expect.objectContaining({ id: 'token-b', surfaceForm: 'ak' })
 			]
 		});
+	});
+
+	it('rejects splitting a token that already has lexical segments', async () => {
+		mocks.prisma.exampleSentence.findUnique.mockResolvedValue({ id: 'sentence-1' });
+		mocks.prisma.exampleSentenceToken.findMany.mockResolvedValueOnce([
+			{
+				id: 'token-a',
+				tokenOrder: 0,
+				surfaceForm: 'Missing kot',
+				normalizedForm: 'missing kot',
+				wordId: 'word-a',
+				inContextTranslation: 'missing house',
+				segments: [{ wordId: 'word-kot', normalizedForm: 'kot' }]
+			}
+		]);
+
+		const response = await post('sentence-1', {
+			action: 'split',
+			sentenceId: 'sentence-1',
+			tokenId: 'token-a'
+		});
+
+		expect(response.status).toBe(400);
+		await expect(response.json()).resolves.toEqual({
+			error: 'Remove lexical segments before splitting this word.'
+		});
+		expect(mocks.tx.exampleSentenceToken.update).not.toHaveBeenCalled();
+		expect(mocks.tx.exampleSentenceToken.create).not.toHaveBeenCalled();
 	});
 
 	it('marks lexical segment boundaries within a corpus token', async () => {

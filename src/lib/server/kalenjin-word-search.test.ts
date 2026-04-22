@@ -7,8 +7,9 @@ import {
 	sortKalenjinSearchResults,
 	searchWordsByKalenjin
 } from './kalenjin-word-search';
+import type { KalenjinSearchWord } from './kalenjin-word-search';
 
-const WORDS = [
+const WORDS: KalenjinSearchWord[] = [
 	{
 		id: '1',
 		kalenjin: 'chamcham',
@@ -50,7 +51,7 @@ const WORDS = [
 	}
 ];
 
-function makeSearchWord(overrides: Partial<(typeof WORDS)[number]> = {}): (typeof WORDS)[number] {
+function makeSearchWord(overrides: Partial<KalenjinSearchWord> = {}): KalenjinSearchWord {
 	return {
 		...WORDS[0],
 		...overrides,
@@ -136,6 +137,40 @@ describe('scoreKalenjinWordMatch', () => {
 
 	it('matches alternative spellings', () => {
 		expect(scoreKalenjinWordMatch(WORDS[1], 'misseng')).toBe(1);
+	});
+
+	it('matches prior token surfaces linked to the lemma', () => {
+		const word = makeSearchWord({
+			id: '4',
+			kalenjin: 'am',
+			kalenjinNormalized: 'am',
+			translations: 'eat',
+			observedForms: [{ normalizedForm: 'aame', usageCount: 1 }]
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'aame')).toBe(1.5);
+	});
+
+	it('uses observed form frequency to break ties', () => {
+		const occasional = makeSearchWord({
+			id: '4',
+			kalenjin: 'am',
+			kalenjinNormalized: 'am',
+			translations: 'eat',
+			observedForms: [{ normalizedForm: 'aame', usageCount: 1 }]
+		});
+		const frequent = makeSearchWord({
+			id: '5',
+			kalenjin: 'amun',
+			kalenjinNormalized: 'amun',
+			translations: 'swallow',
+			observedForms: [{ normalizedForm: 'aame', usageCount: 4 }]
+		});
+
+		expect(sortKalenjinSearchResults([occasional, frequent], 'aame').map((word) => word.id)).toEqual([
+			'5',
+			'4'
+		]);
 	});
 });
 
@@ -227,7 +262,7 @@ describe('searchWordsByKalenjin', () => {
 
 		const result = await searchWordsByKalenjin(prisma, 'nonexistent', 10);
 
-		expect(prisma.$queryRaw).toHaveBeenCalled();
+		expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
 		expect(prisma.word.findMany).not.toHaveBeenCalled();
 		expect(result).toEqual([]);
 	});
@@ -239,6 +274,7 @@ describe('searchWordsByKalenjin', () => {
 		const result = await searchWordsByKalenjin(prisma, 'kot', 10);
 
 		expect(prisma.$queryRaw).toHaveBeenCalled();
+		expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
 		expect(prisma.word.findMany).toHaveBeenCalledWith(
 			expect.objectContaining({
 				where: { id: { in: ['1', '3'] } }
@@ -246,6 +282,47 @@ describe('searchWordsByKalenjin', () => {
 		);
 		// kot (exact match) should come before chamcham
 		expect(result.map((w) => w.id)).toEqual(['3', '1']);
+	});
+
+	it('falls back to equivalent-letter SQL only when the indexed contains query has no candidates', async () => {
+		const prisma = makePrisma([], [WORDS[2]]);
+		prisma.$queryRaw
+			.mockResolvedValueOnce([])
+			.mockResolvedValueOnce([{ id: '3', observedNormalizedForm: null, observedUsageCount: null }]);
+
+		const result = await searchWordsByKalenjin(prisma, 'got', 10);
+
+		expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+		expect(result.map((word) => word.id)).toEqual(['3']);
+	});
+
+	it('ranks lemmas from prior token links ahead of weaker textual matches', async () => {
+		const linkedWord = makeSearchWord({
+			id: '4',
+			kalenjin: 'am',
+			kalenjinNormalized: 'am',
+			translations: 'eat'
+		});
+		const textualMatch = makeSearchWord({
+			id: '5',
+			kalenjin: 'kaame',
+			kalenjinNormalized: 'kaame',
+			translations: 'tries'
+		});
+		const prisma = makePrisma([], [textualMatch, linkedWord]);
+		prisma.$queryRaw.mockResolvedValue([
+			{ id: '5', observedNormalizedForm: null, observedUsageCount: null },
+			{ id: '4', observedNormalizedForm: 'aame', observedUsageCount: 3 }
+		]);
+
+		const result = await searchWordsByKalenjin(prisma, 'aame', 10);
+
+		expect(prisma.word.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: { in: ['5', '4'] } }
+			})
+		);
+		expect(result.map((word) => word.id)).toEqual(['4', '5']);
 	});
 
 	it('respects the limit parameter on the final results', async () => {

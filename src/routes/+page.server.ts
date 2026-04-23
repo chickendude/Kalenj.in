@@ -11,11 +11,11 @@ const recentSentenceInclude = {
 	tokens: {
 		orderBy: { tokenOrder: 'asc' },
 		include: {
-			word: { select: { id: true, kalenjin: true, translations: true } },
+			word: { select: { id: true, kalenjin: true, translations: true, audioUrl: true } },
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
 				include: {
-					word: { select: { id: true, kalenjin: true, translations: true } }
+					word: { select: { id: true, kalenjin: true, translations: true, audioUrl: true } }
 				}
 			}
 		}
@@ -39,7 +39,8 @@ export const load: PageServerLoad = async () => {
 				id: true,
 				kalenjin: true,
 				translations: true,
-				partOfSpeech: true
+				partOfSpeech: true,
+				audioUrl: true
 			}
 		}),
 		prisma.exampleSentence.findMany({

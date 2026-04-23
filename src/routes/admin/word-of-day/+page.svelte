@@ -4,10 +4,18 @@
 	import { cubicOut } from 'svelte/easing';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { firstTranslation } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
+	import { toast } from '$lib/stores/toast.svelte';
 	import type { WordSearchHit } from './search/+server';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	$effect(() => {
+		if (form && 'regenerateSuccess' in form && form.regenerateSuccess) {
+			toast.success(form.regenerateSuccess);
+		}
+	});
 
 	type ScheduleRow = PageData['schedule'][number];
 	type WordInfo = ScheduleRow['word'];
@@ -21,8 +29,6 @@
 	let searchInput: HTMLInputElement | undefined = $state();
 
 	let wordOverrides = $state<Map<string, WordInfo>>(new Map());
-	let toast = $state<string | null>(null);
-	let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 	type PendingAssign = { kalenjin: string; lastShownOn: string; formEl: HTMLFormElement };
 	let pendingAssign = $state<PendingAssign | null>(null);
@@ -39,23 +45,6 @@
 			return override ? { ...row, word: override } : row;
 		})
 	);
-
-	function showToast(message: string) {
-		if (toastTimer) clearTimeout(toastTimer);
-		toast = message;
-		toastTimer = setTimeout(() => {
-			toast = null;
-			toastTimer = null;
-		}, 3200);
-	}
-
-	function dismissToast() {
-		if (toastTimer) {
-			clearTimeout(toastTimer);
-			toastTimer = null;
-		}
-		toast = null;
-	}
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, {
 		weekday: 'short',
@@ -216,9 +205,6 @@
 {#if form && 'assignError' in form && form.assignError}
 	<div class="form-feedback error">{form.assignError}</div>
 {/if}
-{#if form && 'regenerateSuccess' in form && form.regenerateSuccess}
-	<div class="form-feedback success">{form.regenerateSuccess}</div>
-{/if}
 
 <section class="form-card wod-admin-actions">
 	<div>
@@ -265,8 +251,8 @@
 						{/if}
 					</div>
 				</td>
-				<td class="wod-admin-gloss" title={row.word.translations}>
-					{row.word.translations}
+				<td class="wod-admin-gloss" title={stripWordLinks(row.word.translations)}>
+					{stripWordLinks(row.word.translations)}
 				</td>
 				<td>
 					<div class="row-actions">
@@ -324,7 +310,7 @@
 															</span>
 														{/if}
 														<span class="wod-admin-hit-gloss">
-															{firstTranslation(hit.translations)}
+															{firstTranslation(stripWordLinks(hit.translations))}
 														</span>
 													</div>
 													<div class="wod-admin-hit-meta">
@@ -365,12 +351,12 @@
 																				next.set(dateKey(d), u.word);
 																			}
 																			wordOverrides = next;
-																			showToast(payload.message);
+																			toast.success(payload.message);
 																		}
 																		closeEditor();
 																	} else if (result.type === 'failure') {
 																		const err = (result.data?.assignError as string | undefined) ?? 'Assign failed.';
-																		showToast(err);
+																		toast.show(err);
 																	}
 																};
 															}}
@@ -427,16 +413,3 @@
 	</div>
 {/if}
 
-{#if toast}
-	<div class="wod-toast" role="status" aria-live="polite">
-		<span class="wod-toast-text">{toast}</span>
-		<button
-			type="button"
-			class="wod-toast-close"
-			onclick={dismissToast}
-			aria-label="Dismiss notification"
-		>
-			×
-		</button>
-	</div>
-{/if}

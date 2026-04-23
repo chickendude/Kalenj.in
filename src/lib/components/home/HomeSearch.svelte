@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type SearchResult = {
@@ -132,7 +133,7 @@
 						<span class="hs-pos">
 							{word.partOfSpeech ? PART_OF_SPEECH_LABELS[word.partOfSpeech] : ''}
 						</span>
-						<span class="hs-trans">{word.translations}</span>
+						<span class="hs-trans">{stripWordLinks(word.translations)}</span>
 					</a>
 				{/each}
 				<a href="/dictionary" class="home-search-all">

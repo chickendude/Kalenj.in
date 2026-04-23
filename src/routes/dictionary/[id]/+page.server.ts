@@ -2,9 +2,10 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
-import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
+import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
+import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import type { Actions, PageServerLoad } from './$types';
 
 type RelatedPair = {
@@ -110,48 +111,97 @@ export const actions: Actions = {
 		const alternativeSpellings = readText(formData, 'alternativeSpellings');
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
+		const pluralFormRaw = readText(formData, 'pluralForm');
+		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+
+		const values = {
+			kalenjin,
+			translations,
+			alternativeSpellings,
+			notes,
+			partOfSpeech: partOfSpeechRaw,
+			pluralForm: pluralFormRaw
+		};
 
 		if (!kalenjin || !translations) {
 			return fail(400, {
 				error: 'Kalenjin and translations are required.',
-				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
+				values
 			});
 		}
 
 		if (partOfSpeechRaw && !isPartOfSpeech(partOfSpeechRaw)) {
 			return fail(400, {
 				error: 'Invalid part of speech value.',
-				values: { kalenjin, translations, alternativeSpellings, notes, partOfSpeech: partOfSpeechRaw }
+				values
 			});
 		}
 
-		const partOfSpeech = partOfSpeechRaw ? (partOfSpeechRaw as PartOfSpeech) : null;
-		const spellings = prepareAlternativeSpellings(alternativeSpellings, kalenjin);
+		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
+			? (partOfSpeechRaw as PartOfSpeech)
+			: null;
 
-		await prisma.word.update({
-			where: { id: params.id },
-			data: {
-				kalenjin,
-				kalenjinNormalized: normalizeLemma(kalenjin),
-				translations,
-				notes: notes || null,
-				partOfSpeech,
-				spellings: {
-					deleteMany: {},
-					createMany: spellings.length
-						? {
-								data: spellings
-							}
-						: undefined
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
+
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
+		const imageFile = formData.get('image');
+		const removeImage = formData.get('removeImage') === '1';
+		let newImageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				newImageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message, values });
 				}
+				throw err;
 			}
-		});
+		} else if (removeImage) {
+			newImageUrl = null;
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				await createOrUpdateLinkedWord(tx, {
+					wordId: params.id,
+					kalenjin,
+					translations,
+					notes: notes || null,
+					alternativeSpellings,
+					partOfSpeech,
+					pluralForm,
+					isPluralOnly,
+					presentTense,
+					imageUrl: newImageUrl
+				});
+
+				if (kalenjin !== currentWord.kalenjin) {
+					await propagateKalenjinRename(tx, params.id, kalenjin);
+				}
+			});
+		} catch (err) {
+			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
+			throw err;
+		}
+
+		if (newImageUrl !== undefined && currentWord.imageUrl && currentWord.imageUrl !== newImageUrl) {
+			await deleteUploadedImage(currentWord.imageUrl);
+		}
 
 		return { success: true };
 	},
 	delete: async ({ params, locals }) => {
 		requireEditor(locals);
+		const existing = await prisma.word.findUnique({
+			where: { id: params.id },
+			select: { imageUrl: true }
+		});
 		await prisma.word.delete({ where: { id: params.id } });
+		if (existing?.imageUrl) await deleteUploadedImage(existing.imageUrl);
 		redirect(303, '/dictionary');
 	},
 	addRelatedWord: async ({ request, params, locals }) => {

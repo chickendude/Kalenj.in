@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
 	let { data, form } = $props();
@@ -9,6 +10,11 @@
 	const canEdit = $derived(
 		data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER'
 	);
+
+	let composeOpen = $state(false);
+	function toggleCompose() {
+		composeOpen = !composeOpen;
+	}
 
 	const initialQuery = untrack(() => data.query);
 	let searchQuery = $state(initialQuery);
@@ -77,6 +83,11 @@
 		<div class="page-stat">
 			<b>{data.totalCount}</b>
 			sentence{data.totalCount === 1 ? '' : 's'} collected
+			{#if canEdit}
+				<div class="page-stat-actions">
+					<a class="btn ghost sm" href="/corpus/duplicates">Check duplicates</a>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -86,45 +97,74 @@
 
 	<div class="corpus-layout" class:single={!canEdit}>
 		{#if canEdit}
-			<form method="POST" action="?/createSentence" class="compose-card">
-				<h2>Add a sentence</h2>
-				<p>Link each Kalenjin token to a dictionary entry after you save.</p>
+			<form
+				method="POST"
+				action="?/createSentence"
+				class="compose-card"
+				class:closed={!composeOpen}
+			>
+				<button
+					type="button"
+					class="compose-toggle"
+					aria-expanded={composeOpen}
+					aria-controls="compose-body"
+					onclick={toggleCompose}
+				>
+					<h2>Add a sentence</h2>
+					<span class="compose-caret" aria-hidden="true">
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						>
+							<path d="m6 9 6 6 6-6" />
+						</svg>
+					</span>
+				</button>
+				<div id="compose-body" class="compose-body">
+					<p>Link each Kalenjin token to a dictionary entry after you save.</p>
 
-				<div class="field">
-					<label for="compose-kalenjin">Kalenjin sentence *</label>
-					<textarea
-						id="compose-kalenjin"
-						name="kalenjin"
-						class="textarea"
-						rows="3"
-						required
-						placeholder="Chamgei!">{form?.values?.kalenjin ?? ''}</textarea>
-				</div>
+					<div class="field">
+						<label for="compose-kalenjin">Kalenjin sentence *</label>
+						<textarea
+							id="compose-kalenjin"
+							name="kalenjin"
+							class="textarea"
+							rows="3"
+							required
+							placeholder="Chamgei!">{form?.values?.kalenjin ?? ''}</textarea>
+					</div>
 
-				<div class="field">
-					<label for="compose-english">English translation *</label>
-					<textarea
-						id="compose-english"
-						name="english"
-						class="textarea"
-						rows="3"
-						required
-						placeholder="Hello!">{form?.values?.english ?? ''}</textarea>
-				</div>
+					<div class="field">
+						<label for="compose-english">English translation *</label>
+						<textarea
+							id="compose-english"
+							name="english"
+							class="textarea"
+							rows="3"
+							required
+							placeholder="Hello!">{form?.values?.english ?? ''}</textarea>
+					</div>
 
-				<div class="field">
-					<label for="compose-notes">Notes (optional)</label>
-					<input
-						id="compose-notes"
-						name="notes"
-						class="input"
-						value={form?.values?.notes ?? ''}
-						placeholder="Context, usage, idiomatic meaning…"
-					/>
-				</div>
+					<div class="field">
+						<label for="compose-notes">Notes (optional)</label>
+						<input
+							id="compose-notes"
+							name="notes"
+							class="input"
+							value={form?.values?.notes ?? ''}
+							placeholder="Context, usage, idiomatic meaning…"
+						/>
+					</div>
 
-				<div class="form-actions">
-					<button type="submit" class="btn">Create &amp; map tokens</button>
+					<div class="form-actions">
+						<button type="submit" class="btn">Create &amp; map tokens</button>
+					</div>
 				</div>
 			</form>
 		{/if}
@@ -189,6 +229,11 @@
 						<li class="sentence-row">
 							<div class="sentence-row-body">
 								<div class="kal">
+									<AudioPlayButton
+										audioUrl={sentence.audioUrl}
+										size="sm"
+										label="Play sentence"
+									/>
 									<TokenHoverPreview
 										sentenceId={sentence.id}
 										sentenceText={sentence.kalenjin}
@@ -222,6 +267,10 @@
 </section>
 
 <style>
+	.page-stat-actions {
+		margin-top: 8px;
+	}
+
 	.corpus-layout {
 		display: grid;
 		grid-template-columns: 380px 1fr;
@@ -253,6 +302,49 @@
 	}
 	.compose-card .field + .field {
 		margin-top: 14px;
+	}
+	.compose-toggle {
+		display: block;
+		width: 100%;
+		background: none;
+		border: 0;
+		padding: 0;
+		margin: 0;
+		color: inherit;
+		cursor: default;
+		text-align: left;
+	}
+	.compose-caret {
+		display: none;
+	}
+	@media (max-width: 900px) {
+		.compose-card {
+			padding: 16px 18px;
+		}
+		.compose-toggle {
+			cursor: pointer;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 12px;
+		}
+		.compose-toggle h2 {
+			margin: 0;
+		}
+		.compose-caret {
+			display: inline-flex;
+			color: var(--ink-soft);
+			transition: transform 0.15s;
+		}
+		.compose-card:not(.closed) .compose-caret {
+			transform: rotate(180deg);
+		}
+		.compose-card.closed .compose-body {
+			display: none;
+		}
+		.compose-card:not(.closed) .compose-body {
+			margin-top: 14px;
+		}
 	}
 
 	.textarea {
@@ -300,11 +392,15 @@
 		min-width: 0;
 	}
 	.sentence-row .kal {
+		align-items: baseline;
+		color: var(--ink);
+		display: flex;
+		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 22px;
-		color: var(--ink);
-		margin-bottom: 6px;
+		gap: 10px;
 		line-height: 1.3;
+		margin-bottom: 6px;
 	}
 	.sentence-row .en {
 		color: var(--ink-soft);
@@ -333,6 +429,19 @@
 		}
 		.compose-card {
 			position: static;
+		}
+	}
+
+	@media (max-width: 720px) {
+		.sentence-row {
+			grid-template-columns: 1fr;
+			gap: 12px;
+		}
+		.sentence-row .kal {
+			font-size: 19px;
+		}
+		.sentence-row .actions {
+			align-items: flex-start;
 		}
 	}
 </style>

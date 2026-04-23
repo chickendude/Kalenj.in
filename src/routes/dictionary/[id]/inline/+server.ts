@@ -2,6 +2,7 @@ import { json, error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
+import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
@@ -26,9 +27,15 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 
 	const typedField = field as WordInlineField;
 
-	const updated = await prisma.word.update({
-		where: { id: params.id },
-		data: { [typedField]: value }
+	const updated = await prisma.$transaction(async (tx) => {
+		const next = await tx.word.update({
+			where: { id: params.id },
+			data: { [typedField]: value }
+		});
+		if (typedField === 'kalenjin' && value !== word.kalenjin) {
+			await propagateKalenjinRename(tx, params.id, value);
+		}
+		return next;
 	});
 
 	return json({ ok: true, word: { id: updated.id, kalenjin: updated.kalenjin, translations: updated.translations } });

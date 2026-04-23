@@ -1,10 +1,15 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { Prisma, type PartOfSpeech } from '@prisma/client';
+import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
-import { prepareAlternativeSpellings } from '$lib/server/kalenjin-word-search';
-import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import {
+	buildWordSelect,
+	createOrUpdateLinkedWord,
+	readPresentTenseFromFormData
+} from '$lib/server/lemma-words';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -16,29 +21,10 @@ function readOptionalText(formData: FormData, key: string): string | null {
 	return value.length > 0 ? value : null;
 }
 
-function buildWordSelect() {
-	return {
-		id: true,
-		kalenjin: true,
-		translations: true,
-		notes: true,
-		partOfSpeech: true,
-		pluralForm: true,
-		spellings: {
-			orderBy: [{ spelling: 'asc' as const }],
-			select: {
-				id: true,
-				spelling: true,
-				spellingNormalized: true
-			}
-		}
-	};
-}
-
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
-		select: { id: true, exampleSentenceId: true }
+		select: { id: true, exampleSentenceId: true, wordId: true, normalizedForm: true }
 	});
 
 	if (!token || token.exampleSentenceId !== sentenceId) {
@@ -52,11 +38,14 @@ async function ensureSentenceTokenSegment(
 	sentenceId: string,
 	tokenId: string,
 	segmentId: string
-): Promise<string> {
+): Promise<{ id: string; wordId: string | null; normalizedForm: string }> {
 	const segment = await prisma.exampleSentenceTokenSegment.findUnique({
 		where: { id: segmentId },
 		select: {
+			id: true,
 			tokenId: true,
+			wordId: true,
+			normalizedForm: true,
 			token: {
 				select: { exampleSentenceId: true }
 			}
@@ -67,68 +56,11 @@ async function ensureSentenceTokenSegment(
 		error(404, 'Token segment not found for this sentence.');
 	}
 
-	return segmentId;
-}
-
-async function createOrUpdateLinkedWord(
-	tx: Prisma.TransactionClient,
-	input: {
-		wordId?: string | null;
-		kalenjin: string;
-		translations: string;
-		notes?: string | null;
-		alternativeSpellings?: string | null;
-		partOfSpeech?: PartOfSpeech | null;
-		pluralForm?: string | null;
-	}
-) {
-	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
-	const pluralForm = input.pluralForm ?? null;
-	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
-
-	if (input.wordId) {
-		return tx.word.update({
-			where: { id: input.wordId },
-			data: {
-				kalenjin: input.kalenjin,
-				kalenjinNormalized: normalizeLemma(input.kalenjin),
-				translations: input.translations,
-				notes: input.notes ?? null,
-				partOfSpeech: input.partOfSpeech ?? null,
-				pluralForm,
-				pluralFormNormalized,
-				spellings: {
-					deleteMany: {},
-					createMany: spellings.length
-						? {
-								data: spellings
-							}
-						: undefined
-				}
-			},
-			select: buildWordSelect()
-		});
-	}
-
-	return tx.word.create({
-		data: {
-			kalenjin: input.kalenjin,
-			kalenjinNormalized: normalizeLemma(input.kalenjin),
-			translations: input.translations,
-			notes: input.notes ?? null,
-			partOfSpeech: input.partOfSpeech ?? null,
-			pluralForm,
-			pluralFormNormalized,
-			spellings: spellings.length
-				? {
-						createMany: {
-							data: spellings
-						}
-					}
-				: undefined
-		},
-		select: buildWordSelect()
-	});
+	return {
+		id: segment.id,
+		wordId: segment.wordId,
+		normalizedForm: segment.normalizedForm
+	};
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -189,16 +121,18 @@ export const actions: Actions = {
 		}
 
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
-		const checkedSegmentId = segmentId
+		const checkedSegment = segmentId
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
 			: null;
 
 		const updatedToken = await prisma.$transaction(async (tx) => {
-			if (checkedSegmentId) {
-				await tx.exampleSentenceTokenSegment.update({
-					where: { id: checkedSegmentId },
-					data: { wordId }
+			if (checkedSegment) {
+				const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+					where: { id: checkedSegment.id },
+					data: { wordId },
+					select: { wordId: true, normalizedForm: true }
 				});
+				await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 
 				if (wordId) {
 					await tx.wordSentence.upsert({
@@ -255,6 +189,8 @@ export const actions: Actions = {
 				}
 			});
 
+			await replaceObservedWordForm(tx, sentenceToken, updatedToken);
+
 			if (wordId) {
 				await tx.wordSentence.upsert({
 					where: {
@@ -301,6 +237,7 @@ export const actions: Actions = {
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
+		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -320,10 +257,29 @@ export const actions: Actions = {
 			? (partOfSpeechRaw as PartOfSpeech)
 			: null;
 
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+
+		const presentTense =
+			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
+
 		const sentenceToken = await ensureSentenceToken(params.id, tokenId);
-		const checkedSegmentId = segmentId
+		const checkedSegment = segmentId
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
 			: null;
+
+		const imageFile = formData.get('image');
+		let imageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				imageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message });
+				}
+				throw err;
+			}
+		}
 
 		try {
 			const { token: updatedToken } = await prisma.$transaction(async (tx) => {
@@ -334,22 +290,29 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null
+					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					isPluralOnly,
+					presentTense,
+					...(imageUrl !== undefined ? { imageUrl } : {})
 				});
 
-				if (checkedSegmentId) {
-					await tx.exampleSentenceTokenSegment.update({
-						where: { id: checkedSegmentId },
-						data: { wordId: word.id }
+				if (checkedSegment) {
+					const updatedSegment = await tx.exampleSentenceTokenSegment.update({
+						where: { id: checkedSegment.id },
+						data: { wordId: word.id },
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, checkedSegment, updatedSegment);
 				} else {
-					await tx.exampleSentenceToken.update({
+					const updatedSentenceToken = await tx.exampleSentenceToken.update({
 						where: { id: tokenId },
 						data: {
 							wordId: word.id,
 							inContextTranslation
-						}
+						},
+						select: { wordId: true, normalizedForm: true }
 					});
+					await replaceObservedWordForm(tx, sentenceToken, updatedSentenceToken);
 				}
 
 				await tx.wordSentence.upsert({
@@ -399,11 +362,58 @@ export const actions: Actions = {
 				]
 			};
 		} catch (createError) {
+			if (imageUrl) {
+				await deleteUploadedImage(imageUrl);
+			}
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
 			});
 		}
+	},
+	updateSentenceImage: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const current = await prisma.exampleSentence.findUnique({
+			where: { id: params.id },
+			select: { imageUrl: true }
+		});
+		if (!current) error(404, 'Sentence not found');
+
+		const formData = await request.formData();
+		const imageFile = formData.get('image');
+		const removeImage = formData.get('removeImage') === '1';
+
+		let newImageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				newImageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) return fail(400, { error: err.message });
+				throw err;
+			}
+		} else if (removeImage) {
+			newImageUrl = null;
+		}
+
+		if (newImageUrl === undefined) {
+			return { updateSentenceImageSuccess: true };
+		}
+
+		try {
+			await prisma.exampleSentence.update({
+				where: { id: params.id },
+				data: { imageUrl: newImageUrl }
+			});
+		} catch (err) {
+			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
+			throw err;
+		}
+
+		if (current.imageUrl && current.imageUrl !== newImageUrl) {
+			await deleteUploadedImage(current.imageUrl);
+		}
+
+		return { updateSentenceImageSuccess: true };
 	},
 	deleteSentence: async ({ params, locals }) => {
 		requireEditor(locals);
@@ -413,6 +423,7 @@ export const actions: Actions = {
 			select: {
 				id: true,
 				storySentenceId: true,
+				imageUrl: true,
 				_count: { select: { lessonWords: true } }
 			}
 		});
@@ -435,6 +446,7 @@ export const actions: Actions = {
 		}
 
 		await prisma.exampleSentence.delete({ where: { id: params.id } });
+		if (existing.imageUrl) await deleteUploadedImage(existing.imageUrl);
 
 		redirect(303, '/corpus');
 	}

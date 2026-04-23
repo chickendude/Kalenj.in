@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { stripWordLinks } from '$lib/word-links';
 
 	type DictionaryWord = {
 		id: string;
@@ -34,7 +35,7 @@
 			<option value="">Choose dictionary lemma...</option>
 			{#each dictionaryWords as word}
 				<option value={word.id} selected={token.wordId === word.id}>
-					{word.kalenjin} - {word.translations}
+					{word.kalenjin} - {stripWordLinks(word.translations)}
 				</option>
 			{/each}
 		</select>

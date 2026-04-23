@@ -1,11 +1,16 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
-	import { invalidateAll } from '$app/navigation';
+	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
+	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
+	import type { PartOfSpeech } from '@prisma/client';
 	import {
 		VOCABULARY_LESSON_TYPES,
 		formatLessonType,
@@ -14,8 +19,36 @@
 	} from '$lib/course';
 	import { suggestCefrTargets } from '$lib/cefr-suggestions';
 	import { isUnsetSentenceEnglish } from '$lib/sentence-placeholders';
+	import { splitSentenceText } from '$lib/story-split';
+	import { stripWordLinks } from '$lib/word-links';
 
 	let { data, form } = $props();
+
+	type CefrUrlChanges = {
+		query?: string;
+		sort?: 'alpha-asc' | 'alpha-desc';
+		page?: number;
+		coverage?: 'all' | 'covered' | 'uncovered';
+		pos?: string[];
+	};
+
+	function buildLessonCefrUrl(changes: CefrUrlChanges = {}): string {
+		const params = new URLSearchParams();
+		const query = changes.query ?? data.cefrBrowse.query;
+		const sort = changes.sort ?? data.cefrBrowse.sort;
+		const page = changes.page ?? data.cefrBrowse.page;
+		const coverage = changes.coverage ?? data.cefrBrowse.coverageFilter;
+		const pos = changes.pos ?? data.cefrBrowse.posFilters;
+
+		if (query) params.set('q', query);
+		if (sort !== 'alpha-asc') params.set('sort', sort);
+		if (page > 1) params.set('page', String(page));
+		if (coverage !== 'all') params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+		if (pos.length > 0) params.set('pos', pos.join(','));
+
+		const qs = params.toString();
+		return qs ? `/lessons/${data.lesson.id}?${qs}` : `/lessons/${data.lesson.id}`;
+	}
 
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
@@ -23,11 +56,112 @@
 	type InlineStoryField = 'speaker' | 'english' | 'grammarNotes';
 
 	let showAddWordForm = $state(false);
+	let vocabPanelsOpen = $state(false);
+
+	type AddWordPickerState = {
+		selectedWord: {
+			id: string;
+			kalenjin: string;
+			translations: string;
+			partOfSpeech?: PartOfSpeech | string | null;
+		} | null;
+		mode: 'search' | 'create';
+		draftKalenjin: string;
+		draftTranslations: string;
+		draftAlternativeSpellings: string;
+		draftNotes: string;
+		draftPartOfSpeech: PartOfSpeech | '';
+		draftPluralForm: string;
+		draftIsPluralOnly: boolean;
+		draftPresentAnee: string;
+		draftPresentInyee: string;
+		draftPresentInee: string;
+		draftPresentEchek: string;
+		draftPresentOkwek: string;
+		draftPresentIchek: string;
+		sentenceKalenjin: string;
+		sentenceEnglish: string;
+		error: string | null;
+	};
+
+	function emptyAddWordState(): AddWordPickerState {
+		return {
+			selectedWord: null,
+			mode: 'search',
+			draftKalenjin: '',
+			draftTranslations: '',
+			draftAlternativeSpellings: '',
+			draftNotes: '',
+			draftPartOfSpeech: '',
+			draftPluralForm: '',
+			draftIsPluralOnly: false,
+			draftPresentAnee: '',
+			draftPresentInyee: '',
+			draftPresentInee: '',
+			draftPresentEchek: '',
+			draftPresentOkwek: '',
+			draftPresentIchek: '',
+			sentenceKalenjin: '',
+			sentenceEnglish: '',
+			error: null
+		};
+	}
+
+	let addWordState = $state<AddWordPickerState>(emptyAddWordState());
 	let inlineStoryEdit = $state<{ sentenceId: string; field: InlineStoryField } | null>(null);
 	let inlineStoryValue = $state('');
 	let inlineStoryError = $state<string | null>(null);
 	let storySentences = $state<StorySentence[]>([]);
 	let inlineStoryInput = $state<HTMLInputElement | HTMLTextAreaElement | null>(null);
+	let storyFocusRequests = $state<
+		Record<string, { position: 'first' | 'last'; nonce: number }>
+	>({});
+	let storyFocusNonce = 0;
+
+	function focusStorySentence(targetSentenceId: string, position: 'first' | 'last') {
+		storyFocusNonce += 1;
+		storyFocusRequests = {
+			...storyFocusRequests,
+			[targetSentenceId]: {
+				position,
+				nonce: storyFocusNonce
+			}
+		};
+	}
+
+	let exampleFocusRequests = $state<
+		Record<string, { position: 'first' | 'last'; nonce: number }>
+	>({});
+	let exampleFocusNonce = 0;
+
+	function focusExampleSentence(targetSentenceId: string, position: 'first' | 'last') {
+		exampleFocusNonce += 1;
+		exampleFocusRequests = {
+			...exampleFocusRequests,
+			[targetSentenceId]: {
+				position,
+				nonce: exampleFocusNonce
+			}
+		};
+	}
+
+	function findAdjacentLessonWordWithSentence(
+		currentLessonWordId: string,
+		direction: 'prev' | 'next'
+	) {
+		const index = orderedLessonWords.findIndex((word) => word.id === currentLessonWordId);
+		if (index < 0) {
+			return null;
+		}
+		const step = direction === 'next' ? 1 : -1;
+		for (let i = index + step; i >= 0 && i < orderedLessonWords.length; i += step) {
+			const candidate = orderedLessonWords[i];
+			if (candidate.sentence) {
+				return candidate;
+			}
+		}
+		return null;
+	}
 
 	type InlineLessonWordField = 'sentenceKalenjin' | 'sentenceEnglish' | 'notesMarkdown';
 	type LessonWordLocalState = {
@@ -79,6 +213,13 @@
 	let vocabularyTypeError = $state<string | null>(null);
 	let vocabTypeOpen = $state(false);
 	let vocabTypeWrap = $state<HTMLSpanElement | null>(null);
+	let lessonNavOpen = $state(false);
+	let lessonNavWrap = $state<HTMLSpanElement | null>(null);
+
+	beforeNavigate(() => {
+		lessonNavOpen = false;
+		vocabTypeOpen = false;
+	});
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
@@ -248,13 +389,30 @@
 		}
 	}
 
+	function handleLessonNavWindowClick(event: MouseEvent) {
+		if (!lessonNavOpen) return;
+		const target = event.target;
+		if (lessonNavWrap && target instanceof Node && lessonNavWrap.contains(target)) return;
+		lessonNavOpen = false;
+	}
+
+	function handleLessonNavWindowKey(event: KeyboardEvent) {
+		if (event.key === 'Escape' && lessonNavOpen) {
+			lessonNavOpen = false;
+		}
+	}
+
 	$effect(() => {
 		if (typeof window === 'undefined') return;
 		window.addEventListener('mousedown', handleVocabTypeWindowClick);
 		window.addEventListener('keydown', handleVocabTypeWindowKey);
+		window.addEventListener('mousedown', handleLessonNavWindowClick);
+		window.addEventListener('keydown', handleLessonNavWindowKey);
 		return () => {
 			window.removeEventListener('mousedown', handleVocabTypeWindowClick);
 			window.removeEventListener('keydown', handleVocabTypeWindowKey);
+			window.removeEventListener('mousedown', handleLessonNavWindowClick);
+			window.removeEventListener('keydown', handleLessonNavWindowKey);
 		};
 	});
 
@@ -344,6 +502,52 @@
 		} else if (event.key === 'Escape') {
 			event.preventDefault();
 			cancelInlineStoryEdit();
+		}
+	}
+
+	let storyRowBusy = $state<string | null>(null);
+
+	async function splitStorySentence(sentenceId: string) {
+		if (storyRowBusy) return;
+		storyRowBusy = sentenceId;
+		inlineStoryError = null;
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/story-sentence-split`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ sentenceId })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) {
+				throw new Error(result.error ?? 'Could not split sentence.');
+			}
+			await invalidateAll();
+		} catch (err) {
+			inlineStoryError = err instanceof Error ? err.message : 'Could not split sentence.';
+		} finally {
+			storyRowBusy = null;
+		}
+	}
+
+	async function mergeStorySentence(sentenceId: string) {
+		if (storyRowBusy) return;
+		storyRowBusy = sentenceId;
+		inlineStoryError = null;
+		try {
+			const response = await fetch(`/lessons/${data.lesson.id}/story-sentence-merge`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ sentenceId })
+			});
+			const result = (await response.json()) as { error?: string };
+			if (!response.ok) {
+				throw new Error(result.error ?? 'Could not merge sentence.');
+			}
+			await invalidateAll();
+		} catch (err) {
+			inlineStoryError = err instanceof Error ? err.message : 'Could not merge sentence.';
+		} finally {
+			storyRowBusy = null;
 		}
 	}
 
@@ -636,7 +840,13 @@
 	}
 
 	function toggleAddWordForm() {
-		showAddWordForm = !showAddWordForm;
+		if (showAddWordForm) {
+			showAddWordForm = false;
+			addWordState = emptyAddWordState();
+		} else {
+			addWordState = emptyAddWordState();
+			showAddWordForm = true;
+		}
 	}
 
 	function enhanceAddWordForm() {
@@ -648,8 +858,18 @@
 			update: EnhancedUpdate;
 		}) => {
 			if (result.type === 'success') {
-				await update({ reset: true, invalidateAll: true });
+				await update({ reset: false, invalidateAll: true });
 				showAddWordForm = false;
+				addWordState = emptyAddWordState();
+				return;
+			}
+			if (result.type === 'failure') {
+				const data = result.data;
+				const message =
+					data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
+						? (data.error as string)
+						: 'Could not create lesson word.';
+				addWordState = { ...addWordState, error: message };
 				return;
 			}
 			await applyAction(result);
@@ -773,6 +993,7 @@
 <section class="lesson-page">
 	<div class="lesson-head-row">
 		<div class="page-header-main">
+			<a href="/lessons" class="back-link">← Back to lessons</a>
 			<div class="kicker">
 				{#if lessonType === 'VOCABULARY'}
 					{@const currentVocabType = lessonVocabularyType || 'VOCAB'}
@@ -787,7 +1008,6 @@
 							<span class="vocab-type-label">
 								{formatVocabularyLessonType(currentVocabType)}
 							</span>
-							<span class="vocab-type-chevron" aria-hidden="true">▾</span>
 						</button>
 						{#if vocabTypeOpen}
 							<ul class="vocab-type-menu" role="listbox">
@@ -811,7 +1031,70 @@
 				{:else}
 					{formatLessonType(lessonType)} lesson
 				{/if}
-				· Lesson {data.lesson.lessonOrder}
+				·
+				{#if data.prevLesson}
+					<a
+						href="/lessons/{data.prevLesson.id}"
+						class="lesson-nav-icon"
+						aria-label={`Previous lesson: ${data.prevLesson.title}`}
+						title={`Previous lesson: ${data.prevLesson.title}`}
+					>
+						←
+					</a>
+				{/if}
+				<span class="lesson-nav-select-wrap" bind:this={lessonNavWrap}>
+					<button
+						type="button"
+						class="lesson-nav-trigger"
+						aria-haspopup="listbox"
+						aria-expanded={lessonNavOpen}
+						onclick={() => (lessonNavOpen = !lessonNavOpen)}
+					>
+						Lesson {data.lesson.lessonOrder}
+					</button>
+					{#if lessonNavOpen}
+						<ul class="lesson-nav-menu" role="listbox">
+							{#each data.levelLessons as entry}
+								{@const isCurrent = entry.id === data.lesson.id}
+								<li>
+									{#if isCurrent}
+										<span
+											class="lesson-nav-option lesson-nav-option--current"
+											class:lesson-nav-option--vocab={entry.type === 'VOCABULARY'}
+											class:lesson-nav-option--story={entry.type === 'STORY'}
+											aria-current="true"
+										>
+											<span class="lesson-nav-option-number">{entry.lessonOrder}.</span>
+											<span class="lesson-nav-option-title">{entry.title}</span>
+										</span>
+									{:else}
+										<a
+											href="/lessons/{entry.id}"
+											role="option"
+											aria-selected="false"
+											class="lesson-nav-option"
+											class:lesson-nav-option--vocab={entry.type === 'VOCABULARY'}
+											class:lesson-nav-option--story={entry.type === 'STORY'}
+										>
+											<span class="lesson-nav-option-number">{entry.lessonOrder}.</span>
+											<span class="lesson-nav-option-title">{entry.title}</span>
+										</a>
+									{/if}
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</span>
+				{#if data.nextLesson}
+					<a
+						href="/lessons/{data.nextLesson.id}"
+						class="lesson-nav-icon"
+						aria-label={`Next lesson: ${data.nextLesson.title}`}
+						title={`Next lesson: ${data.nextLesson.title}`}
+					>
+						→
+					</a>
+				{/if}
 			</div>
 			{#if titleEditing}
 				<input
@@ -836,7 +1119,6 @@
 			{/if}
 		</div>
 		<div class="lesson-head-actions">
-			<a href="/lessons" class="back-link">← Back to lessons</a>
 			<form
 				method="POST"
 				action="?/deleteLesson"
@@ -880,13 +1162,22 @@
 			<div class="table-header story-grid">
 				<span>Speaker</span>
 				<span>Text</span>
+				<span></span>
 				<span>Translation</span>
 			</div>
 
 			{#if !data.lesson.story || storySentences.length === 0}
 				<p>No story sentences yet.</p>
 			{:else}
-				{#each storySentences as sentence}
+				{#each storySentences as sentence, sentenceIndex}
+					{@const prev = sentenceIndex > 0 ? storySentences[sentenceIndex - 1] : null}
+					{@const next =
+						sentenceIndex < storySentences.length - 1
+							? storySentences[sentenceIndex + 1]
+							: null}
+					{@const showSpeaker = !prev || prev.speaker !== sentence.speaker}
+					{@const canSplit = splitSentenceText(sentence.kalenjin).length > 1}
+					{@const canMerge = sentenceIndex < storySentences.length - 1}
 					<div class="table-row story-grid">
 						<div>
 							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'speaker'}
@@ -901,13 +1192,19 @@
 								<button
 									type="button"
 									class="inline-edit-button"
+									class:inline-edit-button--quiet={!showSpeaker}
 									onclick={() => beginInlineStoryEdit(sentence, 'speaker')}
 								>
-									{sentence.speaker ?? '—'}
+									{showSpeaker ? (sentence.speaker ?? '—') : ''}
 								</button>
 							{/if}
 						</div>
 						<div class="story-text-cell">
+							<AudioPlayButton
+								audioUrl={sentence.corpusSentence?.audioUrl ?? null}
+								size="sm"
+								label="Play sentence"
+							/>
 							<SentenceTokenAnnotations
 								entityId={sentence.id}
 								entityIdField="storySentenceId"
@@ -920,7 +1217,75 @@
 								createAction="?/createStorySentenceWord"
 								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
 								tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+								focusRequest={storyFocusRequests[sentence.id] ?? null}
+								onNavigatePrevSentence={prev
+									? () => focusStorySentence(prev.id, 'last')
+									: undefined}
+								onNavigateNextSentence={next
+									? () => focusStorySentence(next.id, 'first')
+									: undefined}
 							/>
+						</div>
+						<div class="row-actions">
+							{#if canSplit}
+								<button
+									type="button"
+									class="row-action-icon"
+									title="Split into separate sentences"
+									aria-label="Split sentence"
+									disabled={storyRowBusy === sentence.id}
+									onclick={() => void splitStorySentence(sentence.id)}
+								>
+									<svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+										<circle
+											cx="3.5"
+											cy="4"
+											r="1.8"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.3"
+										/>
+										<circle
+											cx="3.5"
+											cy="12"
+											r="1.8"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.3"
+										/>
+										<path
+											d="M5 5 L14 11 M5 11 L14 5"
+											stroke="currentColor"
+											stroke-width="1.3"
+											stroke-linecap="round"
+											fill="none"
+										/>
+									</svg>
+								</button>
+							{/if}
+							{#if canMerge}
+								<button
+									type="button"
+									class="row-action-icon"
+									title="Merge with next sentence"
+									aria-label="Merge with next sentence"
+									disabled={storyRowBusy === sentence.id}
+									onclick={() => void mergeStorySentence(sentence.id)}
+								>
+									<svg aria-hidden="true" viewBox="0 0 16 16" focusable="false">
+										<circle cx="3.5" cy="3" r="1.6" />
+										<circle cx="12.5" cy="3" r="1.6" />
+										<circle cx="8" cy="13" r="1.6" />
+										<path
+											d="M3.5 4.6 L8 8.5 M12.5 4.6 L8 8.5 M8 8.5 V11.4"
+											stroke="currentColor"
+											stroke-width="1.5"
+											stroke-linecap="round"
+											fill="none"
+										/>
+									</svg>
+								</button>
+							{/if}
 						</div>
 						<div class="translation-cell">
 							{#if inlineStoryEdit?.sentenceId === sentence.id && inlineStoryEdit.field === 'english'}
@@ -981,12 +1346,34 @@
 		</section>
 	{:else}
 		{#if data.vocabWordCoverage}
-			<WordCoveragePanel
-				title="Next story coverage"
-				entries={data.vocabWordCoverage.words}
-				storyLesson={data.vocabWordCoverage.storyLesson}
-				quickAddAction="?/quickAddWord"
-			/>
+			<div class="lesson-vocab-top" class:expanded={vocabPanelsOpen}>
+				<div class="lesson-vocab-top-main">
+					<WordCoveragePanel
+						title="Next story coverage"
+						entries={data.vocabWordCoverage.words}
+						storyLesson={data.vocabWordCoverage.storyLesson}
+						quickAddAction="?/quickAddWord"
+						bind:open={vocabPanelsOpen}
+					/>
+				</div>
+				<CefrBrowseSidebar
+					level={data.lesson.level}
+					query={data.cefrBrowse.query}
+					sort={data.cefrBrowse.sort}
+					coverageFilter={data.cefrBrowse.coverageFilter}
+					posFilters={data.cefrBrowse.posFilters}
+					posOptions={data.cefrBrowse.posOptions}
+					targets={data.cefrBrowse.targets}
+					page={data.cefrBrowse.page}
+					totalPages={data.cefrBrowse.totalPages}
+					filteredCount={data.cefrBrowse.filteredCount}
+					totalCount={data.cefrBrowse.totalCount}
+					coveredCount={data.cefrBrowse.coveredCount}
+					buildUrl={buildLessonCefrUrl}
+					collapsible
+					bind:expanded={vocabPanelsOpen}
+				/>
+			</div>
 		{/if}
 
 		<div class="words-head">
@@ -1024,32 +1411,73 @@
 
 		{#if showAddWordForm}
 			<section class="card">
-				<form method="POST" action="?/createWord" class="editor-form compact-form" use:enhance={enhanceAddWordForm}>
+				<form
+					method="POST"
+					action="?/createWord"
+					class="editor-form compact-form add-word-form"
+					enctype="multipart/form-data"
+					use:enhance={enhanceAddWordForm}
+				>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
 
-					<div class="two-column-grid">
+					<LemmaSearchPicker
+						searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
+						idPrefix="lesson-add-word"
+						bind:selectedWord={addWordState.selectedWord}
+						bind:mode={addWordState.mode}
+						bind:draftKalenjin={addWordState.draftKalenjin}
+						bind:draftTranslations={addWordState.draftTranslations}
+						bind:draftAlternativeSpellings={addWordState.draftAlternativeSpellings}
+						bind:draftNotes={addWordState.draftNotes}
+						bind:draftPartOfSpeech={addWordState.draftPartOfSpeech}
+						bind:draftPluralForm={addWordState.draftPluralForm}
+						bind:draftIsPluralOnly={addWordState.draftIsPluralOnly}
+						bind:draftPresentAnee={addWordState.draftPresentAnee}
+						bind:draftPresentInyee={addWordState.draftPresentInyee}
+						bind:draftPresentInee={addWordState.draftPresentInee}
+						bind:draftPresentEchek={addWordState.draftPresentEchek}
+						bind:draftPresentOkwek={addWordState.draftPresentOkwek}
+						bind:draftPresentIchek={addWordState.draftPresentIchek}
+					/>
+
+					<div class="add-word-sentence">
 						<label>
-							Word
-							<input name="kalenjin" required autocomplete="off" />
+							Example sentence
+							<textarea
+								name="sentenceKalenjin"
+								required
+								rows="2"
+								bind:value={addWordState.sentenceKalenjin}
+							></textarea>
 						</label>
 
 						<label>
-							Translation
-							<input name="translations" required placeholder="semicolon-separated translations" />
+							Sentence translation
+							<textarea
+								name="sentenceEnglish"
+								required
+								rows="2"
+								bind:value={addWordState.sentenceEnglish}
+							></textarea>
 						</label>
 					</div>
 
-					<label>
-						Example sentence
-						<textarea name="sentenceKalenjin" required rows="2"></textarea>
-					</label>
+					<div class="add-word-images">
+						<ImageUploadField name="wordImage" idPrefix="add-word-image" label="Word image" />
+						<ImageUploadField name="sentenceImage" idPrefix="add-sentence-image" label="Sentence image" />
+					</div>
 
-					<label>
-						Sentence translation
-						<textarea name="sentenceEnglish" required rows="2"></textarea>
-					</label>
+					{#if addWordState.error}
+						<p class="error-text">{addWordState.error}</p>
+					{/if}
 
-					<button type="submit" class="btn">Create lesson word</button>
+					<div class="add-word-actions">
+						<button type="submit" class="btn">
+							{addWordState.selectedWord
+								? `Add "${addWordState.selectedWord.kalenjin}" to lesson`
+								: 'Create lesson word'}
+						</button>
+					</div>
 				</form>
 			</section>
 		{/if}
@@ -1121,12 +1549,19 @@
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'kalenjin'}
 										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-kalenjin-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
 									{:else}
-										<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+										<div class="word-kalenjin-row">
+											<AudioPlayButton
+												audioUrl={lessonWord.word?.audioUrl ?? null}
+												size="sm"
+												label={`Play pronunciation of ${getWordLocal(lessonWord).kalenjin}`}
+											/>
+											<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+										</div>
 									{/if}
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
 										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
 									{:else}
-										<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{getWordLocal(lessonWord).translations}</button>
+										<button type="button" class="inline-edit-button word-translations" onclick={() => beginInlineWordEdit(lessonWord, 'translations')}>{stripWordLinks(getWordLocal(lessonWord).translations)}</button>
 									{/if}
 									{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
 										<p class="error-text">{inlineWordError}</p>
@@ -1138,7 +1573,20 @@
 								{:else if !lessonWord.sentence}
 									<button type="button" class="inline-edit-button empty-sentence-button" class:sentence-notes-empty={!lwLocal.sentenceKalenjin} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceKalenjin')}>{lwLocal.sentenceKalenjin || 'Add sentence'}</button>
 								{:else}
+									{@const prevExampleWord = findAdjacentLessonWordWithSentence(
+										lessonWord.id,
+										'prev'
+									)}
+									{@const nextExampleWord = findAdjacentLessonWordWithSentence(
+										lessonWord.id,
+										'next'
+									)}
 									<div class="sentence-annotation-shell">
+										<AudioPlayButton
+											audioUrl={lessonWord.sentence.audioUrl}
+											size="sm"
+											label="Play sentence"
+										/>
 										<SentenceTokenAnnotations
 											entityId={lessonWord.id}
 											entityIdField="lessonWordId"
@@ -1151,6 +1599,15 @@
 											createAction="?/createExampleSentenceWord"
 											searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
 											tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+											focusRequest={exampleFocusRequests[lessonWord.sentence.id] ?? null}
+											onNavigatePrevSentence={prevExampleWord?.sentence
+												? () =>
+														focusExampleSentence(prevExampleWord.sentence!.id, 'last')
+												: undefined}
+											onNavigateNextSentence={nextExampleWord?.sentence
+												? () =>
+														focusExampleSentence(nextExampleWord.sentence!.id, 'first')
+												: undefined}
 										/>
 										<button
 											type="button"
@@ -1352,6 +1809,42 @@
 		gap: 1rem;
 	}
 
+	.lesson-vocab-top {
+		display: grid;
+		gap: 1.5rem;
+		margin-bottom: 1rem;
+	}
+
+	.lesson-vocab-top-main {
+		min-width: 0;
+	}
+
+	.lesson-vocab-top :global(.coverage-card),
+	.lesson-vocab-top :global(.cefr-sidebar) {
+		display: flex;
+		flex-direction: column;
+		min-height: 0;
+	}
+
+	.lesson-vocab-top :global(.coverage-list),
+	.lesson-vocab-top :global(.cefr-target-list) {
+		flex: 1;
+		min-height: 0;
+		overflow-y: auto;
+	}
+
+	@media (min-width: 1100px) {
+		.lesson-vocab-top {
+			grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
+			align-items: stretch;
+		}
+
+		.lesson-vocab-top.expanded :global(.coverage-card),
+		.lesson-vocab-top.expanded :global(.cefr-sidebar) {
+			height: 520px;
+		}
+	}
+
 	.lesson-head-row {
 		align-items: flex-start;
 		display: flex;
@@ -1370,6 +1863,22 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
+	}
+
+	.page-header-main > :global(.back-link) {
+		margin-top: -24px;
+		margin-bottom: 8px;
+	}
+
+	.lesson-nav-icon {
+		color: inherit;
+		display: inline-block;
+		padding: 0.5em 0.6em;
+		margin: -0.5em 0;
+		text-decoration: none;
+	}
+	.lesson-nav-icon:hover {
+		color: var(--brand);
 	}
 
 	.lesson-delete-form {
@@ -1463,16 +1972,6 @@
 		outline: none;
 	}
 
-	.vocab-type-chevron {
-		color: var(--ink-mute);
-		font-size: 0.85em;
-		transition: transform 0.12s ease;
-	}
-
-	.vocab-type-trigger[aria-expanded='true'] .vocab-type-chevron {
-		transform: translateY(1px) rotate(180deg);
-	}
-
 	.vocab-type-menu {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
@@ -1514,6 +2013,106 @@
 
 	.vocab-type-option--selected {
 		color: var(--brand);
+	}
+
+	.lesson-nav-select-wrap {
+		display: inline-block;
+		position: relative;
+	}
+
+	.lesson-nav-trigger {
+		background: transparent;
+		border: 0;
+		border-bottom: 1px dotted currentColor;
+		color: inherit;
+		cursor: pointer;
+		font: inherit;
+		letter-spacing: inherit;
+		padding: 0 2px;
+		text-transform: inherit;
+	}
+
+	.lesson-nav-trigger:hover,
+	.lesson-nav-trigger:focus-visible {
+		color: var(--brand);
+		outline: none;
+	}
+
+	.lesson-nav-menu {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-shadow: 0 12px 28px -14px oklch(0.2 0.02 80 / 0.28);
+		left: 0;
+		list-style: none;
+		margin: 6px 0 0;
+		max-height: 60vh;
+		min-width: 280px;
+		overflow-y: auto;
+		padding: 4px;
+		position: absolute;
+		top: 100%;
+		z-index: 30;
+	}
+
+	.lesson-nav-option {
+		align-items: baseline;
+		background: transparent;
+		border: 0;
+		border-left: 3px solid transparent;
+		border-radius: calc(var(--radius) - 2px);
+		color: var(--ink);
+		cursor: pointer;
+		display: flex;
+		font-family: var(--font-body);
+		font-size: 13px;
+		font-weight: 500;
+		gap: 8px;
+		letter-spacing: 0;
+		padding: 8px 12px;
+		text-align: left;
+		text-decoration: none;
+		text-transform: none;
+		white-space: nowrap;
+		width: 100%;
+	}
+
+	.lesson-nav-option:hover,
+	.lesson-nav-option:focus-visible {
+		background: var(--surface);
+		outline: none;
+	}
+
+	.lesson-nav-option--vocab {
+		border-left-color: var(--brand);
+	}
+
+	.lesson-nav-option--story {
+		border-left-color: var(--accent);
+	}
+
+	.lesson-nav-option--current {
+		color: var(--muted);
+		cursor: default;
+		opacity: 0.6;
+	}
+
+	.lesson-nav-option--current:hover {
+		background: transparent;
+	}
+
+	.lesson-nav-option-number {
+		color: var(--muted);
+		font-variant-numeric: tabular-nums;
+		min-width: 1.75em;
+	}
+
+	.lesson-nav-option--current .lesson-nav-option-number {
+		color: inherit;
+	}
+
+	.lesson-nav-option-title {
+		color: inherit;
 	}
 
 	.card {
@@ -1689,10 +2288,14 @@
 	}
 
 	.story-grid {
-		grid-template-columns: 120px minmax(0, 2fr) minmax(0, 2fr);
+		grid-template-columns: 120px minmax(0, 2fr) 1.75rem minmax(0, 2fr);
 	}
 
 	.story-text-cell {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 		min-width: 0;
 	}
 
@@ -1707,6 +2310,49 @@
 		display: grid;
 		gap: 0.3rem;
 		padding-top: 0.45rem;
+	}
+
+	.row-actions {
+		align-items: center;
+		display: flex;
+		flex-direction: column;
+		gap: 0.25rem;
+		justify-content: center;
+	}
+
+	.row-action-icon {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius);
+		color: var(--ink-mute);
+		cursor: pointer;
+		display: inline-flex;
+		height: 1.5rem;
+		justify-content: center;
+		padding: 0;
+		width: 1.5rem;
+	}
+
+	.row-action-icon:hover:not(:disabled),
+	.row-action-icon:focus-visible {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	.row-action-icon:disabled {
+		cursor: default;
+		opacity: 0.4;
+	}
+
+	.row-action-icon svg {
+		fill: currentColor;
+		height: 0.95rem;
+		width: 0.95rem;
+	}
+
+	.inline-edit-button--quiet {
+		color: var(--ink-mute);
 	}
 
 	.notes-button {
@@ -1803,6 +2449,12 @@
 		font-family: var(--font-display);
 		font-size: 18px;
 		font-weight: 500;
+	}
+
+	.word-kalenjin-row {
+		align-items: center;
+		display: flex;
+		gap: 0.4rem;
 	}
 
 	.word-translations {
@@ -2174,14 +2826,47 @@
 		min-width: 16rem;
 	}
 
-	.two-column-grid {
+	.add-word-form {
 		display: grid;
-		gap: 0.75rem;
+		gap: 16px;
 	}
 
-	@media (min-width: 900px) {
-		.two-column-grid {
-			grid-template-columns: repeat(2, minmax(0, 1fr));
+	.add-word-sentence {
+		border-top: 1px dotted var(--line);
+		display: grid;
+		gap: 0.75rem;
+		padding-top: 16px;
+	}
+
+	.add-word-sentence label {
+		display: grid;
+		gap: 4px;
+	}
+
+	.add-word-sentence textarea {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		font: inherit;
+		padding: 8px 10px;
+	}
+
+	.add-word-actions {
+		display: flex;
+		justify-content: flex-end;
+	}
+
+	.add-word-images {
+		border-top: 1px dotted var(--line);
+		display: grid;
+		gap: 16px;
+		grid-template-columns: 1fr 1fr;
+		padding-top: 16px;
+	}
+
+	@media (max-width: 640px) {
+		.add-word-images {
+			grid-template-columns: 1fr;
 		}
 	}
 

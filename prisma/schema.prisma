@@ -94,6 +94,7 @@ model Word {
   presentOkwek  String?
   presentIchek  String?
   imageUrl     String?
+  audioUrl     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sentences    WordSentence[]
@@ -176,6 +177,7 @@ model ExampleSentence {
   english         String
   notes           String?
   imageUrl        String?
+  audioUrl        String?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   storySentence   StorySentence?       @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)

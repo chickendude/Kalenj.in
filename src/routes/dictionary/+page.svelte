@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
@@ -357,7 +358,14 @@
 				{#each data.words as word}
 					<tr onclick={() => window.location.href = `/dictionary/${word.id}`} style="cursor: pointer">
 						<td class="col-word">
-							<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+							<div class="col-word-row">
+								<AudioPlayButton
+									audioUrl={word.audioUrl}
+									size="sm"
+									label={`Play pronunciation of ${word.kalenjin}`}
+								/>
+								<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+							</div>
 						</td>
 						<td class="col-trans">{stripWordLinks(word.translations)}</td>
 						<td class="col-pos">
@@ -624,5 +632,10 @@
 		background: color-mix(in oklch, var(--brand) 16%, transparent);
 		color: var(--brand-ink);
 		font-weight: 600;
+	}
+	.col-word-row {
+		align-items: center;
+		display: flex;
+		gap: 10px;
 	}
 </style>

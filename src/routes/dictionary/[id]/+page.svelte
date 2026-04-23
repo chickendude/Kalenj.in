@@ -1,4 +1,6 @@
 <script lang="ts">
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
@@ -180,6 +182,10 @@
 				<div class="entry-label">Kalenjin entry</div>
 				<div class="entry-title">
 					<h1>{kalenjinValue}</h1>
+					<AudioPlayButton
+						audioUrl={data.word.audioUrl}
+						label={`Play pronunciation of ${kalenjinValue}`}
+					/>
 				</div>
 				<div class="entry-meta">
 					{#if partOfSpeechValue}
@@ -310,6 +316,15 @@
 
 		<aside>
 			{#if data.user}
+				<div class="side-card">
+					<h3>Pronunciation</h3>
+					<AudioRecorder
+						targetType="word"
+						targetId={data.word.id}
+						currentAudioUrl={data.word.audioUrl}
+					/>
+				</div>
+
 				<div class="side-card">
 					<h3>Edit entry</h3>
 

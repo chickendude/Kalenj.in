@@ -1,4 +1,5 @@
 <script lang="ts">
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
@@ -22,6 +23,7 @@
 		id: string;
 		kalenjin: string;
 		english: string;
+		audioUrl: string | null;
 		tokens: ExampleToken[];
 	};
 
@@ -31,6 +33,7 @@
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 		pluralForm: string | null;
+		audioUrl: string | null;
 		spellings: Array<{ spelling: string }>;
 		sentences: Array<{ exampleSentence: ExampleSentence }>;
 	};
@@ -66,6 +69,7 @@
 		<div class="wod-main">
 			<div class="wod-headword">
 				<a href={`/dictionary/${word.id}`} class="wod-word">{word.kalenjin}</a>
+				<AudioPlayButton audioUrl={word.audioUrl} label={`Play pronunciation of ${word.kalenjin}`} />
 			</div>
 			<div class="wod-meta">
 				{#if word.partOfSpeech}
@@ -97,6 +101,7 @@
 							sentenceText={example.kalenjin}
 							tokens={example.tokens}
 						/>
+						<AudioPlayButton audioUrl={example.audioUrl} size="sm" label="Play sentence" />
 					</div>
 					<div class="wod-en">{example.english}</div>
 				</div>

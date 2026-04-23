@@ -12,6 +12,7 @@ DEPLOYMENT.md
 /.svelte-kit
 /build
 /coverage
+/.uploads
 
 # OS
 .DS_Store

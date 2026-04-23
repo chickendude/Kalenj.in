@@ -1543,7 +1543,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .mono { font-family: var(--font-mono); font-feature-settings: "ss01"; }
 
 /* ==================== HOME ==================== */
-.home { padding-top: 0; margin-top: -20px; margin-bottom: -72px; }
+.home { padding-top: 0; margin-top: -20px; }
 
 .home-mast {
   padding-bottom: 0;
@@ -1948,7 +1948,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 
 /* ---- Footer ---- */
-.home-foot {
+.site-foot {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 0 32px 56px;
+}
+.site-foot-inner {
   margin-top: 24px;
   padding-top: 20px;
   border-top: 1px dotted var(--line);
@@ -1958,7 +1963,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   text-transform: uppercase;
   color: var(--ink-mute);
 }
-.home-foot .home-lede {
+.site-foot-lede {
   font-family: var(--font-display);
   font-size: 16px;
   letter-spacing: normal;
@@ -1967,15 +1972,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   max-width: none;
   margin: 0 0 12px;
 }
-.home-foot-links {
+.site-foot-links {
   margin: 0 0 12px;
   letter-spacing: 0.12em;
 }
-.home-foot-links a {
+.site-foot-links a {
   color: var(--brand);
   font-weight: 600;
 }
-.home-foot-phrase {
+.site-foot-phrase {
   font-family: var(--font-display);
   font-style: italic;
   font-size: 15px;
@@ -2048,6 +2053,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   .recent-grid { grid-template-columns: 1fr; gap: 32px; }
   .home-search-row { grid-template-columns: 1fr auto; }
   .home-search-row .hs-trans { grid-column: 1 / -1; }
+  .site-foot { padding: 0 32px 56px; }
   .legal-head {
     grid-template-columns: 1fr;
   }
@@ -2093,6 +2099,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
     border-left: 0;
   }
   .shell { padding: 32px 16px 64px; }
+  .site-foot { padding: 0 16px 56px; }
   .page-head {
     grid-template-columns: 1fr;
     align-items: start;

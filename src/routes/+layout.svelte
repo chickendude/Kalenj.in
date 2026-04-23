@@ -8,6 +8,7 @@
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+	const year = new Date().getFullYear();
 
 	const navItems = $derived.by(() => {
 		const items = [
@@ -297,5 +298,26 @@
 <main class="shell">
 	{@render children()}
 </main>
+
+{#if page.url.pathname !== '/login'}
+	<footer class="site-foot mono">
+		<div class="site-foot-inner">
+			<p class="site-foot-lede">
+				Kalenj.in is a project to document and record the <em>kutitab myot</em> — the language
+				of sweetness — and provide resources for natives, heritage speakers, and learners of the
+				Kalenjin language.
+			</p>
+
+			<p class="site-foot-links">
+				<a href="/terms">Terms &amp; Data License</a>
+			</p>
+
+			<span class="site-foot-phrase"
+				>Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span
+			>
+			· {year}
+		</div>
+	</footer>
+{/if}
 
 <Toast />

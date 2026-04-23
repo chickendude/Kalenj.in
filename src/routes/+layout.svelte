@@ -13,7 +13,8 @@
 		const items = [
 			{ href: '/', label: 'Home' },
 			{ href: '/dictionary', label: 'Dictionary' },
-			{ href: '/corpus', label: 'Corpus' }
+			{ href: '/corpus', label: 'Corpus' },
+			{ href: '/terms', label: 'Terms' }
 		];
 		if (data.user) {
 			items.push({ href: '/lessons', label: 'Lessons' });

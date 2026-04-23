@@ -46,6 +46,10 @@
 			language.
 		</p>
 
+		<p class="home-foot-links">
+			<a href="/terms">Terms &amp; Data License</a>
+		</p>
+
 		<span class="home-foot-phrase">Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span> · {year}
 	</footer>
 </div>

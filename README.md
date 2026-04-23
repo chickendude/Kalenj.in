@@ -1,5 +1,13 @@
 # Kalenjin App
 
+## Data License
+
+The website data is licensed separately under `LICENSE-DATA.md`.
+
+That license allows broad educational and commercial reuse, but prohibits AI-related
+uses such as training, fine-tuning, benchmarking, or dataset creation for machine
+learning systems.
+
 ## Developing
 
 Start the local dev server with:

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { firstTranslation } from '$lib/translations';
@@ -91,7 +92,7 @@
 										tokens={sentence.tokens}
 									/>
 								</div>
-								<div class="recent-en">{sentence.english}</div>
+								<div class="recent-en"><SentenceTimeText text={sentence.english} /></div>
 							</div>
 						</li>
 					{/each}

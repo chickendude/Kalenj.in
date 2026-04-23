@@ -2,6 +2,8 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import { invalidateAll } from '$app/navigation';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
@@ -21,10 +23,20 @@
 	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
+	type InlineSentenceField = 'kalenjin' | 'english';
 
 	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
+	let inlineSentenceEdit = $state<InlineSentenceField | null>(null);
+	let inlineSentenceValue = $state('');
+	let inlineSentenceError = $state<string | null>(null);
+	let inlineSentenceInput = $state<HTMLTextAreaElement | null>(null);
+	let inlineSentenceEditorHeight = $state<number | null>(null);
+	let kalenjinDisplayShell = $state<HTMLDivElement | null>(null);
+	let englishDisplayShell = $state<HTMLButtonElement | null>(null);
+	let sentenceKalenjin = $state('');
+	let sentenceEnglish = $state('');
 
 	let sentenceTokens = $state<SentenceToken[]>([]);
 	const displayedSentenceTokens = $derived(
@@ -68,8 +80,107 @@
 		}
 	});
 
+	$effect(() => {
+		sentenceKalenjin = data.sentence.kalenjin;
+		sentenceEnglish = data.sentence.english;
+	});
+
+	$effect(() => {
+		if (!inlineSentenceEdit) return;
+
+		const timeout = window.setTimeout(() => {
+			inlineSentenceInput?.focus();
+			inlineSentenceInput?.select();
+		}, 0);
+
+		return () => window.clearTimeout(timeout);
+	});
+
 	function handleTokensChange(tokens: unknown[]): void {
 		sentenceTokens = (tokens as SentenceToken[]).map(cloneSentenceToken);
+	}
+
+	function beginInlineSentenceEdit(field: InlineSentenceField) {
+		if (!canEdit) return;
+		inlineSentenceEditorHeight =
+			field === 'kalenjin'
+				? kalenjinDisplayShell?.offsetHeight ?? null
+				: englishDisplayShell?.offsetHeight ?? null;
+		inlineSentenceEdit = field;
+		inlineSentenceValue = field === 'kalenjin' ? sentenceKalenjin : sentenceEnglish;
+		inlineSentenceError = null;
+	}
+
+	function cancelInlineSentenceEdit() {
+		inlineSentenceEdit = null;
+		inlineSentenceValue = '';
+		inlineSentenceError = null;
+		inlineSentenceEditorHeight = null;
+	}
+
+	async function saveInlineSentenceEdit() {
+		if (!inlineSentenceEdit) return;
+
+		const field = inlineSentenceEdit;
+		const trimmedValue = inlineSentenceValue.trim();
+		const currentValue = field === 'kalenjin' ? sentenceKalenjin : sentenceEnglish;
+
+		if (!trimmedValue) {
+			inlineSentenceError = field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.';
+			return;
+		}
+
+		if (trimmedValue === currentValue) {
+			cancelInlineSentenceEdit();
+			return;
+		}
+
+		try {
+			const response = await fetch(`/corpus/${data.sentence.id}/sentence-inline`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ field, value: trimmedValue })
+			});
+			const result = (await response.json()) as {
+				error?: string;
+				sentence?: {
+					id: string;
+					kalenjin: string;
+					english: string;
+					tokens: SentenceToken[];
+				};
+			};
+
+			if (!response.ok || !result.sentence) {
+				throw new Error(result.error ?? 'Could not save sentence.');
+			}
+
+			sentenceKalenjin = result.sentence.kalenjin;
+			sentenceEnglish = result.sentence.english;
+			sentenceTokens = result.sentence.tokens.map(cloneSentenceToken);
+			cancelInlineSentenceEdit();
+
+			if (field === 'kalenjin') {
+				await invalidateAll();
+			}
+		} catch (saveError) {
+			inlineSentenceError =
+				saveError instanceof Error ? saveError.message : 'Could not save sentence.';
+		}
+	}
+
+	function handleInlineSentenceKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			void saveInlineSentenceEdit();
+		} else if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelInlineSentenceEdit();
+		}
+	}
+
+	function saveInlineSentenceEditOnBlur() {
+		void saveInlineSentenceEdit();
 	}
 
 	function requestDeleteSentence(event: SubmitEvent) {
@@ -119,17 +230,85 @@
 	<div class="entry-head">
 		<div class="entry-label">Corpus sentence</div>
 		<div class="sentence-display">
-			<AudioPlayButton
-				audioUrl={data.sentence.audioUrl}
-				label="Play sentence"
-			/>
-			<TokenHoverPreview
-				sentenceId={data.sentence.id}
-				sentenceText={data.sentence.kalenjin}
-				tokens={displayedSentenceTokens}
-			/>
+			{#if inlineSentenceEdit === 'kalenjin'}
+				<textarea
+					bind:this={inlineSentenceInput}
+					class="inline-sentence-input sentence-display-input"
+					rows="2"
+					style:min-height={inlineSentenceEditorHeight ? `${inlineSentenceEditorHeight}px` : undefined}
+					bind:value={inlineSentenceValue}
+					onkeydown={handleInlineSentenceKeydown}
+					onblur={saveInlineSentenceEditOnBlur}
+				></textarea>
+			{:else if canEdit}
+				<div
+					bind:this={kalenjinDisplayShell}
+					class="editable-sentence-shell"
+				>
+					<AudioPlayButton
+						audioUrl={data.sentence.audioUrl}
+						label="Play sentence"
+					/>
+					<div
+						class="editable-sentence-text"
+						role="button"
+						tabindex="0"
+						aria-label="Edit original sentence"
+						onclick={() => beginInlineSentenceEdit('kalenjin')}
+						onkeydown={(event) => {
+							if (event.key === 'Enter' || event.key === ' ') {
+								event.preventDefault();
+								beginInlineSentenceEdit('kalenjin');
+							}
+						}}
+					>
+						<TokenHoverPreview
+							sentenceId={data.sentence.id}
+							sentenceText={sentenceKalenjin}
+							tokens={displayedSentenceTokens}
+							onTokenClick={() => beginInlineSentenceEdit('kalenjin')}
+						/>
+					</div>
+				</div>
+			{:else}
+				<AudioPlayButton
+					audioUrl={data.sentence.audioUrl}
+					label="Play sentence"
+				/>
+				<TokenHoverPreview
+					sentenceId={data.sentence.id}
+					sentenceText={sentenceKalenjin}
+					tokens={displayedSentenceTokens}
+				/>
+			{/if}
 		</div>
-		<div class="sentence-english">{data.sentence.english}</div>
+		<div class="sentence-english">
+			{#if inlineSentenceEdit === 'english'}
+				<textarea
+					bind:this={inlineSentenceInput}
+					class="inline-sentence-input sentence-english-input"
+					rows="2"
+					style:min-height={inlineSentenceEditorHeight ? `${inlineSentenceEditorHeight}px` : undefined}
+					bind:value={inlineSentenceValue}
+					onkeydown={handleInlineSentenceKeydown}
+					onblur={saveInlineSentenceEditOnBlur}
+				></textarea>
+			{:else if canEdit}
+				<button
+					bind:this={englishDisplayShell}
+					type="button"
+					class="inline-edit-button sentence-english-button"
+					onclick={() => beginInlineSentenceEdit('english')}
+				>
+					<SentenceTimeText text={sentenceEnglish} />
+				</button>
+			{:else}
+				<SentenceTimeText text={sentenceEnglish} />
+			{/if}
+		</div>
+		{#if inlineSentenceError}
+			<p class="error-text">{inlineSentenceError}</p>
+		{/if}
 		{#if data.sentence.notes}
 			<div class="sentence-notes">{data.sentence.notes}</div>
 		{/if}
@@ -181,7 +360,7 @@
 				entityIdField="sentenceId"
 				entityKind="example"
 				sentenceId={data.sentence.id}
-				sentenceText={data.sentence.kalenjin}
+				sentenceText={sentenceKalenjin}
 				tokens={displayedSentenceTokens}
 				dictionaryWords={data.words}
 				updateAction="?/updateCorpusSentenceToken"
@@ -232,6 +411,61 @@
 		color: var(--ink-soft);
 		font-size: 15px;
 		margin-bottom: 4px;
+	}
+
+	.editable-sentence-shell {
+		cursor: text;
+	}
+
+	.sentence-english-button {
+		background: transparent;
+		border: 0;
+		color: inherit;
+		cursor: text;
+		font: inherit;
+		margin: 0;
+		padding: 0;
+		text-align: left;
+		width: 100%;
+	}
+
+	.inline-edit-button:hover,
+	.inline-edit-button:focus-visible,
+	.editable-sentence-shell:hover,
+	.editable-sentence-shell:focus-within {
+		background: var(--surface);
+		border-radius: var(--radius);
+	}
+
+	.inline-sentence-input {
+		background: var(--paper);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		box-sizing: border-box;
+		color: var(--ink);
+		font: inherit;
+		line-height: inherit;
+		margin: 0;
+		min-height: 100%;
+		overflow: hidden;
+		padding: 0.45rem 0.55rem;
+		resize: none;
+		width: 100%;
+	}
+
+	.sentence-display-input {
+		font-family: var(--font-display);
+		font-size: 28px;
+	}
+
+	.sentence-english-input {
+		font-size: 15px;
+	}
+
+	.inline-sentence-input:focus {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--brand) 18%, transparent);
+		outline: none;
 	}
 
 	.sentence-notes {

@@ -9,6 +9,7 @@
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 	import {
@@ -1303,7 +1304,7 @@
 									class="inline-edit-button inline-edit-button--wide"
 									onclick={() => beginInlineStoryEdit(sentence, 'english')}
 								>
-									{sentence.english}
+									<SentenceTimeText text={sentence.english} />
 								</button>
 							{/if}
 
@@ -1632,7 +1633,13 @@
 								{#if inlineLessonWordEdit?.lessonWordId === lessonWord.id && inlineLessonWordEdit.field === 'sentenceEnglish'}
 									<textarea bind:this={inlineLessonWordInput} class="inline-edit-input sentence-english-input inline-translation-input" rows="2" bind:value={inlineLessonWordValue} onkeydown={handleInlineLessonWordLineKeydown} onblur={() => void saveInlineLessonWordEdit()}></textarea>
 								{:else if lessonWord.sentence}
-									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>{lwLocal.sentenceEnglish || missingSentenceTranslationLabel}</button>
+									<button type="button" class="inline-edit-button sentence-english-text" class:sentence-notes-empty={!lwLocal.sentenceEnglish} onclick={() => beginInlineLessonWordEdit(lessonWord, 'sentenceEnglish')}>
+										{#if lwLocal.sentenceEnglish}
+											<SentenceTimeText text={lwLocal.sentenceEnglish} />
+										{:else}
+											{missingSentenceTranslationLabel}
+										{/if}
+									</button>
 								{:else}
 									<button type="button" class="inline-edit-button sentence-english-text sentence-notes-empty" disabled>{missingSentenceTranslationLabel}</button>
 								{/if}

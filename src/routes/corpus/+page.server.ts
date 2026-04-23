@@ -48,7 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			},
 			take: 100
 		}),
-		prisma.exampleSentence.count({ where: nonEmpty })
+		prisma.exampleSentence.count({ where })
 	]);
 
 	return {

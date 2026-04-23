@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
@@ -240,7 +241,7 @@
 										tokens={sentence.tokens}
 									/>
 								</div>
-								<div class="en">{sentence.english}</div>
+								<div class="en"><SentenceTimeText text={sentence.english} /></div>
 								<div class="meta">
 									<span>
 										{mappedCount} / {sentence._count.tokens} token{sentence._count.tokens === 1

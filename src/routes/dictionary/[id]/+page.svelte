@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
@@ -309,7 +310,7 @@
 								tokens={link.exampleSentence.tokens}
 							/>
 						</div>
-						<div class="en">{link.exampleSentence.english}</div>
+						<div class="en"><SentenceTimeText text={link.exampleSentence.english} /></div>
 					</div>
 				{/each}
 			{/if}

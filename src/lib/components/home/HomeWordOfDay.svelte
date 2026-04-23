@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
@@ -103,7 +104,7 @@
 						/>
 						<AudioPlayButton audioUrl={example.audioUrl} size="sm" label="Play sentence" />
 					</div>
-					<div class="wod-en">{example.english}</div>
+					<div class="wod-en"><SentenceTimeText text={example.english} /></div>
 				</div>
 			{:else}
 				<div class="home-kicker small">

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
-	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
@@ -62,7 +62,7 @@
 							<a href={`/dictionary/${word.id}`} class="recent-entry">
 								<span class="recent-word">{word.kalenjin}</span>
 								{#if word.partOfSpeech}
-									<span class="pos-chip tiny">{PART_OF_SPEECH_LABELS[word.partOfSpeech]}</span>
+									<PartOfSpeechInline value={word.partOfSpeech} size="tiny" />
 								{/if}
 								<span class="recent-gloss">{firstTranslation(stripWordLinks(word.translations))}</span>
 							</a>

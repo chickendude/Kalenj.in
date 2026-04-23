@@ -2,6 +2,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
@@ -21,9 +22,7 @@
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 	};
-
 	const POS_LABELS = PART_OF_SPEECH_LABELS;
-
 	const values = $derived(form?.values ?? data.word);
 
 	let imageExpanded = $state(false);
@@ -190,7 +189,7 @@
 				</div>
 				<div class="entry-meta">
 					{#if partOfSpeechValue}
-						<span class="pos-chip">{POS_LABELS[partOfSpeechValue]}</span>
+						<PartOfSpeechInline value={partOfSpeechValue} />
 					{/if}
 					{#if showPlural}
 						<span class="plural-chip">
@@ -286,11 +285,13 @@
 				<div class="related-word-grid">
 					{#each data.word.relatedWords as link (link.word.id)}
 						<a href={`/dictionary/${link.word.id}`} class="related-word-card">
-							<span class="related-word-title">{link.word.kalenjin}</span>
+							<span class="related-word-heading">
+								<span class="related-word-title">{link.word.kalenjin}</span>
+								{#if link.word.partOfSpeech}
+									<PartOfSpeechInline value={link.word.partOfSpeech} size="tiny" />
+								{/if}
+							</span>
 							<span class="related-word-gloss">{firstTranslation(link.word.translations)}</span>
-							{#if link.word.partOfSpeech}
-								<span class="pos-chip tiny">{POS_LABELS[link.word.partOfSpeech]}</span>
-							{/if}
 						</a>
 					{/each}
 				</div>

@@ -19,6 +19,7 @@ function makeWord(overrides: Partial<{
 		notes: null,
 		pluralForm: overrides.pluralForm ?? null,
 		pluralFormNormalized: overrides.pluralFormNormalized ?? null,
+		isPluralOnly: false,
 		presentAnee: null,
 		presentInyee: null,
 		presentInee: null,

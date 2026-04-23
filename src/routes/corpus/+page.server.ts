@@ -1,4 +1,5 @@
 import { fail, redirect } from '@sveltejs/kit';
+import { Prisma } from '@prisma/client';
 import { prisma } from '$lib/server/prisma';
 import {
 	buildCorpusSentenceSearchWhere,
@@ -22,7 +23,11 @@ export const load: PageServerLoad = async ({ url }) => {
 	const language = parseCorpusSearchLanguage(url.searchParams.get('lang'));
 	const kalenjinSentenceIds =
 		query && language !== 'english' ? await findKalenjinCorpusSentenceIds(prisma, query) : [];
-	const where = buildCorpusSentenceSearchWhere(query, language, kalenjinSentenceIds);
+	const searchWhere = buildCorpusSentenceSearchWhere(query, language, kalenjinSentenceIds);
+	const nonEmpty: Prisma.ExampleSentenceWhereInput = { NOT: { kalenjin: '' } };
+	const where: Prisma.ExampleSentenceWhereInput = searchWhere
+		? { AND: [searchWhere, nonEmpty] }
+		: nonEmpty;
 
 	const [sentences, totalCount] = await Promise.all([
 		prisma.exampleSentence.findMany({
@@ -43,7 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			},
 			take: 100
 		}),
-		prisma.exampleSentence.count()
+		prisma.exampleSentence.count({ where: nonEmpty })
 	]);
 
 	return {

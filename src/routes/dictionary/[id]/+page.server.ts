@@ -112,6 +112,7 @@ export const actions: Actions = {
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
+		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 
 		const values = {
 			kalenjin,
@@ -140,10 +141,9 @@ export const actions: Actions = {
 			? (partOfSpeechRaw as PartOfSpeech)
 			: null;
 
-		const pluralForm =
-			(partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE') && pluralFormRaw
-				? pluralFormRaw
-				: null;
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
 
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
@@ -174,6 +174,7 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm,
+					isPluralOnly,
 					presentTense,
 					imageUrl: newImageUrl
 				});

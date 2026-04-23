@@ -82,6 +82,11 @@
 		<div class="page-stat">
 			<b>{data.totalCount}</b>
 			sentence{data.totalCount === 1 ? '' : 's'} collected
+			{#if canEdit}
+				<div class="page-stat-actions">
+					<a class="btn ghost sm" href="/corpus/duplicates">Check duplicates</a>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -256,6 +261,10 @@
 </section>
 
 <style>
+	.page-stat-actions {
+		margin-top: 8px;
+	}
+
 	.corpus-layout {
 		display: grid;
 		grid-template-columns: 380px 1fr;

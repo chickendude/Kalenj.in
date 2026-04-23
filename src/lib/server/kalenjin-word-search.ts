@@ -16,6 +16,7 @@ export type KalenjinSearchWord = {
 	notes: string | null;
 	pluralForm: string | null;
 	pluralFormNormalized: string | null;
+	isPluralOnly: boolean;
 	presentAnee: string | null;
 	presentInyee: string | null;
 	presentInee: string | null;

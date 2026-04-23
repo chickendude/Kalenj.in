@@ -31,6 +31,7 @@
 	let partOfSpeechValue = $state<PartOfSpeech | ''>('');
 	let altSpellingsValue = $state('');
 	let pluralFormValue = $state('');
+	let isPluralOnly = $state(false);
 	let presentAnee = $state('');
 	let presentInyee = $state('');
 	let presentInee = $state('');
@@ -59,6 +60,9 @@
 		pluralFormValue = (values as { pluralForm?: string | null }).pluralForm ?? '';
 	});
 	$effect(() => {
+		isPluralOnly = Boolean((values as { isPluralOnly?: boolean }).isPluralOnly);
+	});
+	$effect(() => {
 		presentAnee = data.word.presentAnee ?? '';
 		presentInyee = data.word.presentInyee ?? '';
 		presentInee = data.word.presentInee ?? '';
@@ -79,6 +83,10 @@
 	const showPlural = $derived(
 		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
 			Boolean(data.word.pluralForm)
+	);
+	const showPluralOnly = $derived(
+		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
+			data.word.isPluralOnly
 	);
 	const showConjugations = $derived(
 		data.word.partOfSpeech === 'VERB' &&
@@ -181,6 +189,10 @@
 						<span class="plural-chip">
 							<span class="plural-label">Plural</span>
 							<span class="plural-value">{data.word.pluralForm}</span>
+						</span>
+					{:else if showPluralOnly}
+						<span class="plural-chip">
+							<span class="plural-label">Plural-only</span>
 						</span>
 					{/if}
 					{#if altSpellingsList.length > 0}
@@ -370,11 +382,21 @@
 									type="text"
 									class="side-input"
 									placeholder="e.g. chego"
+									disabled={isPluralOnly}
 									bind:value={pluralFormValue}
 								/>
+								<label class="plural-only-toggle">
+									<input
+										type="checkbox"
+										name="isPluralOnly"
+										bind:checked={isPluralOnly}
+									/>
+									<span>Plural-only</span>
+								</label>
 							</div>
 						{:else}
 							<input type="hidden" name="pluralForm" value="" />
+							<input type="hidden" name="isPluralOnly" value="" />
 						{/if}
 						{#if needsConjugationInputs}
 							<div class="side-field">
@@ -794,6 +816,22 @@
 		font-weight: 600;
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
+	}
+	.plural-only-toggle {
+		align-items: center;
+		color: var(--ink-soft);
+		display: inline-flex;
+		font-size: 13px;
+		gap: 8px;
+		margin-top: 8px;
+	}
+	.plural-only-toggle input {
+		accent-color: var(--brand);
+	}
+	.side-input:disabled {
+		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));
+		color: var(--ink-mute);
+		cursor: not-allowed;
 	}
 	.conjugation-input-grid {
 		display: grid;

@@ -4,8 +4,6 @@
 	import HomeRecent from '$lib/components/home/HomeRecent.svelte';
 
 	let { data } = $props();
-
-	const year = new Date().getFullYear();
 </script>
 
 <svelte:head>
@@ -38,14 +36,4 @@
 	{/if}
 
 	<HomeRecent words={data.recentWords} sentences={data.recentSentences} />
-
-	<footer class="home-foot mono">
-		<p class="home-lede">
-			Kalenj.in is a project to document and record the <em>kutitab myot</em> — the language of
-			sweetness — and provide resources for natives, heritage speakers, and learners of the Kalenjin
-			language.
-		</p>
-
-		<span class="home-foot-phrase">Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span> · {year}
-	</footer>
 </div>

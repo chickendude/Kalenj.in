@@ -8,12 +8,14 @@
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
+	const year = new Date().getFullYear();
 
 	const navItems = $derived.by(() => {
 		const items = [
 			{ href: '/', label: 'Home' },
 			{ href: '/dictionary', label: 'Dictionary' },
-			{ href: '/corpus', label: 'Corpus' }
+			{ href: '/corpus', label: 'Corpus' },
+			{ href: '/terms', label: 'Terms' }
 		];
 		if (data.user) {
 			items.push({ href: '/lessons', label: 'Lessons' });
@@ -296,5 +298,27 @@
 <main class="shell">
 	{@render children()}
 </main>
+
+{#if page.url.pathname !== '/login'}
+	<footer class="site-foot mono">
+		<div class="site-foot-inner">
+			<p class="site-foot-lede">
+				Kalenj.in is a project to document and record the <em>kutitab myot</em> — the language
+				of sweetness — and provide resources for natives, heritage speakers, and learners of the
+				Kalenjin language.
+			</p>
+
+			<p class="site-foot-meta">
+				<span class="site-foot-phrase"
+					>Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span
+				>
+				<span aria-hidden="true"> · </span>
+				<span>&copy; {year}</span>
+				<span aria-hidden="true"> · </span>
+				<a href="/terms">Terms</a>
+			</p>
+		</div>
+	</footer>
+{/if}
 
 <Toast />

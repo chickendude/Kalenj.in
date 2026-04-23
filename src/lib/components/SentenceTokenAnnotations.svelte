@@ -1642,8 +1642,10 @@
 		border: 0;
 		border-bottom: 1px solid var(--warning);
 		border-radius: 0;
+		cursor: pointer;
 		font: inherit;
 		font-weight: 600;
+		position: relative;
 		padding: 0.1rem 0.2rem;
 		text-align: center;
 		white-space: nowrap;
@@ -1660,6 +1662,7 @@
 		padding: 0.15rem 0.25rem;
 		text-align: center;
 	}
+
 
 	.translation-form {
 		display: grid;

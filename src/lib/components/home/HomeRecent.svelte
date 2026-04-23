@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import type { PartOfSpeech } from '@prisma/client';
@@ -77,7 +78,7 @@
 										tokens={sentence.tokens}
 									/>
 								</div>
-								<div class="recent-en">{sentence.english}</div>
+								<div class="recent-en"><SentenceTimeText text={sentence.english} /></div>
 							</div>
 						</li>
 					{/each}

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
 	import type { PartOfSpeech } from '@prisma/client';
@@ -156,7 +157,7 @@
 								tokens={link.exampleSentence.tokens}
 							/>
 						</div>
-						<div class="en">{link.exampleSentence.english}</div>
+						<div class="en"><SentenceTimeText text={link.exampleSentence.english} /></div>
 					</div>
 				{/each}
 			{/if}

@@ -36,6 +36,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -59,6 +60,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -82,6 +84,7 @@
 		createNotes: string;
 		createAlternativeSpellings: string;
 		createPluralForm: string;
+		createIsPluralOnly: boolean;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
 
@@ -106,6 +109,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -267,6 +271,7 @@
 				createNotes: stripWordLinks(token.word?.notes ?? ''),
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
 				createPluralForm: token.word?.pluralForm ?? '',
+				createIsPluralOnly: Boolean(token.word?.isPluralOnly),
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
@@ -279,6 +284,7 @@
 					createNotes: stripWordLinks(segment.word?.notes ?? ''),
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
 					createPluralForm: segment.word?.pluralForm ?? '',
+					createIsPluralOnly: Boolean(segment.word?.isPluralOnly),
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
 			}
@@ -1014,6 +1020,8 @@
 						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? '',
 				createPluralForm:
 					tokenUpdate.word?.pluralForm ?? drafts[tokenUpdate.tokenId]?.createPluralForm ?? '',
+				createIsPluralOnly:
+					tokenUpdate.word?.isPluralOnly ?? drafts[tokenUpdate.tokenId]?.createIsPluralOnly ?? false,
 				createPartOfSpeech:
 					tokenUpdate.word?.partOfSpeech ?? drafts[tokenUpdate.tokenId]?.createPartOfSpeech ?? ''
 			};
@@ -1040,6 +1048,8 @@
 						: drafts[segment.id]?.createAlternativeSpellings ?? '',
 					createPluralForm:
 						segment.word?.pluralForm ?? drafts[segment.id]?.createPluralForm ?? '',
+					createIsPluralOnly:
+						segment.word?.isPluralOnly ?? drafts[segment.id]?.createIsPluralOnly ?? false,
 					createPartOfSpeech:
 						segment.word?.partOfSpeech ?? drafts[segment.id]?.createPartOfSpeech ?? ''
 				};
@@ -1159,6 +1169,7 @@
 			currentPos !== '' && !(CORE_POS as readonly string[]).includes(currentPos)}
 		{@const currentPosNeedsPlural = currentPos === 'NOUN' || currentPos === 'ADJECTIVE'}
 		{@const pluralFormValue = drafts[activeDraftKey]?.createPluralForm ?? ''}
+		{@const isPluralOnlyValue = drafts[activeDraftKey]?.createIsPluralOnly ?? false}
 		{@const splittableSurface = activeToken.surfaceForm.replace(
 			/[^\p{L}\p{M}\p{N}]+$/u,
 			''
@@ -1515,7 +1526,12 @@
 					<input
 						type="hidden"
 						name="pluralForm"
-						value={currentPosNeedsPlural ? pluralFormValue : ''}
+						value={currentPosNeedsPlural && !isPluralOnlyValue ? pluralFormValue : ''}
+					/>
+					<input
+						type="hidden"
+						name="isPluralOnly"
+						value={currentPosNeedsPlural && isPluralOnlyValue ? 'on' : ''}
 					/>
 
 					<div class="lemma-form-grid">
@@ -1581,6 +1597,7 @@
 										id="lemma-field-plural"
 										class="input"
 										placeholder="e.g. chego"
+										disabled={isPluralOnlyValue}
 										value={pluralFormValue}
 										oninput={(event) =>
 											updateDraft(
@@ -1591,6 +1608,19 @@
 									/>
 								</div>
 							</div>
+							<label class="plural-only-toggle">
+								<input
+									type="checkbox"
+									checked={isPluralOnlyValue}
+									onchange={(event) =>
+										updateDraft(
+											activeDraftKey,
+											'createIsPluralOnly',
+											(event.currentTarget as HTMLInputElement).checked
+										)}
+								/>
+								<span>Plural-only</span>
+							</label>
 						</div>
 					{/if}
 
@@ -2235,6 +2265,22 @@
 		background: color-mix(in oklch, var(--line) 45%, transparent);
 		color: var(--ink);
 		cursor: default;
+	}
+	.lemma-forms-grid .input:disabled {
+		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));
+		color: var(--ink-mute);
+		cursor: not-allowed;
+	}
+	.plural-only-toggle {
+		align-items: center;
+		color: var(--ink-soft);
+		display: inline-flex;
+		font-size: 13px;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.plural-only-toggle input {
+		accent-color: var(--brand);
 	}
 	.field-label {
 		color: var(--ink);

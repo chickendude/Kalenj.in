@@ -70,6 +70,7 @@
 		draftNotes: string;
 		draftPartOfSpeech: PartOfSpeech | '';
 		draftPluralForm: string;
+		draftIsPluralOnly: boolean;
 		draftPresentAnee: string;
 		draftPresentInyee: string;
 		draftPresentInee: string;
@@ -91,6 +92,7 @@
 			draftNotes: '',
 			draftPartOfSpeech: '',
 			draftPluralForm: '',
+			draftIsPluralOnly: false,
 			draftPresentAnee: '',
 			draftPresentInyee: '',
 			draftPresentInee: '',
@@ -1421,6 +1423,7 @@
 						bind:draftNotes={addWordState.draftNotes}
 						bind:draftPartOfSpeech={addWordState.draftPartOfSpeech}
 						bind:draftPluralForm={addWordState.draftPluralForm}
+						bind:draftIsPluralOnly={addWordState.draftIsPluralOnly}
 						bind:draftPresentAnee={addWordState.draftPresentAnee}
 						bind:draftPresentInyee={addWordState.draftPresentInyee}
 						bind:draftPresentInee={addWordState.draftPresentInee}

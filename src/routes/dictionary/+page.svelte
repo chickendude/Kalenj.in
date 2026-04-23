@@ -36,7 +36,12 @@
 		});
 	});
 
-	function navigateTo(nextQuery: string, nextLanguage: string, nextPos: string) {
+	function navigateTo(
+		nextQuery: string,
+		nextLanguage: string,
+		nextPos: string,
+		nextMissing: string
+	) {
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
 			debounceTimer = null;
@@ -54,6 +59,11 @@
 		} else {
 			params.delete('pos');
 		}
+		if (nextMissing) {
+			params.set('missing', nextMissing);
+		} else {
+			params.delete('missing');
+		}
 		const search = params.toString();
 		goto(`/dictionary${search ? `?${search}` : ''}`, {
 			keepFocus: true,
@@ -67,12 +77,16 @@
 		searchQuery = value;
 		if (debounceTimer) clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
-			navigateTo(value, data.language, data.pos);
+			navigateTo(value, data.language, data.pos, data.missing);
 		}, 180);
 	}
 
 	function selectLanguage(nextLanguage: 'kalenjin' | 'translations' | 'both') {
-		navigateTo(searchQuery, nextLanguage, data.pos);
+		navigateTo(searchQuery, nextLanguage, data.pos, data.missing);
+	}
+
+	function selectMissing(nextMissing: '' | 'plural' | 'conjugation') {
+		navigateTo(searchQuery, data.language, data.pos, nextMissing);
 	}
 
 	let posOtherOpen = $state(false);
@@ -84,7 +98,7 @@
 
 	function selectPos(nextPos: string) {
 		posOtherOpen = false;
-		navigateTo(searchQuery, data.language, nextPos);
+		navigateTo(searchQuery, data.language, nextPos, data.missing);
 	}
 
 	function togglePosOther() {
@@ -116,6 +130,7 @@
 	let addWordNotes = $state('');
 	let addWordPartOfSpeech = $state<PartOfSpeech | ''>('');
 	let addWordPluralForm = $state('');
+	let addWordIsPluralOnly = $state(false);
 	let addWordPresentAnee = $state('');
 	let addWordPresentInyee = $state('');
 	let addWordPresentInee = $state('');
@@ -131,6 +146,7 @@
 		addWordNotes = '';
 		addWordPartOfSpeech = '';
 		addWordPluralForm = '';
+		addWordIsPluralOnly = false;
 		addWordPresentAnee = '';
 		addWordPresentInyee = '';
 		addWordPresentInee = '';
@@ -222,6 +238,36 @@
 					class:active={data.language === 'both'}
 					onclick={() => selectLanguage('both')}
 				>Both</button>
+			</div>
+		</div>
+
+		<div class="field">
+			<span class="field-label">Missing</span>
+			<div class="missing-filter" role="radiogroup" aria-label="Filter by missing data">
+				<button
+					type="button"
+					role="radio"
+					aria-checked={!data.missing}
+					class="pos-pill"
+					class:selected={!data.missing}
+					onclick={() => selectMissing('')}
+				>None</button>
+				<button
+					type="button"
+					role="radio"
+					aria-checked={data.missing === 'plural'}
+					class="pos-pill"
+					class:selected={data.missing === 'plural'}
+					onclick={() => selectMissing('plural')}
+				>Plural</button>
+				<button
+					type="button"
+					role="radio"
+					aria-checked={data.missing === 'conjugation'}
+					class="pos-pill"
+					class:selected={data.missing === 'conjugation'}
+					onclick={() => selectMissing('conjugation')}
+				>Conjugation</button>
 			</div>
 		</div>
 
@@ -387,6 +433,7 @@
 					bind:notes={addWordNotes}
 					bind:partOfSpeech={addWordPartOfSpeech}
 					bind:pluralForm={addWordPluralForm}
+					bind:isPluralOnly={addWordIsPluralOnly}
 					bind:presentAnee={addWordPresentAnee}
 					bind:presentInyee={addWordPresentInyee}
 					bind:presentInee={addWordPresentInee}
@@ -497,7 +544,8 @@
 		font-weight: 600;
 	}
 
-	.pos-filter {
+	.pos-filter,
+	.missing-filter {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;

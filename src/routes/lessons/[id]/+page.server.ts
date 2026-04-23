@@ -785,6 +785,7 @@ export const actions: Actions = {
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
+		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceNotes = readOptionalText(formData, 'sentenceNotes');
@@ -826,10 +827,9 @@ export const actions: Actions = {
 		const partOfSpeech: PartOfSpeech | null = partOfSpeechRaw
 			? (partOfSpeechRaw as PartOfSpeech)
 			: null;
-		const pluralForm =
-			(partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE') && pluralFormRaw
-				? pluralFormRaw
-				: null;
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
@@ -866,6 +866,7 @@ export const actions: Actions = {
 							alternativeSpellings,
 							partOfSpeech,
 							pluralForm,
+							isPluralOnly,
 							presentTense
 						});
 
@@ -1146,6 +1147,7 @@ export const actions: Actions = {
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
+		const isPluralOnlyRawStory = readText(formData, 'isPluralOnly');
 
 		if (!storySentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -1181,6 +1183,9 @@ export const actions: Actions = {
 
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
+				const canHavePlural =
+					partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+				const isPluralOnly = canHavePlural && isPluralOnlyRawStory === 'on';
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -1188,8 +1193,8 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm:
-						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					isPluralOnly,
 					presentTense
 				});
 
@@ -1384,6 +1389,7 @@ export const actions: Actions = {
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
+		const isPluralOnlyRawLesson = readText(formData, 'isPluralOnly');
 
 		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -1410,6 +1416,9 @@ export const actions: Actions = {
 
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
+				const canHavePlural =
+					partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+				const isPluralOnly = canHavePlural && isPluralOnlyRawLesson === 'on';
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -1417,8 +1426,8 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm:
-						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					isPluralOnly,
 					presentTense
 				});
 

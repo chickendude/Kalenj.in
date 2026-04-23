@@ -25,6 +25,7 @@ import {
 	readPresentTenseFromFormData
 } from '$lib/server/lemma-words';
 import { loadCefrBrowse } from '$lib/server/cefr-browse';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -818,6 +819,36 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
+		const wordImageFile = formData.get('wordImage');
+		const sentenceImageFile = formData.get('sentenceImage');
+		const uploadedUrls: string[] = [];
+		const rollbackUploads = async () => {
+			await Promise.all(uploadedUrls.map((url) => deleteUploadedImage(url)));
+		};
+
+		let wordImageUrl: string | null = null;
+		if (wordImageFile instanceof File && wordImageFile.size > 0) {
+			try {
+				wordImageUrl = await saveUploadedImage(wordImageFile);
+				uploadedUrls.push(wordImageUrl);
+			} catch (err) {
+				if (err instanceof UploadError) return fail(400, { error: err.message });
+				throw err;
+			}
+		}
+
+		let sentenceImageUrl: string | null = null;
+		if (sentenceImageFile instanceof File && sentenceImageFile.size > 0) {
+			try {
+				sentenceImageUrl = await saveUploadedImage(sentenceImageFile);
+				uploadedUrls.push(sentenceImageUrl);
+			} catch (err) {
+				await rollbackUploads();
+				if (err instanceof UploadError) return fail(400, { error: err.message });
+				throw err;
+			}
+		}
+
 		try {
 			const lessonWord = await prisma.$transaction(async (tx) => {
 				const lessonSection = await ensureDefaultLessonSection(tx, lessonId);
@@ -830,12 +861,19 @@ export const actions: Actions = {
 						throw new Error(formatSentenceInUseError(match.lessonWord));
 					}
 					sentenceId = match.id;
+					if (sentenceImageUrl) {
+						await tx.exampleSentence.update({
+							where: { id: match.id },
+							data: { imageUrl: sentenceImageUrl }
+						});
+					}
 				} else {
 					const sentence = await tx.exampleSentence.create({
 						data: {
 							kalenjin: sentenceKalenjin,
 							english: sentenceEnglish,
-							notes: sentenceNotes
+							notes: sentenceNotes,
+							imageUrl: sentenceImageUrl
 						}
 					});
 					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
@@ -843,7 +881,13 @@ export const actions: Actions = {
 				}
 
 				const word = existingWord
-					? existingWord
+					? (wordImageUrl
+						? await tx.word.update({
+								where: { id: existingWord.id },
+								data: { imageUrl: wordImageUrl },
+								select: { id: true, kalenjin: true, translations: true }
+							})
+						: existingWord)
 					: await createOrUpdateLinkedWord(tx, {
 							kalenjin: kalenjinInput,
 							translations: translationsInput,
@@ -851,7 +895,8 @@ export const actions: Actions = {
 							alternativeSpellings,
 							partOfSpeech,
 							pluralForm,
-							presentTense
+							presentTense,
+							imageUrl: wordImageUrl
 						});
 
 				const createdLessonWord = await tx.lessonWord.create({
@@ -874,6 +919,7 @@ export const actions: Actions = {
 			await ensureCefrCoverage(lessonWord.lessonWordId, cefrTargetIds);
 			return { createWordSuccess: true, createdLessonWordId: lessonWord.lessonWordId };
 		} catch (createError) {
+			await rollbackUploads();
 			if (createError instanceof Prisma.PrismaClientKnownRequestError && createError.code === 'P2002') {
 				return fail(400, {
 					error: 'This lemma is already in the lesson.'
@@ -1164,6 +1210,19 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
+		const imageFile = formData.get('image');
+		let imageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				imageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message });
+				}
+				throw err;
+			}
+		}
+
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
@@ -1175,7 +1234,8 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm:
 						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
-					presentTense
+					presentTense,
+					...(imageUrl !== undefined ? { imageUrl } : {})
 				});
 
 				if (checkedSegment) {
@@ -1232,6 +1292,9 @@ export const actions: Actions = {
 				]
 			};
 		} catch (createError) {
+			if (imageUrl) {
+				await deleteUploadedImage(imageUrl);
+			}
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
@@ -1393,6 +1456,19 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
+		const imageFile = formData.get('image');
+		let imageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				imageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message });
+				}
+				throw err;
+			}
+		}
+
 		try {
 			const { word, token } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
@@ -1404,7 +1480,8 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm:
 						partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
-					presentTense
+					presentTense,
+					...(imageUrl !== undefined ? { imageUrl } : {})
 				});
 
 				if (checkedSegment) {
@@ -1473,6 +1550,9 @@ export const actions: Actions = {
 				]
 			};
 		} catch (createError) {
+			if (imageUrl) {
+				await deleteUploadedImage(imageUrl);
+			}
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'

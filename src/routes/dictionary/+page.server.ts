@@ -5,6 +5,7 @@ import { prisma } from '$lib/server/prisma';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { requireEditor } from '$lib/server/guards';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -134,17 +135,39 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
-		const word = await prisma.$transaction((tx) =>
-			createOrUpdateLinkedWord(tx, {
-				kalenjin,
-				translations,
-				notes: notes || null,
-				alternativeSpellings,
-				partOfSpeech,
-				pluralForm,
-				presentTense
-			})
-		);
+		const imageFile = formData.get('image');
+		let imageUrl: string | null = null;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				imageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message, values });
+				}
+				throw err;
+			}
+		}
+
+		let word;
+		try {
+			word = await prisma.$transaction((tx) =>
+				createOrUpdateLinkedWord(tx, {
+					kalenjin,
+					translations,
+					notes: notes || null,
+					alternativeSpellings,
+					partOfSpeech,
+					pluralForm,
+					presentTense,
+					imageUrl
+				})
+			);
+		} catch (err) {
+			if (imageUrl) {
+				await deleteUploadedImage(imageUrl);
+			}
+			throw err;
+		}
 
 		redirect(303, `/dictionary/${word.id}`);
 	}

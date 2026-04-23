@@ -3,6 +3,7 @@
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import ImageUploadField from './ImageUploadField.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -36,6 +37,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			imageUrl?: string | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -59,6 +61,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			imageUrl?: string | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -1414,6 +1417,7 @@
 					method="POST"
 					action={createAction}
 					class="lemma-form"
+					enctype="multipart/form-data"
 					use:enhance={enhanceCreateForm(activeToken.id)}
 				>
 					<input type="hidden" name={entityIdField} value={entityId} />
@@ -1532,20 +1536,30 @@
 						/>
 					</div>
 
-					<div class="field lemma-full-field">
-						<label for="lemma-field-notes">Notes</label>
-						<input
-							id="lemma-field-notes"
-							class="input"
-							name="notes"
-							placeholder="Optional"
-							value={drafts[activeDraftKey]?.createNotes ?? ''}
-							oninput={(event) =>
-								updateDraft(
-									activeDraftKey,
-									'createNotes',
-									(event.currentTarget as HTMLInputElement).value
-								)}
+					<div class="lemma-notes-image-grid">
+						<div class="field notes-field">
+							<label for="lemma-field-notes">Notes</label>
+							<textarea
+								id="lemma-field-notes"
+								class="input notes-input"
+								name="notes"
+								placeholder="Optional"
+								rows="4"
+								value={drafts[activeDraftKey]?.createNotes ?? ''}
+								oninput={(event) =>
+									updateDraft(
+										activeDraftKey,
+										'createNotes',
+										(event.currentTarget as HTMLTextAreaElement).value
+									)}
+							></textarea>
+						</div>
+						<ImageUploadField
+							name="image"
+							idPrefix="lemma-create-image"
+							currentUrl={selectedWordInDraft && selectedWordInDraft === activeWord?.id
+								? activeWord?.imageUrl ?? null
+								: null}
 						/>
 					</div>
 
@@ -2112,6 +2126,43 @@
 	.lemma-full-field {
 		margin-top: 12px;
 	}
+	.lemma-notes-image-grid {
+		align-items: stretch;
+		display: grid;
+		gap: 12px;
+		grid-template-columns: 2fr 1fr;
+		margin-top: 12px;
+	}
+	.lemma-notes-image-grid .notes-field {
+		display: flex;
+		flex-direction: column;
+	}
+	.lemma-notes-image-grid .notes-input {
+		flex: 1;
+		min-height: 0;
+		resize: none;
+		font-family: inherit;
+	}
+	.lemma-notes-image-grid :global(.image-upload) {
+		height: 100%;
+	}
+	.lemma-notes-image-grid :global(.dropzone) {
+		flex: 1;
+	}
+	.lemma-notes-image-grid :global(.dropzone.has-image) {
+		padding: 0;
+		overflow: hidden;
+	}
+	.lemma-notes-image-grid :global(.preview) {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		max-height: none;
+		object-fit: cover;
+		border-radius: 5px;
+	}
 	.lemma-forms-block {
 		background: color-mix(in oklch, var(--accent) 10%, var(--paper));
 		border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--line));
@@ -2308,7 +2359,8 @@
 			padding: 20px 18px 18px;
 		}
 		.lemma-form-grid,
-		.lemma-forms-grid {
+		.lemma-forms-grid,
+		.lemma-notes-image-grid {
 			grid-template-columns: 1fr;
 		}
 		.lemma-modal-title {

@@ -9,6 +9,7 @@ import {
 	createOrUpdateLinkedWord,
 	readPresentTenseFromFormData
 } from '$lib/server/lemma-words';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -263,6 +264,19 @@ export const actions: Actions = {
 			? await ensureSentenceTokenSegment(params.id, tokenId, segmentId)
 			: null;
 
+		const imageFile = formData.get('image');
+		let imageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				imageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message });
+				}
+				throw err;
+			}
+		}
+
 		try {
 			const { token: updatedToken } = await prisma.$transaction(async (tx) => {
 				const word = await createOrUpdateLinkedWord(tx, {
@@ -273,7 +287,8 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
-					presentTense
+					presentTense,
+					...(imageUrl !== undefined ? { imageUrl } : {})
 				});
 
 				if (checkedSegment) {
@@ -342,11 +357,58 @@ export const actions: Actions = {
 				]
 			};
 		} catch (createError) {
+			if (imageUrl) {
+				await deleteUploadedImage(imageUrl);
+			}
 			return fail(400, {
 				error:
 					createError instanceof Error ? createError.message : 'Could not create or link lemma.'
 			});
 		}
+	},
+	updateSentenceImage: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const current = await prisma.exampleSentence.findUnique({
+			where: { id: params.id },
+			select: { imageUrl: true }
+		});
+		if (!current) error(404, 'Sentence not found');
+
+		const formData = await request.formData();
+		const imageFile = formData.get('image');
+		const removeImage = formData.get('removeImage') === '1';
+
+		let newImageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				newImageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) return fail(400, { error: err.message });
+				throw err;
+			}
+		} else if (removeImage) {
+			newImageUrl = null;
+		}
+
+		if (newImageUrl === undefined) {
+			return { updateSentenceImageSuccess: true };
+		}
+
+		try {
+			await prisma.exampleSentence.update({
+				where: { id: params.id },
+				data: { imageUrl: newImageUrl }
+			});
+		} catch (err) {
+			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
+			throw err;
+		}
+
+		if (current.imageUrl && current.imageUrl !== newImageUrl) {
+			await deleteUploadedImage(current.imageUrl);
+		}
+
+		return { updateSentenceImageSuccess: true };
 	},
 	deleteSentence: async ({ params, locals }) => {
 		requireEditor(locals);
@@ -356,6 +418,7 @@ export const actions: Actions = {
 			select: {
 				id: true,
 				storySentenceId: true,
+				imageUrl: true,
 				_count: { select: { lessonWords: true } }
 			}
 		});
@@ -378,6 +441,7 @@ export const actions: Actions = {
 		}
 
 		await prisma.exampleSentence.delete({ where: { id: params.id } });
+		if (existing.imageUrl) await deleteUploadedImage(existing.imageUrl);
 
 		redirect(303, '/corpus');
 	}

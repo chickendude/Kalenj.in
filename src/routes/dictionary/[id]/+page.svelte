@@ -1,6 +1,7 @@
 <script lang="ts">
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks, stripWordLinks } from '$lib/word-links';
@@ -22,6 +23,8 @@
 
 	const values = $derived(form?.values ?? data.word);
 
+	let imageExpanded = $state(false);
+	let liveImageUrl = $state<string | null>(null);
 	let kalenjinValue = $state('');
 	let translationsValue = $state('');
 	let notesValue = $state('');
@@ -201,14 +204,26 @@
 			</div>
 
 			<h2 class="section-title">Translations</h2>
-			<ol class="translations-list">
-				{#each translations as translation, index}
-					<li>
-						<span class="num">{index + 1}.</span>
-						{@html renderWordLinks(translation)}
-					</li>
-				{/each}
-			</ol>
+			<div class="translations-body" class:has-image={Boolean(liveImageUrl)}>
+				<ol class="translations-list">
+					{#each translations as translation, index}
+						<li>
+							<span class="num">{index + 1}.</span>
+							{@html renderWordLinks(translation)}
+						</li>
+					{/each}
+				</ol>
+				{#if liveImageUrl}
+					<button
+						type="button"
+						class="entry-image-btn"
+						onclick={() => (imageExpanded = true)}
+						aria-label="Expand image"
+					>
+						<img src={liveImageUrl} alt="" class="entry-image" />
+					</button>
+				{/if}
+			</div>
 
 			{#if showConjugations}
 				<h2 class="section-title">Present tense</h2>
@@ -293,6 +308,7 @@
 					<form
 						method="POST"
 						action="?/update"
+						enctype="multipart/form-data"
 						use:enhance={() => {
 							return async ({ update }) => {
 								await update({ reset: false });
@@ -444,6 +460,13 @@
 								bind:value={notesValue}
 							/>
 						</div>
+						<div class="side-field">
+							<ImageUploadField
+								currentUrl={data.word.imageUrl}
+								idPrefix="word-edit-image"
+								bind:effectiveUrl={liveImageUrl}
+							/>
+						</div>
 						<div style="display: flex; gap: 8px; margin-top: 4px;">
 							<button type="submit" class="btn-sm">Save</button>
 						</div>
@@ -542,7 +565,102 @@
 	</div>
 </section>
 
+{#if imageExpanded && liveImageUrl}
+	<div
+		class="image-lightbox"
+		role="dialog"
+		aria-modal="true"
+		aria-label="Expanded image"
+		onclick={() => (imageExpanded = false)}
+		onkeydown={(e) => {
+			if (e.key === 'Escape') imageExpanded = false;
+		}}
+		tabindex="-1"
+	>
+		<img src={liveImageUrl} alt="" class="lightbox-image" />
+		<button
+			type="button"
+			class="lightbox-close"
+			onclick={(e) => {
+				e.stopPropagation();
+				imageExpanded = false;
+			}}
+			aria-label="Close"
+		>×</button>
+	</div>
+{/if}
+
 <style>
+	.translations-body {
+		display: grid;
+		gap: 16px;
+	}
+	.translations-body.has-image {
+		grid-template-columns: minmax(0, 1fr) auto;
+		align-items: start;
+	}
+	.translations-list {
+		min-width: 0;
+	}
+	.entry-image-btn {
+		background: none;
+		border: 0;
+		padding: 0;
+		cursor: zoom-in;
+		justify-self: end;
+	}
+	.entry-image {
+		display: block;
+		max-width: 180px;
+		max-height: 140px;
+		object-fit: contain;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		background: var(--bg-raised);
+	}
+	@media (max-width: 560px) {
+		.translations-body.has-image {
+			grid-template-columns: 1fr;
+		}
+		.entry-image-btn {
+			justify-self: start;
+		}
+	}
+	.image-lightbox {
+		position: fixed;
+		inset: 0;
+		background: rgba(15, 23, 42, 0.78);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem;
+		z-index: 90;
+		cursor: zoom-out;
+	}
+	.lightbox-image {
+		max-width: 100%;
+		max-height: 100%;
+		object-fit: contain;
+		border-radius: 8px;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+	}
+	.lightbox-close {
+		position: absolute;
+		top: 1rem;
+		right: 1rem;
+		background: rgba(0, 0, 0, 0.5);
+		color: #fff;
+		border: 0;
+		border-radius: 50%;
+		width: 36px;
+		height: 36px;
+		font-size: 1.5rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.lightbox-close:hover {
+		background: rgba(0, 0, 0, 0.75);
+	}
 	.alt-spellings-toggle {
 		display: inline-flex;
 		align-items: center;

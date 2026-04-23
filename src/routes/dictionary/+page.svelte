@@ -6,6 +6,7 @@
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	const POS_CORE = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
@@ -355,6 +356,7 @@
 				method="POST"
 				action="?/createWord"
 				class="add-word-form"
+				enctype="multipart/form-data"
 				use:enhance={() => {
 					addWordSubmitting = true;
 					addWordError = null;
@@ -397,6 +399,7 @@
 					kalenjinLabel="Kalenjin"
 					alternativeSpellingsHint="comma, separated"
 				/>
+				<ImageUploadField name="image" idPrefix="dict-add-word-image" />
 				<div class="add-word-actions">
 					<button
 						type="button"

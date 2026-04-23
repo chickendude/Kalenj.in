@@ -26,6 +26,19 @@ export const PART_OF_SPEECH_LABELS: Record<PartOfSpeech, string> = {
 	OTHER: 'Other'
 };
 
+export const PART_OF_SPEECH_ABBREVIATIONS: Record<PartOfSpeech, string> = {
+	NOUN: 'n',
+	VERB: 'v',
+	ADJECTIVE: 'adj',
+	ADVERB: 'adv',
+	PRONOUN: 'pron',
+	PREPOSITION: 'prep',
+	CONJUNCTION: 'conj',
+	INTERJECTION: 'interj',
+	PHRASE: 'phr',
+	OTHER: 'other'
+};
+
 export function isPartOfSpeech(value: string): value is PartOfSpeech {
 	return (PARTS_OF_SPEECH as readonly string[]).includes(value);
 }

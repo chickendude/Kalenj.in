@@ -3,6 +3,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { applyAction, enhance } from '$app/forms';
 	import { page } from '$app/state';
+	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
@@ -351,7 +352,6 @@
 				<tr>
 					<th class="col-word">Kalenjin</th>
 					<th class="col-trans">Translations (English)</th>
-					<th class="col-pos">Part of speech</th>
 				</tr>
 			</thead>
 			<tbody>
@@ -364,17 +364,15 @@
 									size="sm"
 									label={`Play pronunciation of ${word.kalenjin}`}
 								/>
-								<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+								<span class="word-with-pos">
+									<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+									{#if word.partOfSpeech}
+										<PartOfSpeechInline value={word.partOfSpeech} size="tiny" />
+									{/if}
+								</span>
 							</div>
 						</td>
 						<td class="col-trans">{stripWordLinks(word.translations)}</td>
-						<td class="col-pos">
-							{#if word.partOfSpeech}
-								<span class="pos-chip">{POS_LABELS[word.partOfSpeech]}</span>
-							{:else}
-								<span style="color: var(--ink-mute)">—</span>
-							{/if}
-						</td>
 					</tr>
 				{/each}
 			</tbody>

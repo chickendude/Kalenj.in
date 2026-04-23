@@ -1551,7 +1551,7 @@
 									{:else}
 										<div class="word-kalenjin-row">
 											<AudioPlayButton
-												audioUrl={lessonWord.word.audioUrl}
+												audioUrl={lessonWord.word?.audioUrl ?? null}
 												size="sm"
 												label={`Play pronunciation of ${getWordLocal(lessonWord).kalenjin}`}
 											/>

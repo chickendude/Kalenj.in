@@ -12,6 +12,7 @@ DEPLOYMENT.md
 /.svelte-kit
 /build
 /coverage
+/.uploads
 
 # OS
 .DS_Store
@@ -29,3 +30,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 /../generated/prisma
+
+# Uploaded media (user-generated dictionary/corpus images)
+/uploads

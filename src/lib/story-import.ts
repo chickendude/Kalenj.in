@@ -1,3 +1,5 @@
+import { splitIntoSentences } from '$lib/story-split';
+
 export type ParsedStorySentence = {
 	sentenceOrder: number;
 	speaker: string | null;
@@ -92,11 +94,28 @@ function parseStoryLine(line: string, sentenceOrder: number): ParsedStorySentenc
 }
 
 export function parseStoryImportText(value: string): ParsedStorySentence[] {
-	return value
+	const lines = value
 		.split(/\r?\n/)
 		.map((line) => line.trim())
-		.filter((line) => line.length > 0)
-		.map((line, index) => parseStoryLine(line, index + 1));
+		.filter((line) => line.length > 0);
+
+	const expanded: ParsedStorySentence[] = [];
+
+	for (let i = 0; i < lines.length; i++) {
+		const parsed = parseStoryLine(lines[i], i + 1);
+		const pieces = splitIntoSentences(parsed.kalenjin, parsed.english);
+
+		for (const piece of pieces) {
+			expanded.push({
+				sentenceOrder: expanded.length + 1,
+				speaker: parsed.speaker,
+				kalenjin: piece.kalenjin,
+				english: piece.english
+			});
+		}
+	}
+
+	return expanded;
 }
 
 export function validateStoryImportText(value: string): string | null {

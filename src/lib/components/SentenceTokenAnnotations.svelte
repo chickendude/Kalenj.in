@@ -2,6 +2,8 @@
 	import { enhance } from '$app/forms';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { stripWordLinks } from '$lib/word-links';
+	import ImageUploadField from './ImageUploadField.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -35,6 +37,8 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			imageUrl?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -58,6 +62,8 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			imageUrl?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -81,6 +87,7 @@
 		createNotes: string;
 		createAlternativeSpellings: string;
 		createPluralForm: string;
+		createIsPluralOnly: boolean;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
 
@@ -105,6 +112,7 @@
 			notes?: string | null;
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
+			isPluralOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -126,7 +134,10 @@
 		createAction,
 		searchEndpoint,
 		tokenGroupEndpoint,
-		onTokensChange
+		onTokensChange,
+		onNavigatePrevSentence,
+		onNavigateNextSentence,
+		focusRequest
 	}: {
 		entityId: string;
 		entityIdField: string;
@@ -140,6 +151,9 @@
 		searchEndpoint: string;
 		tokenGroupEndpoint: string;
 		onTokensChange?: (tokens: SentenceToken[]) => void;
+		onNavigatePrevSentence?: () => void;
+		onNavigateNextSentence?: () => void;
+		focusRequest?: { position: 'first' | 'last'; nonce: number } | null;
 	} = $props();
 
 	let openTokenId = $state<string | null>(null);
@@ -179,6 +193,16 @@
 		);
 	const activeToken = $derived(localTokens.find((token) => token.id === openTokenId) ?? null);
 	const activeGroup = $derived(groups.find((group) => group.tokens[0]?.id === openTokenId) ?? null);
+	const activeGroupIndex = $derived(
+		activeGroup ? groups.findIndex((group) => group.key === activeGroup.key) : -1
+	);
+	const hasPrevWord = $derived(
+		activeGroupIndex > 0 || (activeGroupIndex === 0 && Boolean(onNavigatePrevSentence))
+	);
+	const hasNextWord = $derived(
+		(activeGroupIndex >= 0 && activeGroupIndex < groups.length - 1) ||
+			(activeGroupIndex === groups.length - 1 && Boolean(onNavigateNextSentence))
+	);
 	const activeSegment = $derived(
 		activeToken?.segments?.find((segment) => segment.id === activeSegmentId) ?? null
 	);
@@ -217,8 +241,8 @@
 					wordId: token.wordId,
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
-				wordTranslations: token.word?.translations ?? null,
-				wordNotes: token.word?.notes ?? null,
+				wordTranslations: token.word?.translations ? stripWordLinks(token.word.translations) : null,
+				wordNotes: token.word?.notes ? stripWordLinks(token.word.notes) : null,
 				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? [],
 				segments:
 					token.segments?.map((segment) => ({
@@ -226,8 +250,8 @@
 						surfaceForm: segment.surfaceForm,
 						wordId: segment.wordId,
 						wordKalenjin: segment.word?.kalenjin ?? null,
-						wordTranslations: segment.word?.translations ?? null,
-						wordNotes: segment.word?.notes ?? null,
+						wordTranslations: segment.word?.translations ? stripWordLinks(segment.word.translations) : null,
+						wordNotes: segment.word?.notes ? stripWordLinks(segment.word.notes) : null,
 						wordSpellings: segment.word?.spellings?.map((spelling) => spelling.spelling) ?? []
 					})) ?? []
 			}))
@@ -246,10 +270,11 @@
 				inContextTranslation: token.inContextTranslation ?? '',
 				selectedWordId: token.word?.id ?? '',
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
-				createTranslations: token.word?.translations ?? '',
-				createNotes: token.word?.notes ?? '',
+				createTranslations: stripWordLinks(token.word?.translations ?? ''),
+				createNotes: stripWordLinks(token.word?.notes ?? ''),
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
 				createPluralForm: token.word?.pluralForm ?? '',
+				createIsPluralOnly: Boolean(token.word?.isPluralOnly),
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
@@ -258,10 +283,11 @@
 					inContextTranslation: '',
 					selectedWordId: segment.word?.id ?? '',
 					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
-					createTranslations: segment.word?.translations ?? '',
-					createNotes: segment.word?.notes ?? '',
+					createTranslations: stripWordLinks(segment.word?.translations ?? ''),
+					createNotes: stripWordLinks(segment.word?.notes ?? ''),
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
 					createPluralForm: segment.word?.pluralForm ?? '',
+					createIsPluralOnly: Boolean(segment.word?.isPluralOnly),
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
 			}
@@ -375,6 +401,24 @@
 		return () => window.clearTimeout(timeout);
 	});
 
+	let lastFocusRequestNonce = $state<number | null>(null);
+	$effect(() => {
+		if (!focusRequest) {
+			return;
+		}
+		if (focusRequest.nonce === lastFocusRequestNonce) {
+			return;
+		}
+		lastFocusRequestNonce = focusRequest.nonce;
+		const target =
+			focusRequest.position === 'first'
+				? groups[0]?.tokens[0]
+				: groups[groups.length - 1]?.tokens[0];
+		if (target) {
+			openPicker(target);
+		}
+	});
+
 	$effect(() => {
 		if (!openTokenId && !pendingMerge) {
 			return;
@@ -435,6 +479,23 @@
 		activatePickerToken(token, token.segments?.[0]?.id ?? null);
 	}
 
+	function gotoAdjacentWord(delta: 1 | -1) {
+		if (activeGroupIndex < 0) {
+			return;
+		}
+		const target = groups[activeGroupIndex + delta];
+		const nextToken = target?.tokens[0];
+		if (nextToken) {
+			openPicker(nextToken);
+			return;
+		}
+		const beyondHandler = delta === 1 ? onNavigateNextSentence : onNavigatePrevSentence;
+		if (beyondHandler) {
+			closePicker();
+			beyondHandler();
+		}
+	}
+
 	function focusMeaningInput(tokenId: string | null) {
 		if (!tokenId) {
 			return;
@@ -476,6 +537,13 @@
 			event.preventDefault();
 			event.stopPropagation();
 			closePicker();
+			return;
+		}
+
+		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+			event.preventDefault();
+			event.stopPropagation();
+			gotoAdjacentWord(event.key === 'ArrowRight' ? 1 : -1);
 			return;
 		}
 
@@ -942,14 +1010,21 @@
 						localTokens.find((token) => token.id === tokenUpdate.tokenId)?.surfaceForm ?? ''
 					),
 				createTranslations:
-					tokenUpdate.word?.translations ?? drafts[tokenUpdate.tokenId]?.createTranslations ?? '',
-				createNotes: tokenUpdate.word?.notes ?? drafts[tokenUpdate.tokenId]?.createNotes ?? '',
+					(tokenUpdate.word?.translations ? stripWordLinks(tokenUpdate.word.translations) : undefined) ??
+					drafts[tokenUpdate.tokenId]?.createTranslations ??
+					'',
+				createNotes:
+					(tokenUpdate.word?.notes ? stripWordLinks(tokenUpdate.word.notes) : undefined) ??
+					drafts[tokenUpdate.tokenId]?.createNotes ??
+					'',
 				createAlternativeSpellings:
 					tokenUpdate.word?.spellings
 						? serializeSpellings(tokenUpdate.word.spellings)
 						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? '',
 				createPluralForm:
 					tokenUpdate.word?.pluralForm ?? drafts[tokenUpdate.tokenId]?.createPluralForm ?? '',
+				createIsPluralOnly:
+					tokenUpdate.word?.isPluralOnly ?? drafts[tokenUpdate.tokenId]?.createIsPluralOnly ?? false,
 				createPartOfSpeech:
 					tokenUpdate.word?.partOfSpeech ?? drafts[tokenUpdate.tokenId]?.createPartOfSpeech ?? ''
 			};
@@ -963,13 +1038,21 @@
 						segment.word?.kalenjin ??
 						drafts[segment.id]?.createLemma ??
 						normalizeSearchQuery(segment.surfaceForm),
-					createTranslations: segment.word?.translations ?? drafts[segment.id]?.createTranslations ?? '',
-					createNotes: segment.word?.notes ?? drafts[segment.id]?.createNotes ?? '',
+					createTranslations:
+						(segment.word?.translations ? stripWordLinks(segment.word.translations) : undefined) ??
+						drafts[segment.id]?.createTranslations ??
+						'',
+					createNotes:
+						(segment.word?.notes ? stripWordLinks(segment.word.notes) : undefined) ??
+						drafts[segment.id]?.createNotes ??
+						'',
 					createAlternativeSpellings: segment.word?.spellings
 						? serializeSpellings(segment.word.spellings)
 						: drafts[segment.id]?.createAlternativeSpellings ?? '',
 					createPluralForm:
 						segment.word?.pluralForm ?? drafts[segment.id]?.createPluralForm ?? '',
+					createIsPluralOnly:
+						segment.word?.isPluralOnly ?? drafts[segment.id]?.createIsPluralOnly ?? false,
 					createPartOfSpeech:
 						segment.word?.partOfSpeech ?? drafts[segment.id]?.createPartOfSpeech ?? ''
 				};
@@ -1089,6 +1172,7 @@
 			currentPos !== '' && !(CORE_POS as readonly string[]).includes(currentPos)}
 		{@const currentPosNeedsPlural = currentPos === 'NOUN' || currentPos === 'ADJECTIVE'}
 		{@const pluralFormValue = drafts[activeDraftKey]?.createPluralForm ?? ''}
+		{@const isPluralOnlyValue = drafts[activeDraftKey]?.createIsPluralOnly ?? false}
 		{@const splittableSurface = activeToken.surfaceForm.replace(
 			/[^\p{L}\p{M}\p{N}]+$/u,
 			''
@@ -1113,7 +1197,7 @@
 				<!-- Header -->
 				<div class="lemma-modal-head">
 					<div class="lemma-modal-head-text">
-						<div class="lemma-kicker">Root lemma</div>
+						<div class="lemma-kicker">{sentenceText}</div>
 						<h3 class="lemma-modal-title">
 							<span class="lemma-token-word">{stripSurroundingPunctuation(
 									activeGroup.fullSurface
@@ -1123,14 +1207,36 @@
 							{/if}
 						</h3>
 					</div>
-					<button
-						type="button"
-						class="icon-btn"
-						aria-label="Close"
-						onclick={() => closePicker()}
-					>
-						×
-					</button>
+					<div class="lemma-modal-head-actions">
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Previous word"
+							title="Previous word (Alt+←)"
+							disabled={!hasPrevWord}
+							onclick={() => gotoAdjacentWord(-1)}
+						>
+							‹
+						</button>
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Next word"
+							title="Next word (Alt+→)"
+							disabled={!hasNextWord}
+							onclick={() => gotoAdjacentWord(1)}
+						>
+							›
+						</button>
+						<button
+							type="button"
+							class="icon-btn"
+							aria-label="Close"
+							onclick={() => closePicker()}
+						>
+							×
+						</button>
+					</div>
 				</div>
 
 				<!-- Splitter: character-level split control -->
@@ -1273,10 +1379,10 @@
 										type="submit"
 										class="lemma-hit"
 										class:active={activeWordId === result.id}
-										title={`${result.kalenjin} — ${result.translations}`}
+										title={`${result.kalenjin} — ${stripWordLinks(result.translations)}`}
 									>
 										<span class="lemma-hit-word">{result.kalenjin}</span>
-										<span class="lemma-hit-gloss">{result.translations}</span>
+										<span class="lemma-hit-gloss">{stripWordLinks(result.translations)}</span>
 									</button>
 								</form>
 							{/each}
@@ -1402,6 +1508,7 @@
 					method="POST"
 					action={createAction}
 					class="lemma-form"
+					enctype="multipart/form-data"
 					use:enhance={enhanceCreateForm(activeToken.id)}
 				>
 					<input type="hidden" name={entityIdField} value={entityId} />
@@ -1423,7 +1530,12 @@
 					<input
 						type="hidden"
 						name="pluralForm"
-						value={currentPosNeedsPlural ? pluralFormValue : ''}
+						value={currentPosNeedsPlural && !isPluralOnlyValue ? pluralFormValue : ''}
+					/>
+					<input
+						type="hidden"
+						name="isPluralOnly"
+						value={currentPosNeedsPlural && isPluralOnlyValue ? 'on' : ''}
 					/>
 
 					<div class="lemma-form-grid">
@@ -1489,6 +1601,7 @@
 										id="lemma-field-plural"
 										class="input"
 										placeholder="e.g. chego"
+										disabled={isPluralOnlyValue}
 										value={pluralFormValue}
 										oninput={(event) =>
 											updateDraft(
@@ -1499,6 +1612,19 @@
 									/>
 								</div>
 							</div>
+							<label class="plural-only-toggle">
+								<input
+									type="checkbox"
+									checked={isPluralOnlyValue}
+									onchange={(event) =>
+										updateDraft(
+											activeDraftKey,
+											'createIsPluralOnly',
+											(event.currentTarget as HTMLInputElement).checked
+										)}
+								/>
+								<span>Plural-only</span>
+							</label>
 						</div>
 					{/if}
 
@@ -1520,20 +1646,30 @@
 						/>
 					</div>
 
-					<div class="field lemma-full-field">
-						<label for="lemma-field-notes">Notes</label>
-						<input
-							id="lemma-field-notes"
-							class="input"
-							name="notes"
-							placeholder="Optional"
-							value={drafts[activeDraftKey]?.createNotes ?? ''}
-							oninput={(event) =>
-								updateDraft(
-									activeDraftKey,
-									'createNotes',
-									(event.currentTarget as HTMLInputElement).value
-								)}
+					<div class="lemma-notes-image-grid">
+						<div class="field notes-field">
+							<label for="lemma-field-notes">Notes</label>
+							<textarea
+								id="lemma-field-notes"
+								class="input notes-input"
+								name="notes"
+								placeholder="Optional"
+								rows="4"
+								value={drafts[activeDraftKey]?.createNotes ?? ''}
+								oninput={(event) =>
+									updateDraft(
+										activeDraftKey,
+										'createNotes',
+										(event.currentTarget as HTMLTextAreaElement).value
+									)}
+							></textarea>
+						</div>
+						<ImageUploadField
+							name="image"
+							idPrefix="lemma-create-image"
+							currentUrl={selectedWordInDraft && selectedWordInDraft === activeWord?.id
+								? activeWord?.imageUrl ?? null
+								: null}
 						/>
 					</div>
 
@@ -1737,12 +1873,10 @@
 		min-width: 0;
 	}
 	.lemma-kicker {
-		color: var(--accent);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.16em;
-		margin-bottom: 6px;
-		text-transform: uppercase;
+		color: var(--ink-soft);
+		font-size: 13px;
+		line-height: 1.4;
+		margin-bottom: 8px;
 	}
 	.lemma-modal-title {
 		align-items: baseline;
@@ -1778,13 +1912,23 @@
 		height: 32px;
 		justify-content: center;
 		line-height: 1;
-		margin: -4px -6px 0 0;
 		padding: 0;
 		width: 32px;
 	}
-	.icon-btn:hover {
+	.icon-btn:hover:not(:disabled) {
 		background: var(--surface);
 		color: var(--ink);
+	}
+	.icon-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.35;
+	}
+	.lemma-modal-head-actions {
+		align-items: center;
+		display: flex;
+		flex-shrink: 0;
+		gap: 2px;
+		margin: -4px -6px 0 0;
 	}
 
 	/* Splitter */
@@ -2103,6 +2247,43 @@
 	.lemma-full-field {
 		margin-top: 12px;
 	}
+	.lemma-notes-image-grid {
+		align-items: stretch;
+		display: grid;
+		gap: 12px;
+		grid-template-columns: 2fr 1fr;
+		margin-top: 12px;
+	}
+	.lemma-notes-image-grid .notes-field {
+		display: flex;
+		flex-direction: column;
+	}
+	.lemma-notes-image-grid .notes-input {
+		flex: 1;
+		min-height: 0;
+		resize: none;
+		font-family: inherit;
+	}
+	.lemma-notes-image-grid :global(.image-upload) {
+		height: 100%;
+	}
+	.lemma-notes-image-grid :global(.dropzone) {
+		flex: 1;
+	}
+	.lemma-notes-image-grid :global(.dropzone.has-image) {
+		padding: 0;
+		overflow: hidden;
+	}
+	.lemma-notes-image-grid :global(.preview) {
+		position: absolute;
+		inset: 0;
+		width: 100%;
+		height: 100%;
+		max-width: none;
+		max-height: none;
+		object-fit: cover;
+		border-radius: 5px;
+	}
 	.lemma-forms-block {
 		background: color-mix(in oklch, var(--accent) 10%, var(--paper));
 		border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--line));
@@ -2138,6 +2319,22 @@
 		background: color-mix(in oklch, var(--line) 45%, transparent);
 		color: var(--ink);
 		cursor: default;
+	}
+	.lemma-forms-grid .input:disabled {
+		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));
+		color: var(--ink-mute);
+		cursor: not-allowed;
+	}
+	.plural-only-toggle {
+		align-items: center;
+		color: var(--ink-soft);
+		display: inline-flex;
+		font-size: 13px;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.plural-only-toggle input {
+		accent-color: var(--brand);
 	}
 	.field-label {
 		color: var(--ink);
@@ -2299,7 +2496,8 @@
 			padding: 20px 18px 18px;
 		}
 		.lemma-form-grid,
-		.lemma-forms-grid {
+		.lemma-forms-grid,
+		.lemma-notes-image-grid {
 			grid-template-columns: 1fr;
 		}
 		.lemma-modal-title {

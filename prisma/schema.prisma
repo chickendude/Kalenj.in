@@ -86,6 +86,15 @@ model Word {
   notes        String?
   pluralForm   String?
   pluralFormNormalized String?
+  isPluralOnly Boolean          @default(false)
+  presentAnee   String?
+  presentInyee  String?
+  presentInee   String?
+  presentEchek  String?
+  presentOkwek  String?
+  presentIchek  String?
+  imageUrl     String?
+  audioUrl     String?
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
   sentences    WordSentence[]
@@ -98,6 +107,7 @@ model Word {
   wordOfDayEntries WordOfTheDay[]
   relatedWords RelatedWord[] @relation("RelatedWordSource")
   relatedToWords RelatedWord[] @relation("RelatedWordTarget")
+  observedForms ObservedWordForm[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
@@ -142,12 +152,32 @@ model RelatedWord {
   @@index([relatedWordId])
 }
 
+// Derived search table for prior surface-form -> lemma links. User-facing edit paths
+// maintain it incrementally; run `npm run backfill:observed-forms` after migrations,
+// imports, or background sync jobs to reconcile drift from bulk token rewrites.
+model ObservedWordForm {
+  normalizedForm String
+  wordId         String
+  usageCount     Int      @default(1)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  word           Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([normalizedForm, wordId])
+  @@index([wordId])
+  @@index([normalizedForm(ops: raw("gin_trgm_ops"))], type: Gin, map: "ObservedWordForm_normalizedForm_trgm_idx")
+}
+
 model ExampleSentence {
   id              String               @id @default(cuid())
   storySentenceId String?              @unique
   kalenjin        String
   english         String
   notes           String?
+  imageUrl        String?
+  audioUrl        String?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   storySentence   StorySentence?       @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)

@@ -2,6 +2,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import HomeWordOfDay from '$lib/components/home/HomeWordOfDay.svelte';
 	import { firstTranslation } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -60,7 +61,7 @@
 						{#if entry.word.partOfSpeech}
 							<span class="pos-chip tiny">{PART_OF_SPEECH_LABELS[entry.word.partOfSpeech]}</span>
 						{/if}
-						<span class="wod-archive-gloss">{firstTranslation(entry.word.translations)}</span>
+						<span class="wod-archive-gloss">{firstTranslation(stripWordLinks(entry.word.translations))}</span>
 					</a>
 				</li>
 			{/each}

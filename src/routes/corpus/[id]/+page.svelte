@@ -1,11 +1,26 @@
 <script lang="ts">
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import { invalidateAll } from '$app/navigation';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
-	import { invalidateAll } from '$app/navigation';
+	import { toast } from '$lib/stores/toast.svelte';
+	import { enhance } from '$app/forms';
 
 	let { data, form } = $props();
+
+	$effect(() => {
+		if (form?.updateCorpusSentenceTokenSuccess) toast.success('Saved sentence annotation.');
+	});
+	$effect(() => {
+		if (form?.createCorpusSentenceWordSuccess) toast.success('Created lemma and linked it.');
+	});
+	$effect(() => {
+		if (form?.updateSentenceImageSuccess) toast.success('Image updated.');
+	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
 	type InlineSentenceField = 'kalenjin' | 'english';
@@ -229,25 +244,37 @@
 				<div
 					bind:this={kalenjinDisplayShell}
 					class="editable-sentence-shell"
-					role="button"
-					tabindex="0"
-					aria-label="Edit original sentence"
-					onclick={() => beginInlineSentenceEdit('kalenjin')}
-					onkeydown={(event) => {
-						if (event.key === 'Enter' || event.key === ' ') {
-							event.preventDefault();
-							beginInlineSentenceEdit('kalenjin');
-						}
-					}}
 				>
-					<TokenHoverPreview
-						sentenceId={data.sentence.id}
-						sentenceText={sentenceKalenjin}
-						tokens={displayedSentenceTokens}
-						onTokenClick={() => beginInlineSentenceEdit('kalenjin')}
+					<AudioPlayButton
+						audioUrl={data.sentence.audioUrl}
+						label="Play sentence"
 					/>
+					<div
+						class="editable-sentence-text"
+						role="button"
+						tabindex="0"
+						aria-label="Edit original sentence"
+						onclick={() => beginInlineSentenceEdit('kalenjin')}
+						onkeydown={(event) => {
+							if (event.key === 'Enter' || event.key === ' ') {
+								event.preventDefault();
+								beginInlineSentenceEdit('kalenjin');
+							}
+						}}
+					>
+						<TokenHoverPreview
+							sentenceId={data.sentence.id}
+							sentenceText={sentenceKalenjin}
+							tokens={displayedSentenceTokens}
+							onTokenClick={() => beginInlineSentenceEdit('kalenjin')}
+						/>
+					</div>
 				</div>
 			{:else}
+				<AudioPlayButton
+					audioUrl={data.sentence.audioUrl}
+					label="Play sentence"
+				/>
 				<TokenHoverPreview
 					sentenceId={data.sentence.id}
 					sentenceText={sentenceKalenjin}
@@ -285,14 +312,42 @@
 		{#if data.sentence.notes}
 			<div class="sentence-notes">{data.sentence.notes}</div>
 		{/if}
+		{#if data.sentence.imageUrl}
+			<img src={data.sentence.imageUrl} alt="" class="sentence-image" />
+		{/if}
 	</div>
+
+	{#if canEdit}
+		<section class="sentence-audio-panel">
+			<h2 class="section-title">Pronunciation</h2>
+			<AudioRecorder
+				targetType="sentence"
+				targetId={data.sentence.id}
+				currentAudioUrl={data.sentence.audioUrl}
+			/>
+		</section>
+	{/if}
 
 	{#if form?.error}
 		<div class="form-feedback error">{form.error}</div>
-	{:else if form?.updateCorpusSentenceTokenSuccess}
-		<div class="form-feedback success">Saved sentence annotation.</div>
-	{:else if form?.createCorpusSentenceWordSuccess}
-		<div class="form-feedback success">Created lemma and linked it.</div>
+	{/if}
+
+	{#if canEdit}
+		<h2 class="section-title">Image</h2>
+		<form
+			method="POST"
+			action="?/updateSentenceImage"
+			enctype="multipart/form-data"
+			class="image-form"
+			use:enhance={() => async ({ update }) => update({ reset: false })}
+		>
+			<ImageUploadField
+				currentUrl={data.sentence.imageUrl}
+				idPrefix="sentence-image"
+				label="Sentence image"
+			/>
+			<button type="submit" class="btn-sm">Save image</button>
+		</form>
 	{/if}
 
 	{#if data.user}
@@ -342,8 +397,12 @@
 	}
 
 	.sentence-display {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 28px;
+		gap: 12px;
 		line-height: 1.4;
 		margin: 12px 0 6px;
 	}
@@ -415,6 +474,25 @@
 		font-style: italic;
 	}
 
+	.sentence-image {
+		display: block;
+		max-width: 320px;
+		max-height: 240px;
+		object-fit: contain;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		margin: 10px 0 4px;
+		background: var(--bg-raised);
+	}
+
+	.image-form {
+		align-items: flex-start;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin-bottom: 20px;
+	}
+
 	.hint {
 		color: var(--ink-mute);
 		font-size: 13px;
@@ -424,5 +502,9 @@
 	.sentence-annotation-panel {
 		border-top: 1px solid var(--line-soft);
 		padding-top: 16px;
+	}
+
+	.sentence-audio-panel {
+		margin-top: 16px;
 	}
 </style>

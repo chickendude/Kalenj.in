@@ -2,6 +2,8 @@ import type { Prisma } from '@prisma/client';
 import { parseStoryImportText } from '$lib/story-import';
 import { prisma } from '$lib/server/prisma';
 import { syncStorySentenceTokens } from '$lib/server/sentence-annotations';
+import { splitIntoSentences, splitSentenceText } from '$lib/story-split';
+import { tokenizeSentence } from '$lib/server/tokenize';
 
 type TokenWithSegments = {
 	wordId: string | null;
@@ -164,6 +166,240 @@ export async function backfillMissingStoryCorpusEntries(storyId?: string): Promi
 			await syncStorySentenceToCorpus(tx, sentence.id);
 		}
 	});
+}
+
+export function canSplitStorySentence(kalenjin: string): boolean {
+	return splitSentenceText(kalenjin).length > 1;
+}
+
+export async function splitStorySentence(
+	tx: Prisma.TransactionClient,
+	storySentenceId: string
+): Promise<{ splitCount: number }> {
+	const original = await tx.storySentence.findUnique({
+		where: { id: storySentenceId },
+		select: {
+			id: true,
+			storyId: true,
+			sentenceOrder: true,
+			speaker: true,
+			kalenjin: true,
+			english: true,
+			tokens: {
+				orderBy: { tokenOrder: 'asc' },
+				select: {
+					tokenOrder: true,
+					surfaceForm: true,
+					normalizedForm: true,
+					wordId: true,
+					inContextTranslation: true,
+					segments: {
+						orderBy: { segmentOrder: 'asc' },
+						select: {
+							segmentOrder: true,
+							segmentStart: true,
+							segmentEnd: true,
+							surfaceForm: true,
+							normalizedForm: true,
+							wordId: true
+						}
+					}
+				}
+			}
+		}
+	});
+
+	if (!original) {
+		throw new Error('Story sentence not found.');
+	}
+
+	const pieces = splitIntoSentences(original.kalenjin, original.english);
+
+	if (pieces.length <= 1) {
+		return { splitCount: 1 };
+	}
+
+	const pieceTokens = pieces.map((piece) => tokenizeSentence(piece.kalenjin));
+	const totalNewTokens = pieceTokens.reduce((sum, list) => sum + list.length, 0);
+	const canPreserve = totalNewTokens === original.tokens.length;
+
+	// Two-pass shift: Postgres checks (storyId, sentenceOrder) per-row during
+	// a single UPDATE, so incrementing contiguous orders fires a transient
+	// duplicate. Park affected rows above the offset first, then bring them
+	// down to their final positions.
+	const SHIFT_OFFSET = 1_000_000;
+	await tx.storySentence.updateMany({
+		where: {
+			storyId: original.storyId,
+			sentenceOrder: { gt: original.sentenceOrder }
+		},
+		data: { sentenceOrder: { increment: SHIFT_OFFSET + pieces.length - 1 } }
+	});
+	await tx.storySentence.updateMany({
+		where: {
+			storyId: original.storyId,
+			sentenceOrder: { gte: SHIFT_OFFSET }
+		},
+		data: { sentenceOrder: { decrement: SHIFT_OFFSET } }
+	});
+
+	await tx.storySentence.update({
+		where: { id: original.id },
+		data: { kalenjin: pieces[0].kalenjin, english: pieces[0].english }
+	});
+
+	await tx.storySentenceToken.deleteMany({ where: { storySentenceId: original.id } });
+
+	const rowIds: string[] = [original.id];
+	for (let i = 1; i < pieces.length; i++) {
+		const created = await tx.storySentence.create({
+			data: {
+				storyId: original.storyId,
+				sentenceOrder: original.sentenceOrder + i,
+				speaker: original.speaker,
+				kalenjin: pieces[i].kalenjin,
+				english: pieces[i].english
+			},
+			select: { id: true }
+		});
+		rowIds.push(created.id);
+	}
+
+	if (canPreserve) {
+		let cursor = 0;
+		for (let i = 0; i < pieces.length; i++) {
+			const rowId = rowIds[i];
+			const newTokens = pieceTokens[i];
+			for (let j = 0; j < newTokens.length; j++) {
+				const origToken = original.tokens[cursor + j];
+				const createdToken = await tx.storySentenceToken.create({
+					data: {
+						storySentenceId: rowId,
+						tokenOrder: j,
+						surfaceForm: newTokens[j].surfaceForm,
+						normalizedForm: newTokens[j].normalizedForm,
+						wordId: origToken.wordId,
+						inContextTranslation: origToken.inContextTranslation
+					},
+					select: { id: true }
+				});
+				if (origToken.segments.length > 0) {
+					await tx.storySentenceTokenSegment.createMany({
+						data: origToken.segments.map((segment) => ({
+							tokenId: createdToken.id,
+							segmentOrder: segment.segmentOrder,
+							segmentStart: segment.segmentStart,
+							segmentEnd: segment.segmentEnd,
+							surfaceForm: segment.surfaceForm,
+							normalizedForm: segment.normalizedForm,
+							wordId: segment.wordId
+						}))
+					});
+				}
+			}
+			cursor += newTokens.length;
+		}
+	} else {
+		for (let i = 0; i < pieces.length; i++) {
+			await syncStorySentenceTokens(tx, rowIds[i], pieces[i].kalenjin);
+		}
+	}
+
+	for (const rowId of rowIds) {
+		await syncStorySentenceToCorpus(tx, rowId);
+	}
+
+	return { splitCount: pieces.length };
+}
+
+function joinMergedText(a: string, b: string): string {
+	const left = a.trim();
+	const right = b.trim();
+	if (!left) return right;
+	if (!right) return left;
+	return `${left} ${right}`;
+}
+
+export async function mergeStorySentenceWithNext(
+	tx: Prisma.TransactionClient,
+	storySentenceId: string
+): Promise<{ merged: boolean }> {
+	const target = await tx.storySentence.findUnique({
+		where: { id: storySentenceId },
+		select: {
+			id: true,
+			storyId: true,
+			sentenceOrder: true,
+			kalenjin: true,
+			english: true,
+			tokens: { select: { id: true } }
+		}
+	});
+
+	if (!target) {
+		throw new Error('Story sentence not found.');
+	}
+
+	const next = await tx.storySentence.findFirst({
+		where: {
+			storyId: target.storyId,
+			sentenceOrder: { gt: target.sentenceOrder }
+		},
+		orderBy: { sentenceOrder: 'asc' },
+		select: {
+			id: true,
+			sentenceOrder: true,
+			kalenjin: true,
+			english: true,
+			tokens: { select: { id: true } }
+		}
+	});
+
+	if (!next) {
+		return { merged: false };
+	}
+
+	const mergedKalenjin = joinMergedText(target.kalenjin, next.kalenjin);
+	const mergedEnglish = joinMergedText(target.english, next.english);
+
+	const targetTokenCount = target.tokens.length;
+
+	if (next.tokens.length > 0) {
+		await tx.storySentenceToken.updateMany({
+			where: { storySentenceId: next.id },
+			data: {
+				storySentenceId: target.id,
+				tokenOrder: { increment: targetTokenCount }
+			}
+		});
+	}
+
+	await tx.storySentence.update({
+		where: { id: target.id },
+		data: { kalenjin: mergedKalenjin, english: mergedEnglish }
+	});
+
+	await tx.storySentence.delete({ where: { id: next.id } });
+
+	const SHIFT_OFFSET = 1_000_000;
+	await tx.storySentence.updateMany({
+		where: {
+			storyId: target.storyId,
+			sentenceOrder: { gt: next.sentenceOrder }
+		},
+		data: { sentenceOrder: { increment: SHIFT_OFFSET } }
+	});
+	await tx.storySentence.updateMany({
+		where: {
+			storyId: target.storyId,
+			sentenceOrder: { gte: SHIFT_OFFSET }
+		},
+		data: { sentenceOrder: { decrement: SHIFT_OFFSET + 1 } }
+	});
+
+	await syncStorySentenceToCorpus(tx, target.id);
+
+	return { merged: true };
 }
 
 export async function syncStorySentences(

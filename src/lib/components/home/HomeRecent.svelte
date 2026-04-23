@@ -1,8 +1,10 @@
 <script lang="ts">
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { firstTranslation } from '$lib/translations';
+	import { stripWordLinks } from '$lib/word-links';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type RecentWord = {
@@ -10,6 +12,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
+		audioUrl: string | null;
 	};
 
 	type RecentSentenceToken = {
@@ -28,6 +31,7 @@
 		id: string;
 		kalenjin: string;
 		english: string;
+		audioUrl: string | null;
 		tokens: RecentSentenceToken[];
 	};
 
@@ -49,13 +53,18 @@
 			{:else}
 				<ul class="recent-list">
 					{#each words as word (word.id)}
-						<li>
+						<li class="recent-row">
+							<AudioPlayButton
+								audioUrl={word.audioUrl}
+								size="sm"
+								label={`Play pronunciation of ${word.kalenjin}`}
+							/>
 							<a href={`/dictionary/${word.id}`} class="recent-entry">
 								<span class="recent-word">{word.kalenjin}</span>
 								{#if word.partOfSpeech}
 									<span class="pos-chip tiny">{PART_OF_SPEECH_LABELS[word.partOfSpeech]}</span>
 								{/if}
-								<span class="recent-gloss">{firstTranslation(word.translations)}</span>
+								<span class="recent-gloss">{firstTranslation(stripWordLinks(word.translations))}</span>
 							</a>
 						</li>
 					{/each}
@@ -72,6 +81,11 @@
 						<li>
 							<div class="recent-sent">
 								<div class="recent-kal">
+									<AudioPlayButton
+										audioUrl={sentence.audioUrl}
+										size="sm"
+										label="Play sentence"
+									/>
 									<TokenHoverPreview
 										sentenceId={sentence.id}
 										sentenceText={sentence.kalenjin}
@@ -94,5 +108,20 @@
 		color: var(--ink-mute);
 		font-size: 14px;
 		font-style: italic;
+	}
+	.recent-row {
+		align-items: center;
+		display: flex;
+		gap: 8px;
+	}
+	.recent-row .recent-entry {
+		flex: 1;
+		min-width: 0;
+	}
+	:global(.recent-kal) {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 </style>

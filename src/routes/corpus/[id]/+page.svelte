@@ -1,8 +1,10 @@
 <script lang="ts">
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { enhance } from '$app/forms';
 
 	let { data, form } = $props();
 
@@ -11,6 +13,9 @@
 	});
 	$effect(() => {
 		if (form?.createCorpusSentenceWordSuccess) toast.success('Created lemma and linked it.');
+	});
+	$effect(() => {
+		if (form?.updateSentenceImageSuccess) toast.success('Image updated.');
 	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
@@ -122,10 +127,31 @@
 		{#if data.sentence.notes}
 			<div class="sentence-notes">{data.sentence.notes}</div>
 		{/if}
+		{#if data.sentence.imageUrl}
+			<img src={data.sentence.imageUrl} alt="" class="sentence-image" />
+		{/if}
 	</div>
 
 	{#if form?.error}
 		<div class="form-feedback error">{form.error}</div>
+	{/if}
+
+	{#if canEdit}
+		<h2 class="section-title">Image</h2>
+		<form
+			method="POST"
+			action="?/updateSentenceImage"
+			enctype="multipart/form-data"
+			class="image-form"
+			use:enhance={() => async ({ update }) => update({ reset: false })}
+		>
+			<ImageUploadField
+				currentUrl={data.sentence.imageUrl}
+				idPrefix="sentence-image"
+				label="Sentence image"
+			/>
+			<button type="submit" class="btn-sm">Save image</button>
+		</form>
 	{/if}
 
 	{#if data.user}
@@ -191,6 +217,25 @@
 		color: var(--ink-mute);
 		font-size: 13px;
 		font-style: italic;
+	}
+
+	.sentence-image {
+		display: block;
+		max-width: 320px;
+		max-height: 240px;
+		object-fit: contain;
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		margin: 10px 0 4px;
+		background: var(--bg-raised);
+	}
+
+	.image-form {
+		align-items: flex-start;
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+		margin-bottom: 20px;
 	}
 
 	.hint {

@@ -5,6 +5,7 @@ import { prisma } from '$lib/server/prisma';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
+import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import type { Actions, PageServerLoad } from './$types';
 
 type RelatedPair = {
@@ -147,29 +148,60 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
-		await prisma.$transaction(async (tx) => {
-			await createOrUpdateLinkedWord(tx, {
-				wordId: params.id,
-				kalenjin,
-				translations,
-				notes: notes || null,
-				alternativeSpellings,
-				partOfSpeech,
-				pluralForm,
-				isPluralOnly,
-				presentTense
-			});
-
-			if (kalenjin !== currentWord.kalenjin) {
-				await propagateKalenjinRename(tx, params.id, kalenjin);
+		const imageFile = formData.get('image');
+		const removeImage = formData.get('removeImage') === '1';
+		let newImageUrl: string | null | undefined = undefined;
+		if (imageFile instanceof File && imageFile.size > 0) {
+			try {
+				newImageUrl = await saveUploadedImage(imageFile);
+			} catch (err) {
+				if (err instanceof UploadError) {
+					return fail(400, { error: err.message, values });
+				}
+				throw err;
 			}
-		});
+		} else if (removeImage) {
+			newImageUrl = null;
+		}
+
+		try {
+			await prisma.$transaction(async (tx) => {
+				await createOrUpdateLinkedWord(tx, {
+					wordId: params.id,
+					kalenjin,
+					translations,
+					notes: notes || null,
+					alternativeSpellings,
+					partOfSpeech,
+					pluralForm,
+					isPluralOnly,
+					presentTense,
+					imageUrl: newImageUrl
+				});
+
+				if (kalenjin !== currentWord.kalenjin) {
+					await propagateKalenjinRename(tx, params.id, kalenjin);
+				}
+			});
+		} catch (err) {
+			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
+			throw err;
+		}
+
+		if (newImageUrl !== undefined && currentWord.imageUrl && currentWord.imageUrl !== newImageUrl) {
+			await deleteUploadedImage(currentWord.imageUrl);
+		}
 
 		return { success: true };
 	},
 	delete: async ({ params, locals }) => {
 		requireEditor(locals);
+		const existing = await prisma.word.findUnique({
+			where: { id: params.id },
+			select: { imageUrl: true }
+		});
 		await prisma.word.delete({ where: { id: params.id } });
+		if (existing?.imageUrl) await deleteUploadedImage(existing.imageUrl);
 		redirect(303, '/dictionary');
 	},
 	addRelatedWord: async ({ request, params, locals }) => {

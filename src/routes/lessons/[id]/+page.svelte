@@ -5,6 +5,7 @@
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
+	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import WordCoveragePanel from '$lib/components/WordCoveragePanel.svelte';
@@ -1408,6 +1409,7 @@
 					method="POST"
 					action="?/createWord"
 					class="editor-form compact-form add-word-form"
+					enctype="multipart/form-data"
 					use:enhance={enhanceAddWordForm}
 				>
 					<input type="hidden" name="lessonId" value={data.lesson.id} />
@@ -1452,6 +1454,11 @@
 								bind:value={addWordState.sentenceEnglish}
 							></textarea>
 						</label>
+					</div>
+
+					<div class="add-word-images">
+						<ImageUploadField name="wordImage" idPrefix="add-word-image" label="Word image" />
+						<ImageUploadField name="sentenceImage" idPrefix="add-sentence-image" label="Sentence image" />
 					</div>
 
 					{#if addWordState.error}
@@ -2819,6 +2826,20 @@
 	.add-word-actions {
 		display: flex;
 		justify-content: flex-end;
+	}
+
+	.add-word-images {
+		border-top: 1px dotted var(--line);
+		display: grid;
+		gap: 16px;
+		grid-template-columns: 1fr 1fr;
+		padding-top: 16px;
+	}
+
+	@media (max-width: 640px) {
+		.add-word-images {
+			grid-template-columns: 1fr;
+		}
 	}
 
 	@media (max-width: 800px) {

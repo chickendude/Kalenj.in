@@ -23,6 +23,7 @@ export type KalenjinSearchWord = {
 	presentEchek: string | null;
 	presentOkwek: string | null;
 	presentIchek: string | null;
+	imageUrl: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 	spellings?: Array<{

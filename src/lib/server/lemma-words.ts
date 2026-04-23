@@ -39,6 +39,7 @@ export function buildWordSelect() {
 		presentEchek: true,
 		presentOkwek: true,
 		presentIchek: true,
+		imageUrl: true,
 		spellings: {
 			orderBy: [{ spelling: 'asc' as const }],
 			select: {
@@ -60,6 +61,8 @@ export type LemmaWordInput = {
 	pluralForm?: string | null;
 	isPluralOnly?: boolean;
 	presentTense?: PresentTenseConjugations | null;
+	/** `undefined` leaves the image untouched, a string sets a new URL, `null` clears it. */
+	imageUrl?: string | null;
 };
 
 export function readPresentTenseFromFormData(formData: FormData): PresentTenseConjugations {
@@ -110,6 +113,7 @@ export async function createOrUpdateLinkedWord(
 				pluralFormNormalized,
 				...isPluralOnlyPatch,
 				...presentTense,
+				...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
 				spellings: {
 					deleteMany: {},
 					createMany: spellings.length ? { data: spellings } : undefined
@@ -130,6 +134,7 @@ export async function createOrUpdateLinkedWord(
 			pluralFormNormalized,
 			isPluralOnly,
 			...presentTense,
+			imageUrl: input.imageUrl ?? null,
 			spellings: spellings.length ? { createMany: { data: spellings } } : undefined
 		},
 		select: buildWordSelect()

@@ -1,6 +1,10 @@
 import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
+import {
+	isNumericTranslationSearchQuery,
+	sortTranslationSearchResults
+} from '$lib/translations';
 import type { RequestHandler } from './$types';
 
 const MAX_RESULTS = 7;
@@ -38,16 +42,17 @@ export const GET: RequestHandler = async ({ url }) => {
 		prisma.word.findMany({
 			where: { translations: { contains: query, mode: 'insensitive' } },
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			take: MAX_RESULTS,
 			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
 		})
 	]);
 
+	const rankedTranslationMatches = sortTranslationSearchResults(translationMatches, query);
+	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
 	const merged = new Map<string, SearchResult>();
-	for (const word of kalenjinMatches) {
+	for (const word of prioritizeTranslations ? rankedTranslationMatches : kalenjinMatches) {
 		merged.set(word.id, toResult(word));
 	}
-	for (const word of translationMatches) {
+	for (const word of prioritizeTranslations ? kalenjinMatches : rankedTranslationMatches) {
 		if (!merged.has(word.id)) {
 			merged.set(word.id, toResult(word));
 		}

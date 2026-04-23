@@ -2,6 +2,10 @@ import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
+import {
+	isNumericTranslationSearchQuery,
+	sortTranslationSearchResults
+} from '$lib/translations';
 import { getLastUsedMap } from '$lib/server/word-of-the-day';
 import type { RequestHandler } from './$types';
 
@@ -30,7 +34,6 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 				translations: { contains: query, mode: 'insensitive' }
 			},
 			orderBy: { kalenjin: 'asc' },
-			take: 12,
 			select: {
 				id: true,
 				kalenjin: true,
@@ -40,11 +43,13 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		})
 	]);
 
+	const rankedTranslationWords = sortTranslationSearchResults(translationWords, query);
+	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
 	const merged = new Map<string, (typeof translationWords)[number]>();
-	for (const word of kalenjinWords) {
+	for (const word of prioritizeTranslations ? rankedTranslationWords : kalenjinWords) {
 		merged.set(word.id, word);
 	}
-	for (const word of translationWords) {
+	for (const word of prioritizeTranslations ? kalenjinWords : rankedTranslationWords) {
 		if (!merged.has(word.id)) {
 			merged.set(word.id, word);
 		}

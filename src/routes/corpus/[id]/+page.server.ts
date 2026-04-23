@@ -236,6 +236,7 @@ export const actions: Actions = {
 		const inContextTranslation = readOptionalText(formData, 'inContextTranslation');
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
+		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -255,6 +256,9 @@ export const actions: Actions = {
 			? (partOfSpeechRaw as PartOfSpeech)
 			: null;
 
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
@@ -272,7 +276,8 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE' ? pluralForm : null,
+					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					isPluralOnly,
 					presentTense
 				});
 

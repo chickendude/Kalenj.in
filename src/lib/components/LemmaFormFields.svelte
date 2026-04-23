@@ -20,6 +20,7 @@
 		notes = $bindable(''),
 		partOfSpeech = $bindable<PartOfSpeech | ''>(''),
 		pluralForm = $bindable(''),
+		isPluralOnly = $bindable(false),
 		presentAnee = $bindable(''),
 		presentInyee = $bindable(''),
 		presentInee = $bindable(''),
@@ -37,6 +38,7 @@
 		notes?: string;
 		partOfSpeech?: PartOfSpeech | '';
 		pluralForm?: string;
+		isPluralOnly?: boolean;
 		presentAnee?: string;
 		presentInyee?: string;
 		presentInee?: string;
@@ -94,6 +96,7 @@
 	function syncFormsToPos() {
 		if (partOfSpeech !== 'NOUN' && partOfSpeech !== 'ADJECTIVE') {
 			pluralForm = '';
+			isPluralOnly = false;
 		}
 		if (partOfSpeech !== 'VERB') {
 			clearConjugations();
@@ -125,7 +128,8 @@
 
 <div class="lemma-fields">
 	<input type="hidden" name="partOfSpeech" value={partOfSpeech} />
-	<input type="hidden" name="pluralForm" value={needsPlural ? pluralForm : ''} />
+	<input type="hidden" name="pluralForm" value={needsPlural && !isPluralOnly ? pluralForm : ''} />
+	<input type="hidden" name="isPluralOnly" value={needsPlural && isPluralOnly ? 'on' : ''} />
 	<input type="hidden" name="presentAnee" value={needsConjugations ? presentAnee : ''} />
 	<input type="hidden" name="presentInyee" value={needsConjugations ? presentInyee : ''} />
 	<input type="hidden" name="presentInee" value={needsConjugations ? presentInee : ''} />
@@ -224,9 +228,17 @@
 						id="{idPrefix}-plural"
 						class="input"
 						placeholder="e.g. chego"
+						disabled={isPluralOnly}
 						bind:value={pluralForm}
 					/>
 				</div>
+				<label class="plural-only-toggle">
+					<input
+						type="checkbox"
+						bind:checked={isPluralOnly}
+					/>
+					<span>Plural-only</span>
+				</label>
 			{:else if needsConjugations}
 				<div class="conjugation-sub">Present tense</div>
 				<div class="conjugation-grid">
@@ -364,6 +376,22 @@
 		font-weight: 600;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
+	}
+	.plural-only-toggle {
+		align-items: center;
+		color: var(--ink-soft);
+		display: inline-flex;
+		font-size: 13px;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.plural-only-toggle input {
+		accent-color: var(--brand);
+	}
+	.input:disabled {
+		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));
+		color: var(--ink-mute);
+		cursor: not-allowed;
 	}
 	.conjugation-sub {
 		color: var(--ink-mute);

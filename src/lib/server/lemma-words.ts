@@ -32,6 +32,7 @@ export function buildWordSelect() {
 		notes: true,
 		partOfSpeech: true,
 		pluralForm: true,
+		isPluralOnly: true,
 		presentAnee: true,
 		presentInyee: true,
 		presentInee: true,
@@ -57,6 +58,7 @@ export type LemmaWordInput = {
 	alternativeSpellings?: string | null;
 	partOfSpeech?: PartOfSpeech | null;
 	pluralForm?: string | null;
+	isPluralOnly?: boolean;
 	presentTense?: PresentTenseConjugations | null;
 };
 
@@ -81,15 +83,19 @@ export async function createOrUpdateLinkedWord(
 	input: LemmaWordInput
 ) {
 	const spellings = prepareAlternativeSpellings(input.alternativeSpellings ?? '', input.kalenjin);
-	const pluralForm =
-		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE'
-			? input.pluralForm ?? null
-			: null;
+	const canHavePlural =
+		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE';
+	const isPluralOnlyProvided = input.isPluralOnly !== undefined;
+	const isPluralOnly = canHavePlural && input.isPluralOnly === true;
+	const pluralForm = canHavePlural && !isPluralOnly ? input.pluralForm ?? null : null;
 	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
 	const presentTense: PresentTenseConjugations =
 		input.partOfSpeech === 'VERB' && input.presentTense
 			? input.presentTense
 			: EMPTY_PRESENT_TENSE;
+	const isPluralOnlyPatch = isPluralOnlyProvided || !canHavePlural
+		? { isPluralOnly }
+		: {};
 
 	if (input.wordId) {
 		return tx.word.update({
@@ -102,6 +108,7 @@ export async function createOrUpdateLinkedWord(
 				partOfSpeech: input.partOfSpeech ?? null,
 				pluralForm,
 				pluralFormNormalized,
+				...isPluralOnlyPatch,
 				...presentTense,
 				spellings: {
 					deleteMany: {},
@@ -121,6 +128,7 @@ export async function createOrUpdateLinkedWord(
 			partOfSpeech: input.partOfSpeech ?? null,
 			pluralForm,
 			pluralFormNormalized,
+			isPluralOnly,
 			...presentTense,
 			spellings: spellings.length ? { createMany: { data: spellings } } : undefined
 		},

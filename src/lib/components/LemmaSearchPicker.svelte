@@ -22,6 +22,7 @@
 		draftNotes = $bindable(''),
 		draftPartOfSpeech = $bindable<PartOfSpeech | ''>(''),
 		draftPluralForm = $bindable(''),
+		draftIsPluralOnly = $bindable(false),
 		draftPresentAnee = $bindable(''),
 		draftPresentInyee = $bindable(''),
 		draftPresentInee = $bindable(''),
@@ -40,6 +41,7 @@
 		draftNotes?: string;
 		draftPartOfSpeech?: PartOfSpeech | '';
 		draftPluralForm?: string;
+		draftIsPluralOnly?: boolean;
 		draftPresentAnee?: string;
 		draftPresentInyee?: string;
 		draftPresentInee?: string;
@@ -217,6 +219,7 @@
 				bind:notes={draftNotes}
 				bind:partOfSpeech={draftPartOfSpeech}
 				bind:pluralForm={draftPluralForm}
+				bind:isPluralOnly={draftIsPluralOnly}
 				bind:presentAnee={draftPresentAnee}
 				bind:presentInyee={draftPresentInyee}
 				bind:presentInee={draftPresentInee}

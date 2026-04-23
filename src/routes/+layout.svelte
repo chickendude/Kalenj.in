@@ -308,14 +308,15 @@
 				Kalenjin language.
 			</p>
 
-			<p class="site-foot-links">
-				<a href="/terms">Terms &amp; Data License</a>
+			<p class="site-foot-meta">
+				<span class="site-foot-phrase"
+					>Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span
+				>
+				<span aria-hidden="true"> · </span>
+				<span>&copy; {year}</span>
+				<span aria-hidden="true"> · </span>
+				<a href="/terms">Terms</a>
 			</p>
-
-			<span class="site-foot-phrase"
-				>Kongoi missing en inye ne inetegee Kalenjin, kinetegee tugul mutyo mutyo</span
-			>
-			· {year}
 		</div>
 	</footer>
 {/if}

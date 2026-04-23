@@ -1972,13 +1972,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   max-width: none;
   margin: 0 0 12px;
 }
-.site-foot-links {
-  margin: 0 0 12px;
-  letter-spacing: 0.12em;
-}
-.site-foot-links a {
-  color: var(--brand);
-  font-weight: 600;
+.site-foot-meta {
+  margin: 0;
 }
 .site-foot-phrase {
   font-family: var(--font-display);
@@ -1986,6 +1981,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   font-size: 15px;
   letter-spacing: 0;
   text-transform: none;
+}
+.site-foot-meta a {
+  color: var(--brand);
+  font-weight: 600;
 }
 
 /* ---------- Legal page ---------- */

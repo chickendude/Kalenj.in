@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 
 	let { data, form } = $props();
@@ -228,6 +229,11 @@
 						<li class="sentence-row">
 							<div class="sentence-row-body">
 								<div class="kal">
+									<AudioPlayButton
+										audioUrl={sentence.audioUrl}
+										size="sm"
+										label="Play sentence"
+									/>
 									<TokenHoverPreview
 										sentenceId={sentence.id}
 										sentenceText={sentence.kalenjin}
@@ -386,11 +392,15 @@
 		min-width: 0;
 	}
 	.sentence-row .kal {
+		align-items: baseline;
+		color: var(--ink);
+		display: flex;
+		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 22px;
-		color: var(--ink);
-		margin-bottom: 6px;
+		gap: 10px;
 		line-height: 1.3;
+		margin-bottom: 6px;
 	}
 	.sentence-row .en {
 		color: var(--ink-soft);

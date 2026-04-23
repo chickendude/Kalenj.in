@@ -2,6 +2,7 @@
 	import { applyAction, enhance } from '$app/forms';
 	import { beforeNavigate, invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
@@ -1199,6 +1200,11 @@
 							{/if}
 						</div>
 						<div class="story-text-cell">
+							<AudioPlayButton
+								audioUrl={sentence.corpusSentence?.audioUrl ?? null}
+								size="sm"
+								label="Play sentence"
+							/>
 							<SentenceTokenAnnotations
 								entityId={sentence.id}
 								entityIdField="storySentenceId"
@@ -1543,7 +1549,14 @@
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'kalenjin'}
 										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-kalenjin-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
 									{:else}
-										<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+										<div class="word-kalenjin-row">
+											<AudioPlayButton
+												audioUrl={lessonWord.word.audioUrl}
+												size="sm"
+												label={`Play pronunciation of ${getWordLocal(lessonWord).kalenjin}`}
+											/>
+											<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+										</div>
 									{/if}
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
 										<input bind:this={inlineWordInput} class="inline-edit-input word-inline-input word-translations-input" bind:value={inlineWordValue} onkeydown={handleInlineWordKeydown} onblur={() => void saveInlineWordEdit()} />
@@ -1569,6 +1582,11 @@
 										'next'
 									)}
 									<div class="sentence-annotation-shell">
+										<AudioPlayButton
+											audioUrl={lessonWord.sentence.audioUrl}
+											size="sm"
+											label="Play sentence"
+										/>
 										<SentenceTokenAnnotations
 											entityId={lessonWord.id}
 											entityIdField="lessonWordId"
@@ -2274,6 +2292,10 @@
 	}
 
 	.story-text-cell {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
 		min-width: 0;
 	}
 
@@ -2427,6 +2449,12 @@
 		font-family: var(--font-display);
 		font-size: 18px;
 		font-weight: 500;
+	}
+
+	.word-kalenjin-row {
+		align-items: center;
+		display: flex;
+		gap: 0.4rem;
 	}
 
 	.word-translations {

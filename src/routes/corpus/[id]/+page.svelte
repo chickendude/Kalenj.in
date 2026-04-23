@@ -1,4 +1,6 @@
 <script lang="ts">
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
@@ -117,6 +119,10 @@
 	<div class="entry-head">
 		<div class="entry-label">Corpus sentence</div>
 		<div class="sentence-display">
+			<AudioPlayButton
+				audioUrl={data.sentence.audioUrl}
+				label="Play sentence"
+			/>
 			<TokenHoverPreview
 				sentenceId={data.sentence.id}
 				sentenceText={data.sentence.kalenjin}
@@ -131,6 +137,17 @@
 			<img src={data.sentence.imageUrl} alt="" class="sentence-image" />
 		{/if}
 	</div>
+
+	{#if canEdit}
+		<section class="sentence-audio-panel">
+			<h2 class="section-title">Pronunciation</h2>
+			<AudioRecorder
+				targetType="sentence"
+				targetId={data.sentence.id}
+				currentAudioUrl={data.sentence.audioUrl}
+			/>
+		</section>
+	{/if}
 
 	{#if form?.error}
 		<div class="form-feedback error">{form.error}</div>
@@ -201,8 +218,12 @@
 	}
 
 	.sentence-display {
+		align-items: baseline;
+		display: flex;
+		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 28px;
+		gap: 12px;
 		line-height: 1.4;
 		margin: 12px 0 6px;
 	}
@@ -247,5 +268,9 @@
 	.sentence-annotation-panel {
 		border-top: 1px solid var(--line-soft);
 		padding-top: 16px;
+	}
+
+	.sentence-audio-panel {
+		margin-top: 16px;
 	}
 </style>

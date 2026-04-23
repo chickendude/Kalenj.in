@@ -293,6 +293,7 @@ async function getLessonDetail(lessonId: string) {
 					sentences: {
 						orderBy: { sentenceOrder: 'asc' },
 						include: {
+							corpusSentence: { select: { audioUrl: true } },
 							tokens: {
 								orderBy: { tokenOrder: 'asc' },
 								include: {

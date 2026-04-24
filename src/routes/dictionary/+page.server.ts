@@ -22,6 +22,7 @@ type DictionarySearchWord = {
 	kalenjin: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
+	audioUrl: string | null;
 };
 
 function parseLanguage(value: string | null): SearchLanguage {
@@ -127,7 +128,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		words = await prisma.word.findMany({
 			where: baseWhere,
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true },
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 			take: limit
 		});
 	} else if (language === 'translations') {
@@ -139,7 +140,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				]
 			},
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true },
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 			take: limit
 		});
 
@@ -161,7 +162,7 @@ export const load: PageServerLoad = async ({ url }) => {
 					]
 				},
 				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-				select: { id: true, kalenjin: true, translations: true, partOfSpeech: true },
+				select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 				take: limit
 			})
 		]);

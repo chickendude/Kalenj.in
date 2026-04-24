@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { groupSentenceTokens } from '$lib/word-groups';
+	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 
 	type TokenWord = {
 		kalenjin: string;
@@ -22,6 +23,8 @@
 		key: string;
 		kalenjin: string;
 		english: string | null;
+		westernTime: string | null;
+		timeNote: string | null;
 	};
 
 	let { sentenceId = 'sentence', tokens, onTokenClick } = $props<{
@@ -35,18 +38,24 @@
 	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, tokens }));
 
 	function tokenPopupPart(token: PreviewToken): PopupPart {
+		const timeAnnotation = getSentenceTimeAnnotation(token.surfaceForm);
 		return {
 			key: token.id,
 			kalenjin: token.word?.kalenjin ?? token.surfaceForm,
-			english: token.word?.translations ?? null
+			english: token.word?.translations ?? null,
+			westernTime: timeAnnotation?.westernTime ?? null,
+			timeNote: timeAnnotation?.note ?? null
 		};
 	}
 
 	function segmentPopupPart(segment: NonNullable<PreviewToken['segments']>[number]): PopupPart {
+		const timeAnnotation = getSentenceTimeAnnotation(segment.surfaceForm);
 		return {
 			key: segment.id,
 			kalenjin: segment.word?.kalenjin ?? segment.surfaceForm,
-			english: segment.word?.translations ?? null
+			english: segment.word?.translations ?? null,
+			westernTime: timeAnnotation?.westernTime ?? null,
+			timeNote: timeAnnotation?.note ?? null
 		};
 	}
 </script>
@@ -73,6 +82,10 @@
 								{segment.surfaceForm}<span class="token-tooltip" role="tooltip"
 									><span class="tooltip-part">
 										<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+										{#if popup.westernTime}
+											<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
+											<span class="time-note-detail">{popup.timeNote}</span>
+										{/if}
 									</span></span
 								>
 							</button>
@@ -94,6 +107,10 @@
 						{token.surfaceForm}<span class="token-tooltip" role="tooltip"
 							><span class="tooltip-part">
 								<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+								{#if popup.westernTime}
+									<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
+									<span class="time-note-detail">{popup.timeNote}</span>
+								{/if}
 							</span></span
 						>
 					</button>
@@ -166,6 +183,16 @@
 	.tooltip-part {
 		display: grid;
 		gap: 0.08rem;
+	}
+
+	.time-note {
+		margin-top: 0.15rem;
+	}
+
+	.time-note-detail {
+		color: color-mix(in oklab, var(--tooltip-ink) 82%, transparent);
+		font-size: 0.76rem;
+		line-height: 1.35;
 	}
 
 	.token-part:hover .token-tooltip,

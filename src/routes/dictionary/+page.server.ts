@@ -1,6 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech, Prisma } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import {
+	isNumericTranslationSearchQuery,
+	sortTranslationSearchResults
+} from '$lib/translations';
 import { prisma } from '$lib/server/prisma';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
@@ -120,16 +124,19 @@ export const load: PageServerLoad = async ({ url }) => {
 			take: limit
 		});
 	} else if (language === 'translations') {
-		words = await prisma.word.findMany({
-			where: {
-				AND: [
-					{ translations: { contains: query, mode: 'insensitive' } },
-					...(baseWhere ? [baseWhere] : [])
-				]
-			},
-			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			take: limit
-		});
+		words = sortTranslationSearchResults(
+			await prisma.word.findMany({
+				where: {
+					AND: [
+						{ translations: { contains: query, mode: 'insensitive' } },
+						...(baseWhere ? [baseWhere] : [])
+					]
+				},
+				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+				take: limit
+			}),
+			query
+		).slice(0, limit);
 	} else if (language === 'kalenjin') {
 		const searched = await searchWordsByKalenjin(prisma, query, limit);
 		const posFiltered = filterByPartOfSpeech(searched, pos);
@@ -153,10 +160,15 @@ export const load: PageServerLoad = async ({ url }) => {
 		const filteredKalenjin = filterByPartOfSpeech(kalenjinWords, pos).filter((word) =>
 			matchesMissing(word, missing)
 		);
-		for (const word of filteredKalenjin) {
+		const rankedTranslationWords = sortTranslationSearchResults(translationWords, query);
+		const prioritizeTranslations = isNumericTranslationSearchQuery(query);
+		const firstPassWords = prioritizeTranslations ? rankedTranslationWords : filteredKalenjin;
+		const secondPassWords = prioritizeTranslations ? filteredKalenjin : rankedTranslationWords;
+
+		for (const word of firstPassWords) {
 			mergedWords.set(word.id, word);
 		}
-		for (const word of translationWords) {
+		for (const word of secondPassWords) {
 			if (!mergedWords.has(word.id)) {
 				mergedWords.set(word.id, word);
 			}

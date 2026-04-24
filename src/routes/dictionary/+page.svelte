@@ -25,7 +25,11 @@
 	let { data, form } = $props();
 
 	const initialQuery = untrack(() => data.query);
+	const initialFiltersOpen = untrack(
+		() => data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)
+	);
 	let searchQuery = $state(initialQuery);
+	let filtersOpen = $state(initialFiltersOpen);
 	let lastNavTarget = initialQuery;
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -37,6 +41,12 @@
 				lastNavTarget = nextQuery;
 			}
 		});
+	});
+
+	$effect(() => {
+		if (data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)) {
+			filtersOpen = true;
+		}
 	});
 
 	function navigateTo(
@@ -210,128 +220,151 @@
 	</div>
 
 	<div class="controls">
-		<div class="field" style="flex: 1">
-			<label for="q">Search</label>
-			<input
-				id="q"
-				type="search"
-				class="input"
-				placeholder={data.language === 'translations' ? 'Search translations...' : 'Search Kalenjin...'}
-				value={searchQuery}
-				oninput={handleSearchInput}
-			/>
-		</div>
-
-		<div class="field">
-			<label for="language-kalenjin">Language</label>
-			<div class="toggle-lang">
-				<button
-					id="language-kalenjin"
-					type="button"
-					class:active={data.language === 'kalenjin'}
-					onclick={() => selectLanguage('kalenjin')}
-				>Kalenjin</button>
-				<button
-					type="button"
-					class:active={data.language === 'translations'}
-					onclick={() => selectLanguage('translations')}
-				>Translations</button>
-				<button
-					type="button"
-					class:active={data.language === 'both'}
-					onclick={() => selectLanguage('both')}
-				>Both</button>
+		<div class="search-row">
+			<div class="field search-field">
+				<label for="q">Search</label>
+				<input
+					id="q"
+					type="search"
+					class="input"
+					placeholder={data.language === 'translations' ? 'Search translations...' : 'Search Kalenjin...'}
+					value={searchQuery}
+					oninput={handleSearchInput}
+				/>
 			</div>
-		</div>
 
-		<div class="field">
-			<span class="field-label">Missing</span>
-			<div class="missing-filter" role="radiogroup" aria-label="Filter by missing data">
+			<div class="filter-toggle-wrap">
+				<label class="filter-toggle-label" for="dictionary-filters">Options</label>
 				<button
+					id="dictionary-filters"
 					type="button"
-					role="radio"
-					aria-checked={!data.missing}
-					class="pos-pill"
-					class:selected={!data.missing}
-					onclick={() => selectMissing('')}
-				>None</button>
-				<button
-					type="button"
-					role="radio"
-					aria-checked={data.missing === 'plural'}
-					class="pos-pill"
-					class:selected={data.missing === 'plural'}
-					onclick={() => selectMissing('plural')}
-				>Plural</button>
-				<button
-					type="button"
-					role="radio"
-					aria-checked={data.missing === 'conjugation'}
-					class="pos-pill"
-					class:selected={data.missing === 'conjugation'}
-					onclick={() => selectMissing('conjugation')}
-				>Conjugation</button>
-			</div>
-		</div>
-
-		<div class="field">
-			<span class="field-label">Part of speech</span>
-			<div class="pos-filter" role="radiogroup" aria-label="Filter by part of speech">
-				<button
-					type="button"
-					role="radio"
-					aria-checked={!data.pos}
-					class="pos-pill"
-					class:selected={!data.pos}
-					onclick={() => selectPos('')}
+					class="btn-sm ghost filter-toggle"
+					aria-expanded={filtersOpen}
+					aria-controls="dictionary-filter-panel"
+					onclick={() => (filtersOpen = !filtersOpen)}
 				>
-					All
+					Filter
 				</button>
-				{#each POS_CORE as pos}
-					{@const selected = data.pos === pos}
+			</div>
+		</div>
+
+		<div
+			id="dictionary-filter-panel"
+			class="filters-panel"
+			class:open={filtersOpen}
+			hidden={!filtersOpen}
+		>
+			<div class="field filter-field-language">
+				<label for="language-kalenjin">Language</label>
+				<div class="toggle-lang">
+					<button
+						id="language-kalenjin"
+						type="button"
+						class:active={data.language === 'kalenjin'}
+						onclick={() => selectLanguage('kalenjin')}
+					>Kalenjin</button>
+					<button
+						type="button"
+						class:active={data.language === 'translations'}
+						onclick={() => selectLanguage('translations')}
+					>Translations</button>
+					<button
+						type="button"
+						class:active={data.language === 'both'}
+						onclick={() => selectLanguage('both')}
+					>Both</button>
+				</div>
+			</div>
+
+			<div class="field filter-field-missing">
+				<span class="field-label">Missing</span>
+				<div class="missing-filter" role="radiogroup" aria-label="Filter by missing data">
 					<button
 						type="button"
 						role="radio"
-						aria-checked={selected}
+						aria-checked={!data.missing}
 						class="pos-pill"
-						class:selected
-						onclick={() => selectPos(pos)}
-					>
-						{POS_LABELS[pos]}
-					</button>
-				{/each}
-				<div class="pos-other-wrap" bind:this={posOtherWrap}>
+						class:selected={!data.missing}
+						onclick={() => selectMissing('')}
+					>None</button>
 					<button
 						type="button"
-						aria-pressed={posOtherSelected}
-						aria-haspopup="menu"
-						aria-expanded={posOtherOpen}
-						class="pos-pill pos-pill-other"
-						class:selected={posOtherSelected}
-						onclick={togglePosOther}
+						role="radio"
+						aria-checked={data.missing === 'plural'}
+						class="pos-pill"
+						class:selected={data.missing === 'plural'}
+						onclick={() => selectMissing('plural')}
+					>Plural</button>
+					<button
+						type="button"
+						role="radio"
+						aria-checked={data.missing === 'conjugation'}
+						class="pos-pill"
+						class:selected={data.missing === 'conjugation'}
+						onclick={() => selectMissing('conjugation')}
+					>Conjugation</button>
+				</div>
+			</div>
+
+			<div class="field filter-field-pos">
+				<span class="field-label">Part of speech</span>
+				<div class="pos-filter" role="radiogroup" aria-label="Filter by part of speech">
+					<button
+						type="button"
+						role="radio"
+						aria-checked={!data.pos}
+						class="pos-pill"
+						class:selected={!data.pos}
+						onclick={() => selectPos('')}
 					>
-						<span>
-							{posOtherSelected ? POS_LABELS[data.pos as PartOfSpeech] : 'Other'}
-						</span>
-						<span class="pos-pill-caret" aria-hidden="true">▾</span>
+						All
 					</button>
-					{#if posOtherOpen}
-						<div class="pos-other-menu" role="menu">
-							{#each POS_OTHER as pos}
-								{@const itemSelected = data.pos === pos}
-								<button
-									type="button"
-									role="menuitemradio"
-									aria-checked={itemSelected}
-									class="pos-other-item"
-									class:selected={itemSelected}
-									onclick={() => selectPos(pos)}
-								>
-									{POS_LABELS[pos]}
-								</button>
-							{/each}
-						</div>
-					{/if}
+					{#each POS_CORE as pos}
+						{@const selected = data.pos === pos}
+						<button
+							type="button"
+							role="radio"
+							aria-checked={selected}
+							class="pos-pill"
+							class:selected
+							onclick={() => selectPos(pos)}
+						>
+							{POS_LABELS[pos]}
+						</button>
+					{/each}
+					<div class="pos-other-wrap" bind:this={posOtherWrap}>
+						<button
+							type="button"
+							aria-pressed={posOtherSelected}
+							aria-haspopup="menu"
+							aria-expanded={posOtherOpen}
+							class="pos-pill pos-pill-other"
+							class:selected={posOtherSelected}
+							onclick={togglePosOther}
+						>
+							<span>
+								{posOtherSelected ? POS_LABELS[data.pos as PartOfSpeech] : 'Other'}
+							</span>
+							<span class="pos-pill-caret" aria-hidden="true">▾</span>
+						</button>
+						{#if posOtherOpen}
+							<div class="pos-other-menu" role="menu">
+								{#each POS_OTHER as pos}
+									{@const itemSelected = data.pos === pos}
+									<button
+										type="button"
+										role="menuitemradio"
+										aria-checked={itemSelected}
+										class="pos-other-item"
+										class:selected={itemSelected}
+										onclick={() => selectPos(pos)}
+									>
+										{POS_LABELS[pos]}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
 			</div>
 		</div>
@@ -545,6 +578,75 @@
 		margin-top: 0.5rem;
 	}
 
+	.controls {
+		grid-template-columns: 1fr;
+		align-items: stretch;
+	}
+
+	.search-row {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr) auto;
+		gap: 12px;
+		align-items: end;
+	}
+
+	.search-field {
+		min-width: 0;
+	}
+
+	.filter-toggle-wrap {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		align-items: flex-start;
+	}
+
+	.filter-toggle-label {
+		font-size: 11px;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--ink-mute);
+		font-weight: 600;
+	}
+
+	.filter-toggle {
+		min-height: 45px;
+		padding-inline: 14px;
+		white-space: nowrap;
+	}
+
+	.filters-panel {
+		display: none;
+		flex-wrap: wrap;
+		gap: 10px;
+		align-items: start;
+		padding-top: 4px;
+	}
+
+	.filters-panel.open {
+		display: flex;
+	}
+
+	.filter-field-language,
+	.filter-field-missing {
+		flex: 0 0 auto;
+	}
+
+	.filter-field-pos {
+		flex: 1 1 24rem;
+		min-width: 0;
+	}
+
+	.filters-panel .toggle-lang {
+		display: inline-flex;
+		width: fit-content;
+		max-width: 100%;
+	}
+
+	.filters-panel .toggle-lang button {
+		padding-inline: 12px;
+	}
+
 	.field-label {
 		font-size: 11px;
 		letter-spacing: 0.1em;
@@ -556,10 +658,11 @@
 	.pos-filter,
 	.missing-filter {
 		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
+		flex-wrap: nowrap;
+		gap: 6px;
 	}
 	.pos-pill {
+		flex: 0 0 auto;
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
 		border-radius: 10px;
@@ -568,7 +671,7 @@
 		font: inherit;
 		font-size: 14px;
 		font-weight: 500;
-		padding: 10px 14px;
+		padding: 10px 12px;
 		text-align: center;
 		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 		white-space: nowrap;
@@ -584,6 +687,7 @@
 		color: var(--on-brand);
 	}
 	.pos-other-wrap {
+		flex: 0 0 auto;
 		position: relative;
 	}
 	.pos-other-wrap .pos-pill {
@@ -635,5 +739,41 @@
 		align-items: center;
 		display: flex;
 		gap: 10px;
+	}
+
+	@media (max-width: 720px) {
+		.search-row,
+		.filters-panel.open {
+			grid-template-columns: 1fr;
+		}
+
+		.filter-toggle-wrap {
+			width: 100%;
+		}
+
+		.filters-panel.open {
+			display: grid;
+		}
+
+		.filter-field-language,
+		.filter-field-missing,
+		.filter-field-pos {
+			flex: initial;
+		}
+
+		.filter-toggle {
+			width: 100%;
+			justify-content: center;
+		}
+
+		.toggle-lang {
+			display: grid;
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+			width: 100%;
+		}
+
+		.toggle-lang button {
+			padding-inline: 10px;
+		}
 	}
 </style>

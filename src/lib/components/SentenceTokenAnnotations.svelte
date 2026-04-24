@@ -4,6 +4,8 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import ImageUploadField from './ImageUploadField.svelte';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -1064,13 +1066,14 @@
 
 <div class="annotations">
 	{#if groups.length === 0}
-		<p class="empty-text">{sentenceText}</p>
+		<p class="empty-text"><SentenceTimeText text={sentenceText} /></p>
 	{:else}
 		{#each groups as group (group.key)}
 			{@const primaryToken = group.tokens[0]}
 			{@const sharedWord = primaryToken.word}
 			{@const lexicalSegments = primaryToken.segments ?? []}
 			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
+			{@const timeAnnotation = getSentenceTimeAnnotation(group.fullSurface)}
 			<div class="token-group">
 				<div class="token-card">
 					<div class:unlinked-lemma={!sharedWord && lexicalSegments.length === 0} class="lemma-label">
@@ -1117,6 +1120,12 @@
 							ondrop={(event) => handleDrop(event, primaryToken.id, group.fullSurface)}
 						>
 							{group.fullSurface}
+							{#if timeAnnotation}
+								<span class="token-time-tooltip" role="tooltip">
+									<strong>Western time: {timeAnnotation.westernTime}</strong>
+									<span>{timeAnnotation.note}</span>
+								</span>
+							{/if}
 						</button>
 					{/if}
 
@@ -1579,8 +1588,8 @@
 								<span class="lemma-forms-label">Forms</span>
 								<span class="lemma-forms-hint">
 									{currentPos === 'NOUN'
-										? 'Nouns need a plural form.'
-										: 'Adjectives need a plural form.'}
+										? 'Nouns need a plural form. Use commas for alternates.'
+										: 'Adjectives need a plural form. Use commas for alternates.'}
 								</span>
 							</div>
 							<div class="lemma-forms-grid">
@@ -1600,7 +1609,7 @@
 									<input
 										id="lemma-field-plural"
 										class="input"
-										placeholder="e.g. chego"
+										placeholder="e.g. chego, chegok"
 										disabled={isPluralOnlyValue}
 										value={pluralFormValue}
 										oninput={(event) =>
@@ -1799,6 +1808,29 @@
 		text-align: center;
 	}
 
+	.token-time-tooltip {
+		background: var(--tooltip-bg);
+		border-radius: 0.45rem;
+		bottom: calc(100% + 0.35rem);
+		color: var(--tooltip-ink);
+		display: none;
+		font-size: 0.78rem;
+		gap: 0.15rem;
+		left: 50%;
+		max-width: min(18rem, 70vw);
+		min-width: 12rem;
+		padding: 0.4rem 0.5rem;
+		pointer-events: none;
+		position: absolute;
+		transform: translateX(-50%);
+		white-space: normal;
+		z-index: 15;
+	}
+
+	.token-button:hover .token-time-tooltip,
+	.token-button:focus-visible .token-time-tooltip {
+		display: grid;
+	}
 
 	.translation-form {
 		display: grid;

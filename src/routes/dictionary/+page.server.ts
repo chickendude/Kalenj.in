@@ -1,6 +1,10 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech, Prisma } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import {
+	isNumericTranslationSearchQuery,
+	sortTranslationSearchResults
+} from '$lib/translations';
 import { prisma } from '$lib/server/prisma';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
@@ -13,6 +17,13 @@ function readText(formData: FormData, key: string): string {
 }
 
 type SearchLanguage = 'both' | 'translations' | 'kalenjin';
+type DictionarySearchWord = {
+	id: string;
+	kalenjin: string;
+	translations: string;
+	partOfSpeech: PartOfSpeech | null;
+	audioUrl: string | null;
+};
 
 function parseLanguage(value: string | null): SearchLanguage {
 	if (value === 'both' || value === 'translations' || value === 'kalenjin') {
@@ -105,22 +116,23 @@ export const load: PageServerLoad = async ({ url }) => {
 	const missing = parseMissing(url.searchParams.get('missing'));
 	const missingWhere = missingWhereClause(missing);
 	const limit = 200;
-
+	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
 	const posWhere: Prisma.WordWhereInput | null = pos ? { partOfSpeech: pos } : null;
 	const baseWhere: Prisma.WordWhereInput | undefined =
 		posWhere && missingWhere
 			? { AND: [posWhere, missingWhere] }
 			: posWhere ?? missingWhere ?? undefined;
 
-	let words;
+	let words: DictionarySearchWord[];
 	if (!query) {
 		words = await prisma.word.findMany({
 			where: baseWhere,
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 			take: limit
 		});
 	} else if (language === 'translations') {
-		words = await prisma.word.findMany({
+		const translationWords = await prisma.word.findMany({
 			where: {
 				AND: [
 					{ translations: { contains: query, mode: 'insensitive' } },
@@ -128,8 +140,13 @@ export const load: PageServerLoad = async ({ url }) => {
 				]
 			},
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 			take: limit
 		});
+
+		words = prioritizeTranslations
+			? sortTranslationSearchResults(translationWords, query).slice(0, limit)
+			: translationWords;
 	} else if (language === 'kalenjin') {
 		const searched = await searchWordsByKalenjin(prisma, query, limit);
 		const posFiltered = filterByPartOfSpeech(searched, pos);
@@ -145,18 +162,25 @@ export const load: PageServerLoad = async ({ url }) => {
 					]
 				},
 				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+				select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 				take: limit
 			})
 		]);
 
-		const mergedWords = new Map<string, (typeof translationWords)[number]>();
 		const filteredKalenjin = filterByPartOfSpeech(kalenjinWords, pos).filter((word) =>
 			matchesMissing(word, missing)
 		);
-		for (const word of filteredKalenjin) {
+		const rankedTranslationWords = prioritizeTranslations
+			? sortTranslationSearchResults(translationWords, query)
+			: translationWords;
+		const mergedWords = new Map<string, DictionarySearchWord>();
+		const firstPassWords = prioritizeTranslations ? rankedTranslationWords : filteredKalenjin;
+		const secondPassWords = prioritizeTranslations ? filteredKalenjin : rankedTranslationWords;
+
+		for (const word of firstPassWords) {
 			mergedWords.set(word.id, word);
 		}
-		for (const word of translationWords) {
+		for (const word of secondPassWords) {
 			if (!mergedWords.has(word.id)) {
 				mergedWords.set(word.id, word);
 			}

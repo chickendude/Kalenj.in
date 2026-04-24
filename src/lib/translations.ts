@@ -81,11 +81,18 @@ export function sortTranslationSearchResults<T extends { kalenjin: string; trans
 	}
 
 	return [...words].sort((left, right) => {
-		const scoreDifference =
-			scoreTranslationMatch(left.translations, normalizedQuery) -
-			scoreTranslationMatch(right.translations, normalizedQuery);
-		if (scoreDifference !== 0) {
-			return scoreDifference;
+		const leftScore = scoreTranslationMatch(left.translations, normalizedQuery);
+		const rightScore = scoreTranslationMatch(right.translations, normalizedQuery);
+		if (leftScore !== rightScore) {
+			if (Number.isFinite(leftScore) && Number.isFinite(rightScore)) {
+				return leftScore - rightScore;
+			}
+			if (Number.isFinite(leftScore)) {
+				return -1;
+			}
+			if (Number.isFinite(rightScore)) {
+				return 1;
+			}
 		}
 
 		return (

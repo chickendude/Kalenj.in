@@ -17,6 +17,13 @@ function readText(formData: FormData, key: string): string {
 }
 
 type SearchLanguage = 'both' | 'translations' | 'kalenjin';
+type DictionarySearchWord = {
+	id: string;
+	kalenjin: string;
+	translations: string;
+	partOfSpeech: PartOfSpeech | null;
+	audioUrl: string | null;
+};
 
 function parseLanguage(value: string | null): SearchLanguage {
 	if (value === 'both' || value === 'translations' || value === 'kalenjin') {
@@ -109,34 +116,37 @@ export const load: PageServerLoad = async ({ url }) => {
 	const missing = parseMissing(url.searchParams.get('missing'));
 	const missingWhere = missingWhereClause(missing);
 	const limit = 200;
-
+	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
 	const posWhere: Prisma.WordWhereInput | null = pos ? { partOfSpeech: pos } : null;
 	const baseWhere: Prisma.WordWhereInput | undefined =
 		posWhere && missingWhere
 			? { AND: [posWhere, missingWhere] }
 			: posWhere ?? missingWhere ?? undefined;
 
-	let words;
+	let words: DictionarySearchWord[];
 	if (!query) {
 		words = await prisma.word.findMany({
 			where: baseWhere,
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 			take: limit
 		});
 	} else if (language === 'translations') {
-		words = sortTranslationSearchResults(
-			await prisma.word.findMany({
-				where: {
-					AND: [
-						{ translations: { contains: query, mode: 'insensitive' } },
-						...(baseWhere ? [baseWhere] : [])
-					]
-				},
-				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-				take: limit
-			}),
-			query
-		).slice(0, limit);
+		const translationWords = await prisma.word.findMany({
+			where: {
+				AND: [
+					{ translations: { contains: query, mode: 'insensitive' } },
+					...(baseWhere ? [baseWhere] : [])
+				]
+			},
+			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
+			take: limit
+		});
+
+		words = prioritizeTranslations
+			? sortTranslationSearchResults(translationWords, query).slice(0, limit)
+			: translationWords;
 	} else if (language === 'kalenjin') {
 		const searched = await searchWordsByKalenjin(prisma, query, limit);
 		const posFiltered = filterByPartOfSpeech(searched, pos);
@@ -152,16 +162,18 @@ export const load: PageServerLoad = async ({ url }) => {
 					]
 				},
 				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
+				select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
 				take: limit
 			})
 		]);
 
-		const mergedWords = new Map<string, (typeof translationWords)[number]>();
 		const filteredKalenjin = filterByPartOfSpeech(kalenjinWords, pos).filter((word) =>
 			matchesMissing(word, missing)
 		);
-		const rankedTranslationWords = sortTranslationSearchResults(translationWords, query);
-		const prioritizeTranslations = isNumericTranslationSearchQuery(query);
+		const rankedTranslationWords = prioritizeTranslations
+			? sortTranslationSearchResults(translationWords, query)
+			: translationWords;
+		const mergedWords = new Map<string, DictionarySearchWord>();
 		const firstPassWords = prioritizeTranslations ? rankedTranslationWords : filteredKalenjin;
 		const secondPassWords = prioritizeTranslations ? filteredKalenjin : rankedTranslationWords;
 

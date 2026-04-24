@@ -21,6 +21,7 @@
 		partOfSpeech = $bindable<PartOfSpeech | ''>(''),
 		pluralForm = $bindable(''),
 		isPluralOnly = $bindable(false),
+		alternativePluralForms = $bindable(''),
 		presentAnee = $bindable(''),
 		presentInyee = $bindable(''),
 		presentInee = $bindable(''),
@@ -39,6 +40,7 @@
 		partOfSpeech?: PartOfSpeech | '';
 		pluralForm?: string;
 		isPluralOnly?: boolean;
+		alternativePluralForms?: string;
 		presentAnee?: string;
 		presentInyee?: string;
 		presentInee?: string;
@@ -97,6 +99,7 @@
 		if (partOfSpeech !== 'NOUN' && partOfSpeech !== 'ADJECTIVE') {
 			pluralForm = '';
 			isPluralOnly = false;
+			alternativePluralForms = '';
 		}
 		if (partOfSpeech !== 'VERB') {
 			clearConjugations();
@@ -130,6 +133,11 @@
 	<input type="hidden" name="partOfSpeech" value={partOfSpeech} />
 	<input type="hidden" name="pluralForm" value={needsPlural && !isPluralOnly ? pluralForm : ''} />
 	<input type="hidden" name="isPluralOnly" value={needsPlural && isPluralOnly ? 'on' : ''} />
+	<input
+		type="hidden"
+		name="alternativePluralForms"
+		value={needsPlural && !isPluralOnly ? alternativePluralForms : ''}
+	/>
 	<input type="hidden" name="presentAnee" value={needsConjugations ? presentAnee : ''} />
 	<input type="hidden" name="presentInyee" value={needsConjugations ? presentInyee : ''} />
 	<input type="hidden" name="presentInee" value={needsConjugations ? presentInee : ''} />
@@ -222,15 +230,27 @@
 				<span class="lemma-forms-label">Additional Forms</span>
 			</div>
 			{#if needsPlural}
-				<div class="field">
-					<label for="{idPrefix}-plural">Plural</label>
-					<input
-						id="{idPrefix}-plural"
-						class="input"
-						placeholder="e.g. chego"
-						disabled={isPluralOnly}
-						bind:value={pluralForm}
-					/>
+				<div class="lemma-form-grid">
+					<div class="field">
+						<label for="{idPrefix}-plural">Plural</label>
+						<input
+							id="{idPrefix}-plural"
+							class="input"
+							placeholder="e.g. chego"
+							disabled={isPluralOnly}
+							bind:value={pluralForm}
+						/>
+					</div>
+					<div class="field">
+						<label for="{idPrefix}-plural-alt">Alternative plurals</label>
+						<input
+							id="{idPrefix}-plural-alt"
+							class="input"
+							placeholder="comma, separated"
+							disabled={isPluralOnly}
+							bind:value={alternativePluralForms}
+						/>
+					</div>
 				</div>
 				<label class="plural-only-toggle">
 					<input

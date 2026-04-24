@@ -2,6 +2,7 @@
 	import { enhance } from '$app/forms';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { stripWordLinks } from '$lib/word-links';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
@@ -90,6 +91,7 @@
 		createAlternativeSpellings: string;
 		createPluralForm: string;
 		createIsPluralOnly: boolean;
+		createAlternativePluralForms: string;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
 
@@ -268,6 +270,7 @@
 		}
 
 		for (const token of localTokens) {
+			const tokenPluralForms = splitPluralFormVariants(token.word?.pluralForm);
 			drafts[token.id] = {
 				inContextTranslation: token.inContextTranslation ?? '',
 				selectedWordId: token.word?.id ?? '',
@@ -275,12 +278,14 @@
 				createTranslations: stripWordLinks(token.word?.translations ?? ''),
 				createNotes: stripWordLinks(token.word?.notes ?? ''),
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
-				createPluralForm: token.word?.pluralForm ?? '',
+				createPluralForm: tokenPluralForms.pluralForm,
+				createAlternativePluralForms: tokenPluralForms.alternativePluralForms,
 				createIsPluralOnly: Boolean(token.word?.isPluralOnly),
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
 			for (const segment of token.segments ?? []) {
+				const segmentPluralForms = splitPluralFormVariants(segment.word?.pluralForm);
 				drafts[segment.id] = {
 					inContextTranslation: '',
 					selectedWordId: segment.word?.id ?? '',
@@ -288,7 +293,8 @@
 					createTranslations: stripWordLinks(segment.word?.translations ?? ''),
 					createNotes: stripWordLinks(segment.word?.notes ?? ''),
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
-					createPluralForm: segment.word?.pluralForm ?? '',
+					createPluralForm: segmentPluralForms.pluralForm,
+					createAlternativePluralForms: segmentPluralForms.alternativePluralForms,
 					createIsPluralOnly: Boolean(segment.word?.isPluralOnly),
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
@@ -988,6 +994,7 @@
 
 	function applyTokenUpdates(tokenUpdates: TokenUpdatePayload[]) {
 		for (const tokenUpdate of tokenUpdates) {
+			const tokenPluralForms = splitPluralFormVariants(tokenUpdate.word?.pluralForm);
 			localTokens = localTokens.map((token) =>
 				token.id === tokenUpdate.tokenId
 					? {
@@ -1024,7 +1031,13 @@
 						? serializeSpellings(tokenUpdate.word.spellings)
 						: drafts[tokenUpdate.tokenId]?.createAlternativeSpellings ?? '',
 				createPluralForm:
-					tokenUpdate.word?.pluralForm ?? drafts[tokenUpdate.tokenId]?.createPluralForm ?? '',
+					tokenUpdate.word?.pluralForm !== undefined
+						? tokenPluralForms.pluralForm
+						: drafts[tokenUpdate.tokenId]?.createPluralForm ?? '',
+				createAlternativePluralForms:
+					tokenUpdate.word?.pluralForm !== undefined
+						? tokenPluralForms.alternativePluralForms
+						: drafts[tokenUpdate.tokenId]?.createAlternativePluralForms ?? '',
 				createIsPluralOnly:
 					tokenUpdate.word?.isPluralOnly ?? drafts[tokenUpdate.tokenId]?.createIsPluralOnly ?? false,
 				createPartOfSpeech:
@@ -1032,6 +1045,7 @@
 			};
 
 			for (const segment of tokenUpdate.segments ?? []) {
+				const segmentPluralForms = splitPluralFormVariants(segment.word?.pluralForm);
 				drafts[segment.id] = {
 					...drafts[segment.id],
 					inContextTranslation: '',
@@ -1052,7 +1066,13 @@
 						? serializeSpellings(segment.word.spellings)
 						: drafts[segment.id]?.createAlternativeSpellings ?? '',
 					createPluralForm:
-						segment.word?.pluralForm ?? drafts[segment.id]?.createPluralForm ?? '',
+						segment.word?.pluralForm !== undefined
+							? segmentPluralForms.pluralForm
+							: drafts[segment.id]?.createPluralForm ?? '',
+					createAlternativePluralForms:
+						segment.word?.pluralForm !== undefined
+							? segmentPluralForms.alternativePluralForms
+							: drafts[segment.id]?.createAlternativePluralForms ?? '',
 					createIsPluralOnly:
 						segment.word?.isPluralOnly ?? drafts[segment.id]?.createIsPluralOnly ?? false,
 					createPartOfSpeech:
@@ -1546,6 +1566,11 @@
 						name="isPluralOnly"
 						value={currentPosNeedsPlural && isPluralOnlyValue ? 'on' : ''}
 					/>
+					<input
+						type="hidden"
+						name="alternativePluralForms"
+						value={currentPosNeedsPlural && !isPluralOnlyValue ? drafts[activeDraftKey]?.createAlternativePluralForms ?? '' : ''}
+					/>
 
 					<div class="lemma-form-grid">
 						<div class="field">
@@ -1594,28 +1619,33 @@
 							</div>
 							<div class="lemma-forms-grid">
 								<div class="field">
-									<label for="lemma-field-singular">Singular</label>
-									<input
-										id="lemma-field-singular"
-										class="input"
-										value={createLemmaValue}
-										readonly
-										tabindex="-1"
-										aria-readonly="true"
-									/>
-								</div>
-								<div class="field">
 									<label for="lemma-field-plural">Plural</label>
 									<input
 										id="lemma-field-plural"
 										class="input"
-										placeholder="e.g. chego, chegok"
+										placeholder="e.g. chego"
 										disabled={isPluralOnlyValue}
 										value={pluralFormValue}
 										oninput={(event) =>
 											updateDraft(
 												activeDraftKey,
 												'createPluralForm',
+												(event.currentTarget as HTMLInputElement).value
+											)}
+									/>
+								</div>
+								<div class="field">
+									<label for="lemma-field-plural-alt">Alternative plurals</label>
+									<input
+										id="lemma-field-plural-alt"
+										class="input"
+										placeholder="comma, separated"
+										disabled={isPluralOnlyValue}
+										value={drafts[activeDraftKey]?.createAlternativePluralForms ?? ''}
+										oninput={(event) =>
+											updateDraft(
+												activeDraftKey,
+												'createAlternativePluralForms',
 												(event.currentTarget as HTMLInputElement).value
 											)}
 									/>
@@ -2346,11 +2376,6 @@
 		display: grid;
 		gap: 12px;
 		grid-template-columns: 1fr 1fr;
-	}
-	.lemma-forms-grid .input[readonly] {
-		background: color-mix(in oklch, var(--line) 45%, transparent);
-		color: var(--ink);
-		cursor: default;
 	}
 	.lemma-forms-grid .input:disabled {
 		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));

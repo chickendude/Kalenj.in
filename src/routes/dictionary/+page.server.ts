@@ -5,6 +5,7 @@ import {
 	isNumericTranslationSearchQuery,
 	sortTranslationSearchResults
 } from '$lib/translations';
+import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { prisma } from '$lib/server/prisma';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
@@ -205,6 +206,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 
 		const values = {
 			kalenjin,
@@ -212,7 +214,9 @@ export const actions: Actions = {
 			alternativeSpellings,
 			notes,
 			partOfSpeech: partOfSpeechRaw,
-			pluralForm: pluralFormRaw
+			pluralForm: pluralFormRaw,
+			isPluralOnly: isPluralOnlyRaw === 'on',
+			alternativePluralForms
 		};
 
 		if (!kalenjin || !translations) {
@@ -235,7 +239,11 @@ export const actions: Actions = {
 
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
-		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
+		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
+		const pluralForm =
+			canHavePlural && !isPluralOnly && combinedPluralForms
+				? combinedPluralForms
+				: null;
 
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;

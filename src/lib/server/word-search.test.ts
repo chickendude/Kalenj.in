@@ -110,4 +110,19 @@ describe('sortWordSearchResults – ranking scenarios', () => {
 		expect(sorted[0].id).toBe('exact-match');
 		expect(sorted[1].id).toBe('spelling-match');
 	});
+
+	it('matches alternate plural forms and ranks them below primary exact match', () => {
+		const words = [
+			makeWord({
+				id: 'plural-match',
+				kalenjin: 'kot',
+				pluralForm: 'kotiosiek, kotiosiekab',
+				pluralFormNormalized: 'kotiosiek, kotiosiekab'
+			}),
+			makeWord({ id: 'exact-match', kalenjin: 'kotiosiekab' })
+		];
+		const sorted = sortWordSearchResults(words, 'kotiosiekab');
+		expect(sorted[0].id).toBe('exact-match');
+		expect(sorted[1].id).toBe('plural-match');
+	});
 });

@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	normalizeKalenjinSearchQuery,
 	parseAlternativeSpellings,
+	parsePluralForms,
 	prepareAlternativeSpellings,
+	preparePluralForms,
 	scoreKalenjinWordMatch,
 	sortKalenjinSearchResults,
 	searchWordsByKalenjin
@@ -106,6 +108,24 @@ describe('prepareAlternativeSpellings', () => {
 		expect(prepareAlternativeSpellings('chamcham\nchomchom\n', 'chamcham')).toEqual([
 			{ spelling: 'chomchom', spellingNormalized: 'chomchom' }
 		]);
+	});
+});
+
+describe('parsePluralForms', () => {
+	it('parses comma-separated plural forms and deduplicates them by normalized form', () => {
+		expect(parsePluralForms('  kotiosiek, kotiosiekab, Kotiosiek  ')).toEqual([
+			'kotiosiek',
+			'kotiosiekab'
+		]);
+	});
+});
+
+describe('preparePluralForms', () => {
+	it('stores plural forms as a canonical comma-separated list', () => {
+		expect(preparePluralForms('  kotiosiek, kotiosiekab  , Kotiosiek ')).toEqual({
+			pluralForm: 'kotiosiek, kotiosiekab',
+			pluralFormNormalized: 'kotiosiek, kotiosiekab'
+		});
 	});
 });
 
@@ -253,6 +273,16 @@ describe('scoreKalenjinWordMatch – prefix and contains', () => {
 		};
 		const score = scoreKalenjinWordMatch(wordWithPlural, 'kotiosiek');
 		// Plural exact match gets score 1 (0 + alternateOffset 1)
+		expect(score).toBe(1);
+	});
+
+	it('matches via alternate plural form in a comma-separated list', () => {
+		const wordWithPlural = {
+			...WORDS[2],
+			pluralForm: 'kotiosiek, kotiosiekab',
+			pluralFormNormalized: 'kotiosiek, kotiosiekab'
+		};
+		const score = scoreKalenjinWordMatch(wordWithPlural, 'kotiosiekab');
 		expect(score).toBe(1);
 	});
 });

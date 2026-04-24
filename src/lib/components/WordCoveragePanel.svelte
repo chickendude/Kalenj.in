@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { stripWordLinks } from '$lib/word-links';
+	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 
 	type CoverageEntry = {
 		word: { id: string; kalenjin: string; translations: string };
@@ -84,7 +85,7 @@
 						</div>
 						<div class="coverage-sentences">
 							{#each entry.sentences as sentence}
-								<span class="coverage-sentence">{sentence.kalenjin}</span>
+								<span class="coverage-sentence"><SentenceTimeText text={sentence.kalenjin} /></span>
 							{/each}
 						</div>
 						<div class="coverage-status">

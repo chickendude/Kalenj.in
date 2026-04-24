@@ -109,7 +109,7 @@ export function normalizeKalenjinSearchQuery(query: string): string {
 	return normalizeLemma(query);
 }
 
-export function parseAlternativeSpellings(value: string): string[] {
+function parseCommaSeparatedForms(value: string): string[] {
 	const seen = new Set<string>();
 
 	return value
@@ -127,6 +127,14 @@ export function parseAlternativeSpellings(value: string): string[] {
 		});
 }
 
+export function parseAlternativeSpellings(value: string): string[] {
+	return parseCommaSeparatedForms(value);
+}
+
+export function parsePluralForms(value: string): string[] {
+	return parseCommaSeparatedForms(value);
+}
+
 export function prepareAlternativeSpellings(value: string, baseLemma?: string) {
 	const normalizedBaseLemma = baseLemma ? normalizeLemma(baseLemma) : '';
 
@@ -139,6 +147,24 @@ export function prepareAlternativeSpellings(value: string, baseLemma?: string) {
 		.filter((spelling) => spelling.spellingNormalized !== normalizedBaseLemma);
 }
 
+export function preparePluralForms(value: string) {
+	const pluralForms = parsePluralForms(value)
+		.map((pluralForm) => ({
+			pluralForm,
+			pluralFormNormalized: normalizeLemma(pluralForm)
+		}))
+		.filter((pluralForm) => pluralForm.pluralFormNormalized.length > 0);
+
+	return {
+		pluralForm: pluralForms.length
+			? pluralForms.map((pluralForm) => pluralForm.pluralForm).join(', ')
+			: null,
+		pluralFormNormalized: pluralForms.length
+			? pluralForms.map((pluralForm) => pluralForm.pluralFormNormalized).join(', ')
+			: null
+	};
+}
+
 function collectSearchForms(word: KalenjinSearchWord): SearchForm[] {
 	const forms: SearchForm[] = [
 		{
@@ -148,11 +174,11 @@ function collectSearchForms(word: KalenjinSearchWord): SearchForm[] {
 		}
 	];
 
-	if (word.pluralForm && word.pluralFormNormalized) {
+	for (const pluralForm of parsePluralForms(word.pluralForm ?? '')) {
 		forms.push({
 			kind: 'plural',
-			display: word.pluralForm,
-			normalized: word.pluralFormNormalized
+			display: pluralForm,
+			normalized: normalizeLemma(pluralForm)
 		});
 	}
 

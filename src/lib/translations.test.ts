@@ -61,6 +61,10 @@ describe('scoreTranslationMatch', () => {
 			scoreTranslationMatch('taste good', 'taste')
 		);
 	});
+
+	it('returns Infinity when the raw SQL match spans translation delimiters', () => {
+		expect(scoreTranslationMatch('love; hate', 'love;')).toBe(Number.POSITIVE_INFINITY);
+	});
 });
 
 describe('sortTranslationSearchResults', () => {
@@ -85,5 +89,17 @@ describe('sortTranslationSearchResults', () => {
 		];
 
 		expect(sortTranslationSearchResults(words, '1').map((word) => word.id)).toEqual(['a', 'b']);
+	});
+
+	it('falls back to alphabetical order when both scores are Infinity', () => {
+		const words = [
+			{ id: 'b', kalenjin: 'bor', translations: 'love; hate' },
+			{ id: 'a', kalenjin: 'agenge', translations: 'love; like' }
+		];
+
+		expect(sortTranslationSearchResults(words, 'love;').map((word) => word.id)).toEqual([
+			'a',
+			'b'
+		]);
 	});
 });

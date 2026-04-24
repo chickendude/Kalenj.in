@@ -9,6 +9,9 @@ import {
 import { getLastUsedMap } from '$lib/server/word-of-the-day';
 import type { RequestHandler } from './$types';
 
+const MAX_RESULTS = 12;
+const TRANSLATION_CANDIDATE_LIMIT = MAX_RESULTS * 10;
+
 export type WordSearchHit = {
 	id: string;
 	kalenjin: string;
@@ -27,13 +30,15 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		return json({ results: [] satisfies WordSearchHit[], query });
 	}
 
+	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
 	const [kalenjinWords, translationWords] = await Promise.all([
-		searchWordsByKalenjin(prisma, query, 12),
+		searchWordsByKalenjin(prisma, query, MAX_RESULTS),
 		prisma.word.findMany({
 			where: {
 				translations: { contains: query, mode: 'insensitive' }
 			},
 			orderBy: { kalenjin: 'asc' },
+			take: TRANSLATION_CANDIDATE_LIMIT,
 			select: {
 				id: true,
 				kalenjin: true,
@@ -43,8 +48,9 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		})
 	]);
 
-	const rankedTranslationWords = sortTranslationSearchResults(translationWords, query);
-	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
+	const rankedTranslationWords = prioritizeTranslations
+		? sortTranslationSearchResults(translationWords, query)
+		: translationWords;
 	const merged = new Map<string, (typeof translationWords)[number]>();
 	for (const word of prioritizeTranslations ? rankedTranslationWords : kalenjinWords) {
 		merged.set(word.id, word);
@@ -55,7 +61,7 @@ export const GET: RequestHandler = async ({ url, locals }) => {
 		}
 	}
 
-	const words = [...merged.values()].slice(0, 12);
+	const words = [...merged.values()].slice(0, MAX_RESULTS);
 
 	const lastUsed = await getLastUsedMap(words.map((w) => w.id));
 

@@ -7,6 +7,7 @@
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
+	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks, stripWordLinks } from '$lib/word-links';
 	import { renderMarkdown } from '$lib/markdown';
@@ -34,6 +35,7 @@
 	let altSpellingsValue = $state('');
 	let pluralFormValue = $state('');
 	let isPluralOnly = $state(false);
+	let alternativePluralFormsValue = $state('');
 	let presentAnee = $state('');
 	let presentInyee = $state('');
 	let presentInee = $state('');
@@ -59,7 +61,12 @@
 			data.word.spellings.map((spelling) => spelling.spelling).join(', ');
 	});
 	$effect(() => {
-		pluralFormValue = (values as { pluralForm?: string | null }).pluralForm ?? '';
+		const { pluralForm, alternativePluralForms } = splitPluralFormVariants(
+			(values as { pluralForm?: string | null }).pluralForm ?? ''
+		);
+		pluralFormValue = pluralForm;
+		alternativePluralFormsValue =
+			(form?.values?.alternativePluralForms ?? alternativePluralForms) as string;
 	});
 	$effect(() => {
 		isPluralOnly = Boolean((values as { isPluralOnly?: boolean }).isPluralOnly);
@@ -391,29 +398,44 @@
 							</select>
 						</div>
 						{#if needsPluralInput}
-							<div class="side-field">
-								<label for="pluralForm">Plural</label>
-								<input
-									id="pluralForm"
-									name="pluralForm"
-									type="text"
-									class="side-input"
-									placeholder="e.g. chego"
-									disabled={isPluralOnly}
-									bind:value={pluralFormValue}
-								/>
-								<label class="plural-only-toggle">
+							<div class="side-field-grid">
+								<div class="side-field">
+									<label for="pluralForm">Plural</label>
 									<input
-										type="checkbox"
-										name="isPluralOnly"
-										bind:checked={isPluralOnly}
+										id="pluralForm"
+										name="pluralForm"
+										type="text"
+										class="side-input"
+										placeholder="e.g. chego"
+										disabled={isPluralOnly}
+										bind:value={pluralFormValue}
 									/>
-									<span>Plural-only</span>
-								</label>
+								</div>
+								<div class="side-field">
+									<label for="alternativePluralForms">Alternative plurals</label>
+									<input
+										id="alternativePluralForms"
+										name="alternativePluralForms"
+										type="text"
+										class="side-input"
+										placeholder="comma, separated"
+										disabled={isPluralOnly}
+										bind:value={alternativePluralFormsValue}
+									/>
+								</div>
 							</div>
+							<label class="plural-only-toggle">
+								<input
+									type="checkbox"
+									name="isPluralOnly"
+									bind:checked={isPluralOnly}
+								/>
+								<span>Plural-only</span>
+							</label>
 						{:else}
 							<input type="hidden" name="pluralForm" value="" />
 							<input type="hidden" name="isPluralOnly" value="" />
+							<input type="hidden" name="alternativePluralForms" value="" />
 						{/if}
 						{#if needsConjugationInputs}
 							<div class="side-field">
@@ -731,6 +753,11 @@
 		color: var(--ink-soft);
 		font-style: italic;
 	}
+	.side-field-grid {
+		display: grid;
+		gap: 12px;
+		grid-template-columns: 1fr 1fr;
+	}
 	.notes-markdown :global(p) {
 		margin: 0 0 0.5em;
 		font-size: 15px;
@@ -867,6 +894,9 @@
 		font-style: italic;
 	}
 	@media (max-width: 640px) {
+		.side-field-grid {
+			grid-template-columns: 1fr;
+		}
 		.conjugation-grid {
 			grid-template-columns: 1fr;
 		}

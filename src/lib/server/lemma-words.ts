@@ -1,5 +1,5 @@
 import { Prisma, type PartOfSpeech } from '@prisma/client';
-import { prepareAlternativeSpellings } from './kalenjin-word-search';
+import { prepareAlternativeSpellings, preparePluralForms } from './kalenjin-word-search';
 import { normalizeLemma } from './normalize-lemma';
 
 export const PRESENT_TENSE_KEYS = [
@@ -90,8 +90,10 @@ export async function createOrUpdateLinkedWord(
 		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE';
 	const isPluralOnlyProvided = input.isPluralOnly !== undefined;
 	const isPluralOnly = canHavePlural && input.isPluralOnly === true;
-	const pluralForm = canHavePlural && !isPluralOnly ? input.pluralForm ?? null : null;
-	const pluralFormNormalized = pluralForm ? normalizeLemma(pluralForm) : null;
+	const { pluralForm, pluralFormNormalized } =
+		canHavePlural && !isPluralOnly
+			? preparePluralForms(input.pluralForm ?? '')
+			: { pluralForm: null, pluralFormNormalized: null };
 	const presentTense: PresentTenseConjugations =
 		input.partOfSpeech === 'VERB' && input.presentTense
 			? input.presentTense

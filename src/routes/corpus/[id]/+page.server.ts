@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
@@ -238,6 +239,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readOptionalText(formData, 'alternativePluralForms');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -290,7 +292,10 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					pluralForm:
+						canHavePlural && !isPluralOnly
+							? combinePluralFormVariants(pluralForm, alternativePluralForms)
+							: null,
 					isPluralOnly,
 					presentTense,
 					...(imageUrl !== undefined ? { imageUrl } : {})

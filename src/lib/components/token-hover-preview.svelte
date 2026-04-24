@@ -37,28 +37,33 @@
 	let pinnedTooltipKey = $state<string | null>(null);
 	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, tokens }));
 
-	function tokenPopupPart(token: PreviewToken): PopupPart {
-		const timeAnnotation = getSentenceTimeAnnotation(token.surfaceForm);
+	function buildPopupPart(
+		key: string,
+		surfaceForm: string,
+		word: TokenWord | null | undefined
+	): PopupPart {
+		const timeAnnotation = getSentenceTimeAnnotation(surfaceForm);
 		return {
-			key: token.id,
-			kalenjin: token.word?.kalenjin ?? token.surfaceForm,
-			english: token.word?.translations ?? null,
-			westernTime: timeAnnotation?.westernTime ?? null,
-			timeNote: timeAnnotation?.note ?? null
-		};
-	}
-
-	function segmentPopupPart(segment: NonNullable<PreviewToken['segments']>[number]): PopupPart {
-		const timeAnnotation = getSentenceTimeAnnotation(segment.surfaceForm);
-		return {
-			key: segment.id,
-			kalenjin: segment.word?.kalenjin ?? segment.surfaceForm,
-			english: segment.word?.translations ?? null,
+			key,
+			kalenjin: word?.kalenjin ?? surfaceForm,
+			english: word?.translations ?? null,
 			westernTime: timeAnnotation?.westernTime ?? null,
 			timeNote: timeAnnotation?.note ?? null
 		};
 	}
 </script>
+
+{#snippet tooltipContent(popup: PopupPart)}
+	<span class="token-tooltip" role="tooltip"
+		><span class="tooltip-part">
+			<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+			{#if popup.westernTime}
+				<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
+				<span class="time-note-detail">{popup.timeNote}</span>
+			{/if}
+		</span></span
+	>
+{/snippet}
 
 <div class="sentence-preview" aria-label="Token preview">
 	{#each groups as group (group.key)}
@@ -68,7 +73,7 @@
 					<span class="token-split" aria-label={token.surfaceForm}>
 						{#each token.segments as segment (segment.id)}
 							{@const tooltipKey = `${sentenceId}:${token.id}:${segment.id}`}
-							{@const popup = segmentPopupPart(segment)}
+							{@const popup = buildPopupPart(segment.id, segment.surfaceForm, segment.word)}
 							<button
 								type="button"
 								class="token-part"
@@ -79,21 +84,13 @@
 									onTokenClick?.(token);
 								}}
 							>
-								{segment.surfaceForm}<span class="token-tooltip" role="tooltip"
-									><span class="tooltip-part">
-										<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
-										{#if popup.westernTime}
-											<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
-											<span class="time-note-detail">{popup.timeNote}</span>
-										{/if}
-									</span></span
-								>
+								{segment.surfaceForm}{@render tooltipContent(popup)}
 							</button>
 						{/each}
 					</span>
 				{:else}
 					{@const tooltipKey = `${sentenceId}:${token.id}`}
-					{@const popup = tokenPopupPart(token)}
+					{@const popup = buildPopupPart(token.id, token.surfaceForm, token.word)}
 					<button
 						type="button"
 						class="token-part"
@@ -104,15 +101,7 @@
 							onTokenClick?.(token);
 						}}
 					>
-						{token.surfaceForm}<span class="token-tooltip" role="tooltip"
-							><span class="tooltip-part">
-								<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
-								{#if popup.westernTime}
-									<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
-									<span class="time-note-detail">{popup.timeNote}</span>
-								{/if}
-							</span></span
-						>
+						{token.surfaceForm}{@render tooltipContent(popup)}
 					</button>
 				{/if}
 			{/each}

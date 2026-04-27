@@ -1,8 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
 	normalizeKalenjinSearchQuery,
-	parseAlternativeSpellings,
-	parsePluralForms,
+	parseCommaSeparatedForms,
 	prepareAlternativeSpellings,
 	preparePluralForms,
 	scoreKalenjinWordMatch,
@@ -94,9 +93,9 @@ describe('normalizeKalenjinSearchQuery', () => {
 	});
 });
 
-describe('parseAlternativeSpellings', () => {
-	it('parses comma or newline separated spellings and deduplicates by normalized spelling', () => {
-		expect(parseAlternativeSpellings('  misseng,\n\nkoot, Misseng\n')).toEqual([
+describe('parseCommaSeparatedForms', () => {
+	it('parses comma or newline separated forms and deduplicates by normalized form', () => {
+		expect(parseCommaSeparatedForms('  misseng,\n\nkoot, Misseng\n')).toEqual([
 			'misseng',
 			'koot'
 		]);
@@ -107,15 +106,6 @@ describe('prepareAlternativeSpellings', () => {
 	it('removes spellings that duplicate the base lemma', () => {
 		expect(prepareAlternativeSpellings('chamcham\nchomchom\n', 'chamcham')).toEqual([
 			{ spelling: 'chomchom', spellingNormalized: 'chomchom' }
-		]);
-	});
-});
-
-describe('parsePluralForms', () => {
-	it('parses comma-separated plural forms and deduplicates them by normalized form', () => {
-		expect(parsePluralForms('  kotiosiek, kotiosiekab, Kotiosiek  ')).toEqual([
-			'kotiosiek',
-			'kotiosiekab'
 		]);
 	});
 });

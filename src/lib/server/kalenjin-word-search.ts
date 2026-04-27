@@ -109,7 +109,7 @@ export function normalizeKalenjinSearchQuery(query: string): string {
 	return normalizeLemma(query);
 }
 
-function parseCommaSeparatedForms(value: string): string[] {
+export function parseCommaSeparatedForms(value: string): string[] {
 	const seen = new Set<string>();
 
 	return value
@@ -127,18 +127,10 @@ function parseCommaSeparatedForms(value: string): string[] {
 		});
 }
 
-export function parseAlternativeSpellings(value: string): string[] {
-	return parseCommaSeparatedForms(value);
-}
-
-export function parsePluralForms(value: string): string[] {
-	return parseCommaSeparatedForms(value);
-}
-
 export function prepareAlternativeSpellings(value: string, baseLemma?: string) {
 	const normalizedBaseLemma = baseLemma ? normalizeLemma(baseLemma) : '';
 
-	return parseAlternativeSpellings(value)
+	return parseCommaSeparatedForms(value)
 		.map((spelling) => ({
 			spelling,
 			spellingNormalized: normalizeLemma(spelling)
@@ -148,7 +140,7 @@ export function prepareAlternativeSpellings(value: string, baseLemma?: string) {
 }
 
 export function preparePluralForms(value: string) {
-	const pluralForms = parsePluralForms(value)
+	const pluralForms = parseCommaSeparatedForms(value)
 		.map((pluralForm) => ({
 			pluralForm,
 			pluralFormNormalized: normalizeLemma(pluralForm)
@@ -174,7 +166,7 @@ function collectSearchForms(word: KalenjinSearchWord): SearchForm[] {
 		}
 	];
 
-	for (const pluralForm of parsePluralForms(word.pluralForm ?? '')) {
+	for (const pluralForm of parseCommaSeparatedForms(word.pluralForm ?? '')) {
 		forms.push({
 			kind: 'plural',
 			display: pluralForm,
@@ -311,10 +303,16 @@ export async function searchWordsByKalenjin(
 				MIN(
 					CASE
 						WHEN w."kalenjinNormalized" = ${normalizedQuery} THEN 0
-						WHEN COALESCE(w."pluralFormNormalized", '') = ${normalizedQuery} THEN 1
+						WHEN ${normalizedQuery} = ANY(
+							string_to_array(COALESCE(w."pluralFormNormalized", ''), ', ')
+						) THEN 1
 						WHEN COALESCE(ws."spellingNormalized", '') = ${normalizedQuery} THEN 2
 						WHEN w."kalenjinNormalized" LIKE ${prefixQuery} THEN 3
-						WHEN COALESCE(w."pluralFormNormalized", '') LIKE ${prefixQuery} THEN 4
+						WHEN EXISTS (
+							SELECT 1
+							FROM unnest(string_to_array(COALESCE(w."pluralFormNormalized", ''), ', ')) AS pf
+							WHERE pf LIKE ${prefixQuery}
+						) THEN 4
 						WHEN COALESCE(ws."spellingNormalized", '') LIKE ${prefixQuery} THEN 5
 						ELSE 6
 					END
@@ -375,10 +373,18 @@ export async function searchWordsByKalenjin(
 					MIN(
 						CASE
 							WHEN w."kalenjinNormalized" ~ ${exactEquivalentSearchPattern} THEN 2
-							WHEN COALESCE(w."pluralFormNormalized", '') ~ ${exactEquivalentSearchPattern} THEN 3
+							WHEN EXISTS (
+								SELECT 1
+								FROM unnest(string_to_array(COALESCE(w."pluralFormNormalized", ''), ', ')) AS pf
+								WHERE pf ~ ${exactEquivalentSearchPattern}
+							) THEN 3
 							WHEN COALESCE(ws."spellingNormalized", '') ~ ${exactEquivalentSearchPattern} THEN 4
 							WHEN w."kalenjinNormalized" ~ ${prefixEquivalentSearchPattern} THEN 6
-							WHEN COALESCE(w."pluralFormNormalized", '') ~ ${prefixEquivalentSearchPattern} THEN 7
+							WHEN EXISTS (
+								SELECT 1
+								FROM unnest(string_to_array(COALESCE(w."pluralFormNormalized", ''), ', ')) AS pf
+								WHERE pf ~ ${prefixEquivalentSearchPattern}
+							) THEN 7
 							WHEN COALESCE(ws."spellingNormalized", '') ~ ${prefixEquivalentSearchPattern} THEN 8
 							ELSE 10
 						END

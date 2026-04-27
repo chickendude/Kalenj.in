@@ -29,6 +29,7 @@ import { loadCefrBrowse } from '$lib/server/cefr-browse';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
+
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
 

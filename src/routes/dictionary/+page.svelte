@@ -25,11 +25,11 @@
 	let { data, form } = $props();
 
 	const initialQuery = untrack(() => data.query);
-	const initialFiltersOpen = untrack(
-		() => data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)
+	const hasActiveFilters = $derived(
+		data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)
 	);
 	let searchQuery = $state(initialQuery);
-	let filtersOpen = $state(initialFiltersOpen);
+	let filtersOpen = $state(untrack(() => hasActiveFilters));
 	let lastNavTarget = initialQuery;
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -44,7 +44,7 @@
 	});
 
 	$effect(() => {
-		if (data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)) {
+		if (hasActiveFilters) {
 			filtersOpen = true;
 		}
 	});

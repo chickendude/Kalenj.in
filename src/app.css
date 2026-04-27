@@ -1982,21 +1982,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   letter-spacing: 0;
   text-transform: none;
 }
-.home-foot-links {
-  margin: 0 0 12px;
-  letter-spacing: 0.12em;
-}
-.home-foot-links a {
-  color: var(--brand);
-  font-weight: 600;
-}
-.home-foot-phrase {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 15px;
-  letter-spacing: 0;
-  text-transform: none;
-}
 .site-foot-meta a {
   color: var(--brand);
   font-weight: 600;

@@ -1,6 +1,7 @@
 import { error, fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { prisma } from '$lib/server/prisma';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
@@ -113,6 +114,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 
 		const values = {
 			kalenjin,
@@ -120,7 +122,9 @@ export const actions: Actions = {
 			alternativeSpellings,
 			notes,
 			partOfSpeech: partOfSpeechRaw,
-			pluralForm: pluralFormRaw
+			pluralForm: pluralFormRaw,
+			isPluralOnly: isPluralOnlyRaw === 'on',
+			alternativePluralForms
 		};
 
 		if (!kalenjin || !translations) {
@@ -143,7 +147,11 @@ export const actions: Actions = {
 
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
-		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
+		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
+		const pluralForm =
+			canHavePlural && !isPluralOnly && combinedPluralForms
+				? combinedPluralForms
+				: null;
 
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;

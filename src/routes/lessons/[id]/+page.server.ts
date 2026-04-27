@@ -18,6 +18,7 @@ import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { stripWordLinks } from '$lib/word-links';
 import {
 	buildWordSelect,
@@ -788,6 +789,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
 		const sentenceNotes = readOptionalText(formData, 'sentenceNotes');
@@ -831,7 +833,11 @@ export const actions: Actions = {
 			: null;
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
-		const pluralForm = canHavePlural && !isPluralOnly && pluralFormRaw ? pluralFormRaw : null;
+		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
+		const pluralForm =
+			canHavePlural && !isPluralOnly && combinedPluralForms
+				? combinedPluralForms
+				: null;
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
@@ -1195,6 +1201,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
 		const isPluralOnlyRawStory = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readOptionalText(formData, 'alternativePluralForms');
 
 		if (!storySentenceId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -1253,7 +1260,10 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					pluralForm:
+						canHavePlural && !isPluralOnly
+							? combinePluralFormVariants(pluralForm, alternativePluralForms)
+							: null,
 					isPluralOnly,
 					presentTense,
 					...(imageUrl !== undefined ? { imageUrl } : {})
@@ -1454,6 +1464,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
 		const isPluralOnlyRawLesson = readText(formData, 'isPluralOnly');
+		const alternativePluralForms = readOptionalText(formData, 'alternativePluralForms');
 
 		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
 			return fail(400, {
@@ -1503,7 +1514,10 @@ export const actions: Actions = {
 					notes,
 					alternativeSpellings,
 					partOfSpeech,
-					pluralForm: canHavePlural && !isPluralOnly ? pluralForm : null,
+					pluralForm:
+						canHavePlural && !isPluralOnly
+							? combinePluralFormVariants(pluralForm, alternativePluralForms)
+							: null,
 					isPluralOnly,
 					presentTense,
 					...(imageUrl !== undefined ? { imageUrl } : {})

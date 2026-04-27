@@ -90,10 +90,10 @@ export async function createOrUpdateLinkedWord(
 		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE';
 	const isPluralOnlyProvided = input.isPluralOnly !== undefined;
 	const isPluralOnly = canHavePlural && input.isPluralOnly === true;
-	const rawPluralForm = canHavePlural && !isPluralOnly ? input.pluralForm ?? null : null;
-	const { pluralForm, pluralFormNormalized } = rawPluralForm
-		? preparePluralForms(rawPluralForm)
-		: { pluralForm: null, pluralFormNormalized: null };
+	const { pluralForm, pluralFormNormalized } =
+		canHavePlural && !isPluralOnly
+			? preparePluralForms(input.pluralForm ?? '')
+			: { pluralForm: null, pluralFormNormalized: null };
 	const presentTense: PresentTenseConjugations =
 		input.partOfSpeech === 'VERB' && input.presentTense
 			? input.presentTense

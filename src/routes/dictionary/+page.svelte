@@ -144,6 +144,7 @@
 	let addWordPartOfSpeech = $state<PartOfSpeech | ''>('');
 	let addWordPluralForm = $state('');
 	let addWordIsPluralOnly = $state(false);
+	let addWordAlternativePluralForms = $state('');
 	let addWordPresentAnee = $state('');
 	let addWordPresentInyee = $state('');
 	let addWordPresentInee = $state('');
@@ -160,6 +161,7 @@
 		addWordPartOfSpeech = '';
 		addWordPluralForm = '';
 		addWordIsPluralOnly = false;
+		addWordAlternativePluralForms = '';
 		addWordPresentAnee = '';
 		addWordPresentInyee = '';
 		addWordPresentInee = '';
@@ -475,6 +477,7 @@
 					bind:partOfSpeech={addWordPartOfSpeech}
 					bind:pluralForm={addWordPluralForm}
 					bind:isPluralOnly={addWordIsPluralOnly}
+					bind:alternativePluralForms={addWordAlternativePluralForms}
 					bind:presentAnee={addWordPresentAnee}
 					bind:presentInyee={addWordPresentInyee}
 					bind:presentInee={addWordPresentInee}

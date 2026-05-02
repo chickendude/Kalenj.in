@@ -44,6 +44,7 @@
 <section class="home-section recent">
 	<div class="home-section-head">
 		<div class="home-kicker">Recently added</div>
+		<a class="home-section-link" href="/stats">View activity →</a>
 	</div>
 	<div class="recent-grid">
 		<div>
@@ -123,5 +124,14 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
+	}
+	.home-section-link {
+		font-size: 12px;
+		letter-spacing: 0.08em;
+		color: var(--ink-soft);
+		text-decoration: none;
+	}
+	.home-section-link:hover {
+		color: var(--accent);
 	}
 </style>

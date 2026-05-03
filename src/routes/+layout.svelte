@@ -14,8 +14,7 @@
 		const items = [
 			{ href: '/', label: 'Home' },
 			{ href: '/dictionary', label: 'Dictionary' },
-			{ href: '/corpus', label: 'Corpus' },
-			{ href: '/terms', label: 'Terms' }
+			{ href: '/corpus', label: 'Corpus' }
 		];
 		if (data.user) {
 			items.push({ href: '/lessons', label: 'Lessons' });
@@ -270,6 +269,14 @@
 									onclick={closeMenu}
 								>
 									Word of the day
+								</a>
+								<a
+									href="/admin/cleanup"
+									role="menuitem"
+									class:active={isActive('/admin/cleanup')}
+									onclick={closeMenu}
+								>
+									Cleanup
 								</a>
 							{/if}
 							{#if data.user.role === 'ADMIN'}

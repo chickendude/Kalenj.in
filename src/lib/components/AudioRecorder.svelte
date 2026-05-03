@@ -124,8 +124,7 @@
 
 			const res = await fetch('/api/audio/upload', { method: 'POST', body: formData });
 			if (!res.ok) {
-				const text = await res.text().catch(() => '');
-				throw new Error(text || `Upload failed: ${res.status}`);
+				throw new Error(await responseErrorMessage(res, `Upload failed: ${res.status}`));
 			}
 
 			clearPreview();
@@ -137,6 +136,21 @@
 		} finally {
 			isSaving = false;
 		}
+	}
+
+	async function responseErrorMessage(res: Response, fallback: string): Promise<string> {
+		const text = await res.text().catch(() => '');
+		if (!text) return fallback;
+
+		try {
+			const body = JSON.parse(text) as { message?: unknown; error?: unknown };
+			const message = typeof body.message === 'string' ? body.message : body.error;
+			if (typeof message === 'string' && message.trim()) return message;
+		} catch {
+			return fallback;
+		}
+
+		return fallback;
 	}
 
 	async function savePreview() {

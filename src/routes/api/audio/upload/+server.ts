@@ -28,7 +28,14 @@ function isTargetType(value: unknown): value is TargetType {
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const user = requireEditor(locals);
 
-	const formData = await request.formData();
+	let formData: FormData;
+	try {
+		formData = await request.formData();
+	} catch (err) {
+		console.warn('Invalid audio upload request body', err);
+		error(400, 'Invalid audio upload request.');
+	}
+
 	const file = formData.get('file');
 	const targetType = formData.get('targetType');
 	const targetId = formData.get('targetId');
@@ -45,13 +52,19 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(415, `Unsupported audio type: ${file.type}`);
 	}
 
-	const existing =
-		targetType === 'word'
-			? await prisma.word.findUnique({ where: { id: targetId }, select: { audioUrl: true } })
-			: await prisma.exampleSentence.findUnique({
-					where: { id: targetId },
-					select: { audioUrl: true }
-				});
+	let existing: { audioUrl: string | null } | null;
+	try {
+		existing =
+			targetType === 'word'
+				? await prisma.word.findUnique({ where: { id: targetId }, select: { audioUrl: true } })
+				: await prisma.exampleSentence.findUnique({
+						where: { id: targetId },
+						select: { audioUrl: true }
+					});
+	} catch (err) {
+		console.error('Audio target lookup failed', { targetType, targetId, err });
+		error(500, 'Could not read audio data. Please try again.');
+	}
 	if (!existing) error(404, 'Target not found.');
 
 	const inputBuffer = Buffer.from(await file.arrayBuffer());
@@ -64,27 +77,41 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(400, 'Could not process audio. Try a different recording.');
 	}
 
-	const { publicUrl } = await saveAudio(processed);
+	let publicUrl: string;
+	try {
+		({ publicUrl } = await saveAudio(processed));
+	} catch (err) {
+		console.error('Audio storage write failed. Check AUDIO_UPLOAD_DIR and file permissions.', err);
+		error(500, 'Could not save audio. Please try again.');
+	}
 	const recordedAt = new Date();
 
-	if (targetType === 'word') {
-		await prisma.word.update({
-			where: { id: targetId },
-			data: {
-				audioUrl: publicUrl,
-				audioRecordedById: user.id,
-				audioRecordedAt: recordedAt
-			}
+	try {
+		if (targetType === 'word') {
+			await prisma.word.update({
+				where: { id: targetId },
+				data: {
+					audioUrl: publicUrl,
+					audioRecordedById: user.id,
+					audioRecordedAt: recordedAt
+				}
+			});
+		} else {
+			await prisma.exampleSentence.update({
+				where: { id: targetId },
+				data: {
+					audioUrl: publicUrl,
+					audioRecordedById: user.id,
+					audioRecordedAt: recordedAt
+				}
+			});
+		}
+	} catch (err) {
+		await deleteAudio(publicUrl).catch((deleteErr) => {
+			console.warn('Failed to delete orphaned audio after database update failure', publicUrl, deleteErr);
 		});
-	} else {
-		await prisma.exampleSentence.update({
-			where: { id: targetId },
-			data: {
-				audioUrl: publicUrl,
-				audioRecordedById: user.id,
-				audioRecordedAt: recordedAt
-			}
-		});
+		console.error('Audio database update failed', { targetType, targetId, err });
+		error(500, 'Could not attach audio to the entry. Please try again.');
 	}
 
 	if (existing.audioUrl && existing.audioUrl !== publicUrl) {

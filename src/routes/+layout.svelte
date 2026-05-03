@@ -278,6 +278,14 @@
 								>
 									Cleanup
 								</a>
+								<a
+									href="/admin/record-audio"
+									role="menuitem"
+									class:active={isActive('/admin/record-audio')}
+									onclick={closeMenu}
+								>
+									Record audio
+								</a>
 							{/if}
 							{#if data.user.role === 'ADMIN'}
 								<a

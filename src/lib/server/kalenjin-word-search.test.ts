@@ -161,6 +161,92 @@ describe('scoreKalenjinWordMatch', () => {
 		expect(scoreKalenjinWordMatch(word, 'chitap')).toBe(0);
 	});
 
+	it('treats doubled vowels as equivalent to single vowels', () => {
+		const longE = makeSearchWord({
+			id: 'keer',
+			kalenjin: 'keer',
+			kalenjinNormalized: 'keer',
+			translations: 'see'
+		});
+		const shortE = makeSearchWord({
+			id: 'ker',
+			kalenjin: 'ker',
+			kalenjinNormalized: 'ker',
+			translations: 'see'
+		});
+		const longI = makeSearchWord({
+			id: 'siir',
+			kalenjin: 'siir',
+			kalenjinNormalized: 'siir',
+			translations: 'walk'
+		});
+		const shortI = makeSearchWord({
+			id: 'sir',
+			kalenjin: 'sir',
+			kalenjinNormalized: 'sir',
+			translations: 'walk'
+		});
+
+		expect(scoreKalenjinWordMatch(longE, 'ker')).toBe(2);
+		expect(scoreKalenjinWordMatch(shortE, 'keer')).toBe(2);
+		expect(scoreKalenjinWordMatch(longE, 'keer')).toBe(0);
+
+		expect(scoreKalenjinWordMatch(longI, 'sir')).toBe(2);
+		expect(scoreKalenjinWordMatch(shortI, 'siir')).toBe(2);
+		expect(scoreKalenjinWordMatch(longI, 'siir')).toBe(0);
+	});
+
+	it('does not treat different doubled vowels as equivalent', () => {
+		const word = makeSearchWord({
+			id: 'kii',
+			kalenjin: 'kii',
+			kalenjinNormalized: 'kii',
+			translations: 'placeholder'
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'kee')).toBe(Number.POSITIVE_INFINITY);
+		expect(scoreKalenjinWordMatch(word, 'ke')).toBe(Number.POSITIVE_INFINITY);
+	});
+
+	it('treats si/sy/sh as equivalent when followed by o or e', () => {
+		const sy = makeSearchWord({
+			id: 'sy',
+			kalenjin: 'kanetisyet',
+			kalenjinNormalized: 'kanetisyet',
+			translations: 'teacher'
+		});
+		const si = makeSearchWord({
+			id: 'si',
+			kalenjin: 'kanetisiet',
+			kalenjinNormalized: 'kanetisiet',
+			translations: 'teacher'
+		});
+		const sh = makeSearchWord({
+			id: 'sh',
+			kalenjin: 'kanetishet',
+			kalenjinNormalized: 'kanetishet',
+			translations: 'teacher'
+		});
+
+		expect(scoreKalenjinWordMatch(sy, 'kanetishet')).toBe(2);
+		expect(scoreKalenjinWordMatch(si, 'kanetishet')).toBe(2);
+		expect(scoreKalenjinWordMatch(sh, 'kanetisyet')).toBe(2);
+		expect(scoreKalenjinWordMatch(sh, 'kanetisiet')).toBe(2);
+		expect(scoreKalenjinWordMatch(sy, 'kanetisyet')).toBe(0);
+	});
+
+	it('does not treat si/sy/sh as equivalent when not followed by o or e', () => {
+		const word = makeSearchWord({
+			id: 'sia',
+			kalenjin: 'sia',
+			kalenjinNormalized: 'sia',
+			translations: 'placeholder'
+		});
+
+		expect(scoreKalenjinWordMatch(word, 'sha')).toBe(Number.POSITIVE_INFINITY);
+		expect(scoreKalenjinWordMatch(word, 'sya')).toBe(Number.POSITIVE_INFINITY);
+	});
+
 	it('does not treat internal p/b as equivalent', () => {
 		const word = makeSearchWord({
 			id: '5',
@@ -321,7 +407,7 @@ describe('searchWordsByKalenjin', () => {
 		const result = await searchWordsByKalenjin(prisma, 'kot', 10);
 
 		expect(prisma.$queryRaw).toHaveBeenCalled();
-		expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+		expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
 		expect(prisma.word.findMany).toHaveBeenCalledWith(
 			expect.objectContaining({
 				where: { id: { in: ['1', '3'] } }
@@ -331,7 +417,7 @@ describe('searchWordsByKalenjin', () => {
 		expect(result.map((w) => w.id)).toEqual(['3', '1']);
 	});
 
-	it('falls back to equivalent-letter SQL only when the indexed contains query has no candidates', async () => {
+	it('runs the equivalent-letter SQL alongside the textual query and returns its results', async () => {
 		const prisma = makePrisma([], [WORDS[2]]);
 		prisma.$queryRaw
 			.mockResolvedValueOnce([])
@@ -341,6 +427,55 @@ describe('searchWordsByKalenjin', () => {
 
 		expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
 		expect(result.map((word) => word.id)).toEqual(['3']);
+	});
+
+	it('returns both single-vowel and doubled-vowel forms with the exact match first', async () => {
+		const sir = makeSearchWord({
+			id: 'sir',
+			kalenjin: 'sir',
+			kalenjinNormalized: 'sir',
+			translations: 'walk'
+		});
+		const siir = makeSearchWord({
+			id: 'siir',
+			kalenjin: 'siir',
+			kalenjinNormalized: 'siir',
+			translations: 'walk (long)'
+		});
+		const textualSir = { id: 'sir', observedNormalizedForm: null, observedUsageCount: null };
+		const equivalentBoth = [
+			{ id: 'sir', observedNormalizedForm: null, observedUsageCount: null },
+			{ id: 'siir', observedNormalizedForm: null, observedUsageCount: null }
+		];
+
+		const prismaSir = {
+			$queryRaw: vi
+				.fn()
+				.mockResolvedValueOnce([textualSir])
+				.mockResolvedValueOnce(equivalentBoth),
+			word: {
+				findMany: vi.fn().mockResolvedValue([sir, siir])
+			}
+		};
+		expect((await searchWordsByKalenjin(prismaSir, 'sir', 10)).map((w) => w.id)).toEqual([
+			'sir',
+			'siir'
+		]);
+
+		const textualSiir = { id: 'siir', observedNormalizedForm: null, observedUsageCount: null };
+		const prismaSiir = {
+			$queryRaw: vi
+				.fn()
+				.mockResolvedValueOnce([textualSiir])
+				.mockResolvedValueOnce(equivalentBoth),
+			word: {
+				findMany: vi.fn().mockResolvedValue([sir, siir])
+			}
+		};
+		expect((await searchWordsByKalenjin(prismaSiir, 'siir', 10)).map((w) => w.id)).toEqual([
+			'siir',
+			'sir'
+		]);
 	});
 
 	it('ranks lemmas from prior token links ahead of weaker textual matches', async () => {

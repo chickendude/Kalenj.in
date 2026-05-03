@@ -36,7 +36,16 @@ describe('buildCorpusSentenceSearchWhere', () => {
 });
 
 describe('findKalenjinCorpusSentenceIds', () => {
-	it('looks up matching sentence ids with an apostrophe-aware SQL regex', async () => {
+	it('returns no ids when the query normalizes to empty', async () => {
+		const prisma = {
+			$queryRaw: vi.fn().mockResolvedValue([{ id: 'sentence-1' }])
+		};
+
+		await expect(findKalenjinCorpusSentenceIds(prisma, '   ', 100)).resolves.toEqual([]);
+		expect(prisma.$queryRaw).not.toHaveBeenCalled();
+	});
+
+	it('looks up sentence ids with an equivalence-aware SQL regex', async () => {
 		const prisma = {
 			$queryRaw: vi.fn().mockResolvedValue([{ id: 'sentence-1' }])
 		};
@@ -45,7 +54,46 @@ describe('findKalenjinCorpusSentenceIds', () => {
 			'sentence-1'
 		]);
 
-		const query = prisma.$queryRaw.mock.calls[0][0];
-		expect(query.values).toContain("k['\u2019\u2018`\u00b4]?o['\u2019\u2018`\u00b4]?i['\u2019\u2018`\u00b4]?t['\u2019\u2018`\u00b4]?a");
+		const pattern = prisma.$queryRaw.mock.calls[0][0].values[0] as string;
+
+		// Lowercased + equivalence: k/g, a/o, doubled-vowel quantifiers, optional apostrophes.
+		expect(pattern).toBe(
+			"[kg]['\u2019\u2018`\u00b4]?[ao]{1,2}['\u2019\u2018`\u00b4]?i{1,2}['\u2019\u2018`\u00b4]?t['\u2019\u2018`\u00b4]?[ao]{1,2}"
+		);
+
+		// The same regex matches all the orthographic variants of the query.
+		const regex = new RegExp(pattern, 'i');
+		expect(regex.test('koita')).toBe(true);
+		expect(regex.test("koit'a")).toBe(true);
+		expect(regex.test('goita')).toBe(true);
+		expect(regex.test('kooita')).toBe(true);
+		expect(regex.test('kaita')).toBe(true);
+	});
+
+	it('emits a si/sy/sh-equivalent regex for queries like kanetisyet', async () => {
+		const prisma = {
+			$queryRaw: vi.fn().mockResolvedValue([])
+		};
+
+		await findKalenjinCorpusSentenceIds(prisma, 'kanetisyet', 100);
+		const pattern = prisma.$queryRaw.mock.calls[0][0].values[0] as string;
+		const regex = new RegExp(pattern, 'i');
+
+		expect(regex.test('kanetisyet')).toBe(true);
+		expect(regex.test('kanetisiet')).toBe(true);
+		expect(regex.test('kanetishet')).toBe(true);
+	});
+
+	it('lowercases the query so the equivalence rules fire on mixed-case input', async () => {
+		const prisma = {
+			$queryRaw: vi.fn().mockResolvedValue([])
+		};
+
+		await findKalenjinCorpusSentenceIds(prisma, 'Keer', 100);
+		const pattern = prisma.$queryRaw.mock.calls[0][0].values[0] as string;
+		const regex = new RegExp(pattern, 'i');
+
+		expect(regex.test('keer')).toBe(true);
+		expect(regex.test('ker')).toBe(true);
 	});
 });

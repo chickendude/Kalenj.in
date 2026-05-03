@@ -11,6 +11,12 @@ import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
+import {
+	filterByPartOfSpeech,
+	matchesMissing,
+	missingWhereClause,
+	parseMissing
+} from '$lib/server/word-filters';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -32,81 +38,6 @@ function parseLanguage(value: string | null): SearchLanguage {
 	}
 
 	return 'kalenjin';
-}
-
-type MissingFilter = '' | 'plural' | 'conjugation';
-
-function parseMissing(value: string | null): MissingFilter {
-	return value === 'plural' || value === 'conjugation' ? value : '';
-}
-
-type WordLike = {
-	partOfSpeech: PartOfSpeech | null;
-	pluralForm: string | null;
-	isPluralOnly: boolean;
-	presentAnee: string | null;
-	presentInyee: string | null;
-	presentInee: string | null;
-	presentEchek: string | null;
-	presentOkwek: string | null;
-	presentIchek: string | null;
-};
-
-function matchesMissing(word: WordLike, missing: MissingFilter): boolean {
-	if (missing === 'plural') {
-		return (
-			(word.partOfSpeech === 'NOUN' || word.partOfSpeech === 'ADJECTIVE') &&
-			!word.isPluralOnly &&
-			!word.pluralForm
-		);
-	}
-	if (missing === 'conjugation') {
-		return (
-			word.partOfSpeech === 'VERB' &&
-			(!word.presentAnee ||
-				!word.presentInyee ||
-				!word.presentInee ||
-				!word.presentEchek ||
-				!word.presentOkwek ||
-				!word.presentIchek)
-		);
-	}
-	return true;
-}
-
-function missingWhereClause(missing: MissingFilter): Prisma.WordWhereInput | null {
-	if (missing === 'plural') {
-		return {
-			partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
-			isPluralOnly: false,
-			pluralForm: null
-		};
-	}
-	if (missing === 'conjugation') {
-		return {
-			partOfSpeech: 'VERB',
-			OR: [
-				{ presentAnee: null },
-				{ presentInyee: null },
-				{ presentInee: null },
-				{ presentEchek: null },
-				{ presentOkwek: null },
-				{ presentIchek: null }
-			]
-		};
-	}
-	return null;
-}
-
-function filterByPartOfSpeech<T extends { partOfSpeech: PartOfSpeech | null }>(
-	words: T[],
-	partOfSpeech: PartOfSpeech | null
-): T[] {
-	if (!partOfSpeech) {
-		return words;
-	}
-
-	return words.filter((word) => word.partOfSpeech === partOfSpeech);
 }
 
 export const load: PageServerLoad = async ({ url }) => {

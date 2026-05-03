@@ -218,6 +218,11 @@
 		<div class="page-stat">
 			<b>{data.totalCount}</b>
 			headwords indexed
+			{#if page.data.user?.role === 'ADMIN' || page.data.user?.role === 'MANAGER'}
+				<div class="page-stat-action">
+					<a class="record-missing-link" href="/dictionary/record-audio">Record missing audio →</a>
+				</div>
+			{/if}
 		</div>
 	</div>
 
@@ -505,6 +510,18 @@
 {/if}
 
 <style>
+	.page-stat-action {
+		margin-top: 6px;
+		font-size: 13px;
+	}
+	.record-missing-link {
+		color: var(--accent);
+		text-decoration: none;
+	}
+	.record-missing-link:hover {
+		text-decoration: underline;
+	}
+
 	.add-word-backdrop {
 		align-items: flex-start;
 		background: rgba(15, 23, 42, 0.35);

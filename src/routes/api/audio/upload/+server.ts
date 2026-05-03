@@ -26,7 +26,7 @@ function isTargetType(value: unknown): value is TargetType {
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-	requireEditor(locals);
+	const user = requireEditor(locals);
 
 	const formData = await request.formData();
 	const file = formData.get('file');
@@ -65,13 +65,25 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	}
 
 	const { publicUrl } = await saveAudio(processed);
+	const recordedAt = new Date();
 
 	if (targetType === 'word') {
-		await prisma.word.update({ where: { id: targetId }, data: { audioUrl: publicUrl } });
+		await prisma.word.update({
+			where: { id: targetId },
+			data: {
+				audioUrl: publicUrl,
+				audioRecordedById: user.id,
+				audioRecordedAt: recordedAt
+			}
+		});
 	} else {
 		await prisma.exampleSentence.update({
 			where: { id: targetId },
-			data: { audioUrl: publicUrl }
+			data: {
+				audioUrl: publicUrl,
+				audioRecordedById: user.id,
+				audioRecordedAt: recordedAt
+			}
 		});
 	}
 

@@ -220,7 +220,7 @@
 			headwords indexed
 			{#if page.data.user?.role === 'ADMIN' || page.data.user?.role === 'MANAGER'}
 				<div class="page-stat-action">
-					<a class="record-missing-link" href="/admin/record-audio">Record missing audio →</a>
+					<a class="record-missing-link" href="/dictionary/record-audio">Record missing audio →</a>
 				</div>
 			{/if}
 		</div>

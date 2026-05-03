@@ -63,7 +63,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		}
 		await prisma.word.update({
 			where: { id: entry.wordId },
-			data: { audioUrl: null }
+			data: { audioUrl: null, audioRecordedById: null, audioRecordedAt: null }
 		});
 		await deleteAudio(entry.audioUrl).catch((err) => {
 			console.warn('Failed to delete audio file during undo', entry.audioUrl, err);

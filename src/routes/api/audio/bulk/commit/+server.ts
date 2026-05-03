@@ -43,7 +43,7 @@ function parseDiscard(raw: unknown): string[] {
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-	requireEditor(locals);
+	const user = requireEditor(locals);
 
 	const payload = await request.json().catch(() => null);
 	if (!payload || typeof payload !== 'object') error(400, 'Invalid request body.');
@@ -64,6 +64,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		});
 		const existingById = new Map(existing.map((w) => [w.id, w.audioUrl]));
 
+		const now = new Date();
 		for (const entry of keep) {
 			if (!existingById.has(entry.wordId)) {
 				failed.push({ wordId: entry.wordId, reason: 'Word not found.' });
@@ -72,7 +73,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			const previousUrl = existingById.get(entry.wordId) ?? null;
 			await prisma.word.update({
 				where: { id: entry.wordId },
-				data: { audioUrl: entry.audioUrl }
+				data: {
+					audioUrl: entry.audioUrl,
+					audioRecordedById: user.id,
+					audioRecordedAt: now
+				}
 			});
 			if (previousUrl && previousUrl !== entry.audioUrl) {
 				await deleteAudio(previousUrl).catch((err) => {

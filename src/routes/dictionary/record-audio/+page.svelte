@@ -23,14 +23,13 @@
 	let { data }: { data: PageData } = $props();
 
 	const initialQuery = untrack(() => data.q);
-	const hasActiveFilters = $derived(Boolean(data.pos) || Boolean(data.missing));
+	const hasActiveFilters = $derived(Boolean(data.pos));
 	let searchQuery = $state(initialQuery);
 	let filtersOpen = $state(untrack(() => hasActiveFilters));
 	let lastNavTarget = initialQuery;
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let batchSize = $state(10);
-	let selectedIds = $state<Set<string>>(new Set());
 	let sessionWords = $state<typeof data.words | null>(null);
 
 	let posOtherOpen = $state(false);
@@ -39,6 +38,8 @@
 		Boolean(data.pos) && (POS_OTHER as readonly string[]).includes(data.pos)
 	);
 
+	const visibleWords = $derived(data.words.slice(0, batchSize));
+
 	$effect(() => {
 		const nextQuery = data.q;
 		untrack(() => {
@@ -46,7 +47,6 @@
 				searchQuery = nextQuery;
 				lastNavTarget = nextQuery;
 			}
-			selectedIds = new Set();
 		});
 	});
 
@@ -66,7 +66,7 @@
 		return () => window.removeEventListener('pointerdown', onPointerDown, true);
 	});
 
-	function navigateTo(nextQuery: string, nextPos: string, nextMissing: string) {
+	function navigateTo(nextQuery: string, nextPos: string) {
 		if (debounceTimer) {
 			clearTimeout(debounceTimer);
 			debounceTimer = null;
@@ -77,11 +77,9 @@
 		else params.delete('q');
 		if (nextPos) params.set('pos', nextPos);
 		else params.delete('pos');
-		if (nextMissing) params.set('missing', nextMissing);
-		else params.delete('missing');
-		params.delete('page');
+		params.delete('missing');
 		const search = params.toString();
-		goto(`/admin/record-audio${search ? `?${search}` : ''}`, {
+		goto(`/dictionary/record-audio${search ? `?${search}` : ''}`, {
 			keepFocus: true,
 			noScroll: true,
 			replaceState: true
@@ -93,17 +91,13 @@
 		searchQuery = value;
 		if (debounceTimer) clearTimeout(debounceTimer);
 		debounceTimer = setTimeout(() => {
-			navigateTo(value, data.pos, data.missing);
+			navigateTo(value, data.pos);
 		}, 180);
-	}
-
-	function selectMissing(nextMissing: '' | 'plural' | 'conjugation') {
-		navigateTo(searchQuery, data.pos, nextMissing);
 	}
 
 	function selectPos(nextPos: string) {
 		posOtherOpen = false;
-		navigateTo(searchQuery, nextPos, data.missing);
+		navigateTo(searchQuery, nextPos);
 	}
 
 	function togglePosOther() {
@@ -114,77 +108,26 @@
 		posOtherOpen = !posOtherOpen;
 	}
 
-	function toggleSelected(id: string) {
-		const next = new Set(selectedIds);
-		if (next.has(id)) next.delete(id);
-		else next.add(id);
-		selectedIds = next;
-	}
-
-	const allOnPageSelected = $derived(
-		data.words.length > 0 && data.words.every((w) => selectedIds.has(w.id))
-	);
-
-	function selectAllOnPage() {
-		const next = new Set(selectedIds);
-		if (allOnPageSelected) {
-			for (const word of data.words) next.delete(word.id);
-		} else {
-			for (const word of data.words) next.add(word.id);
-		}
-		selectedIds = next;
-	}
-
-	function selectFirstN(n: number) {
-		const next = new Set<string>();
-		for (const word of data.words.slice(0, n)) next.add(word.id);
-		selectedIds = next;
-	}
-
-	function startSelected() {
-		const ordered = data.words.filter((w) => selectedIds.has(w.id));
-		if (ordered.length === 0) return;
-		sessionWords = ordered;
-	}
-
-	function startTopBatch() {
-		const ordered = data.words.slice(0, batchSize);
-		if (ordered.length === 0) return;
-		selectedIds = new Set(ordered.map((w) => w.id));
-		sessionWords = ordered;
+	function startRecording() {
+		if (visibleWords.length === 0) return;
+		sessionWords = visibleWords;
 	}
 
 	function closeSession() {
 		sessionWords = null;
 	}
-
-	const totalPages = $derived(Math.max(1, Math.ceil(data.total / data.perPage)));
-	const showingFrom = $derived(data.words.length === 0 ? 0 : (data.page - 1) * data.perPage + 1);
-	const showingTo = $derived((data.page - 1) * data.perPage + data.words.length);
-	const isPaginated = $derived(!data.q);
-
-	function pageHref(nextPage: number) {
-		const params = new URLSearchParams(page.url.searchParams);
-		if (nextPage > 1) params.set('page', String(nextPage));
-		else params.delete('page');
-		const search = params.toString();
-		return `/admin/record-audio${search ? `?${search}` : ''}`;
-	}
 </script>
 
 <svelte:head>
-	<title>Record audio · Admin</title>
+	<title>Record audio · Dictionary</title>
 </svelte:head>
 
 <section>
 	<div class="page-head">
 		<div>
-			<div class="page-kicker">Admin</div>
+			<div class="page-kicker">Dictionary</div>
 			<h1>Record audio</h1>
-			<p>
-				Words that don't yet have audio. Record them in bulk in one continuous take — pause about
-				a second between words and the recorder will advance.
-			</p>
+			<p>Record words in bulk. Pause between words to advance to the next word.</p>
 		</div>
 	</div>
 
@@ -197,7 +140,7 @@
 				</div>
 				<button type="button" class="btn-sm ghost" onclick={closeSession}>Close</button>
 			</header>
-			<BulkAudioRecorder words={sessionWords} />
+			<BulkAudioRecorder words={sessionWords} onclose={closeSession} />
 		</section>
 	{:else}
 		<div class="controls">
@@ -235,36 +178,6 @@
 				class:open={filtersOpen}
 				hidden={!filtersOpen}
 			>
-				<div class="field filter-field-missing">
-					<span class="field-label">Missing</span>
-					<div class="missing-filter" role="radiogroup" aria-label="Filter by missing data">
-						<button
-							type="button"
-							role="radio"
-							aria-checked={!data.missing}
-							class="pos-pill"
-							class:selected={!data.missing}
-							onclick={() => selectMissing('')}>None</button
-						>
-						<button
-							type="button"
-							role="radio"
-							aria-checked={data.missing === 'plural'}
-							class="pos-pill"
-							class:selected={data.missing === 'plural'}
-							onclick={() => selectMissing('plural')}>Plural</button
-						>
-						<button
-							type="button"
-							role="radio"
-							aria-checked={data.missing === 'conjugation'}
-							class="pos-pill"
-							class:selected={data.missing === 'conjugation'}
-							onclick={() => selectMissing('conjugation')}>Conjugation</button
-						>
-					</div>
-				</div>
-
 				<div class="field filter-field-pos">
 					<span class="field-label">Part of speech</span>
 					<div class="pos-filter" role="radiogroup" aria-label="Filter by part of speech">
@@ -331,15 +244,7 @@
 
 		<div class="result-meta">
 			<div class="result-count">
-				{#if data.q}
-					{data.words.length} match{data.words.length === 1 ? '' : 'es'} without audio
-					{#if data.truncated}
-						<span class="muted"> (showing first {data.words.length})</span>
-					{/if}
-				{:else}
-					{showingFrom.toLocaleString()}–{showingTo.toLocaleString()} of
-					{data.total.toLocaleString()} without audio
-				{/if}
+				{data.total.toLocaleString()} word{data.total === 1 ? '' : 's'} without audio
 			</div>
 		</div>
 
@@ -364,58 +269,26 @@
 			<button
 				type="button"
 				class="btn primary"
-				onclick={startTopBatch}
-				disabled={data.words.length === 0}
+				onclick={startRecording}
+				disabled={visibleWords.length === 0}
 			>
-				Record next {Math.min(batchSize, data.words.length)}
-			</button>
-			<button
-				type="button"
-				class="btn"
-				onclick={startSelected}
-				disabled={selectedIds.size === 0}
-			>
-				Record selected ({selectedIds.size})
-			</button>
-			<button
-				type="button"
-				class="btn-sm ghost"
-				onclick={() => selectFirstN(batchSize)}
-				disabled={data.words.length === 0}
-			>
-				Select first {Math.min(batchSize, data.words.length)}
+				Record {visibleWords.length} word{visibleWords.length === 1 ? '' : 's'}
 			</button>
 		</div>
 
-		{#if data.words.length === 0}
+		{#if visibleWords.length === 0}
 			<div class="empty-state">No matching words without audio.</div>
 		{:else}
 			<table class="dict-table record-table">
 				<thead>
 					<tr>
-						<th class="col-check">
-							<input
-								type="checkbox"
-								aria-label="Select all on page"
-								checked={allOnPageSelected}
-								onchange={selectAllOnPage}
-							/>
-						</th>
 						<th class="col-word">Kalenjin</th>
 						<th class="col-trans">Translations (English)</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each data.words as word (word.id)}
-						<tr class:selected={selectedIds.has(word.id)}>
-							<td class="col-check">
-								<input
-									type="checkbox"
-									aria-label={`Select ${word.kalenjin}`}
-									checked={selectedIds.has(word.id)}
-									onchange={() => toggleSelected(word.id)}
-								/>
-							</td>
+					{#each visibleWords as word (word.id)}
+						<tr>
 							<td class="col-word">
 								<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
 							</td>
@@ -424,19 +297,6 @@
 					{/each}
 				</tbody>
 			</table>
-
-			{#if isPaginated && totalPages > 1}
-				<nav class="record-pager" aria-label="Pagination">
-					<div class="record-pager-actions">
-						{#if data.page > 1}
-							<a class="btn-sm" href={pageHref(data.page - 1)}>Previous</a>
-						{/if}
-						{#if data.page < totalPages}
-							<a class="btn-sm" href={pageHref(data.page + 1)}>Next</a>
-						{/if}
-					</div>
-				</nav>
-			{/if}
 		{/if}
 	{/if}
 </section>
@@ -461,6 +321,11 @@
 		color: var(--ink-mute);
 		font-size: 13px;
 		margin: 0;
+	}
+
+	.controls {
+		align-items: stretch;
+		grid-template-columns: 1fr;
 	}
 
 	.search-row {
@@ -502,9 +367,6 @@
 	.filters-panel.open {
 		display: flex;
 	}
-	.filter-field-missing {
-		flex: 0 0 auto;
-	}
 	.filter-field-pos {
 		flex: 1 1 24rem;
 		min-width: 0;
@@ -518,8 +380,7 @@
 		text-transform: uppercase;
 	}
 
-	.pos-filter,
-	.missing-filter {
+	.pos-filter {
 		display: flex;
 		flex-wrap: nowrap;
 		gap: 6px;
@@ -621,27 +482,6 @@
 		min-width: 48px;
 	}
 
-	.record-table .col-check {
-		width: 36px;
-	}
-	.record-table tr.selected {
-		background: color-mix(in oklch, var(--brand) 6%, transparent);
-	}
-
-	.record-pager {
-		display: flex;
-		justify-content: flex-end;
-		margin-top: 16px;
-	}
-	.record-pager-actions {
-		display: flex;
-		gap: 6px;
-	}
-
-	.muted {
-		color: var(--ink-mute);
-	}
-
 	@media (max-width: 720px) {
 		.search-row,
 		.filters-panel.open {
@@ -653,7 +493,6 @@
 		.filters-panel.open {
 			display: grid;
 		}
-		.filter-field-missing,
 		.filter-field-pos {
 			flex: initial;
 		}

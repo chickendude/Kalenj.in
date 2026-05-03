@@ -34,9 +34,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	if (!existing) error(404, 'Target not found.');
 
 	if (targetType === 'word') {
-		await prisma.word.update({ where: { id: targetId }, data: { audioUrl: null } });
+		await prisma.word.update({
+			where: { id: targetId },
+			data: { audioUrl: null, audioRecordedById: null, audioRecordedAt: null }
+		});
 	} else {
-		await prisma.exampleSentence.update({ where: { id: targetId }, data: { audioUrl: null } });
+		await prisma.exampleSentence.update({
+			where: { id: targetId },
+			data: { audioUrl: null, audioRecordedById: null, audioRecordedAt: null }
+		});
 	}
 
 	if (existing.audioUrl) {

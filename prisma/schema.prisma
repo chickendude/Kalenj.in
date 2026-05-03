@@ -56,14 +56,16 @@ enum UserRole {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  displayName  String?
-  passwordHash String
-  role         UserRole
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-  sessions     Session[]
+  id                 String            @id @default(cuid())
+  username           String            @unique
+  displayName        String?
+  passwordHash       String
+  role               UserRole
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  sessions           Session[]
+  recordedWordAudio  Word[]            @relation("WordAudioRecorder")
+  recordedSentenceAudio ExampleSentence[] @relation("ExampleSentenceAudioRecorder")
 }
 
 model Session {
@@ -95,6 +97,9 @@ model Word {
   presentIchek         String?
   imageUrl             String?
   audioUrl             String?
+  audioRecordedById    String?
+  audioRecordedAt      DateTime?
+  audioRecordedBy      User?                         @relation("WordAudioRecorder", fields: [audioRecordedById], references: [id], onDelete: SetNull)
   createdAt            DateTime                      @default(now())
   updatedAt            DateTime                      @updatedAt
   sentences            WordSentence[]
@@ -174,19 +179,22 @@ model ObservedWordForm {
 }
 
 model ExampleSentence {
-  id              String                 @id @default(cuid())
-  storySentenceId String?                @unique
-  kalenjin        String
-  english         String
-  notes           String?
-  imageUrl        String?
-  audioUrl        String?
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  storySentence   StorySentence?         @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
-  words           WordSentence[]
-  tokens          ExampleSentenceToken[]
-  lessonWords     LessonWord[]
+  id                String                 @id @default(cuid())
+  storySentenceId   String?                @unique
+  kalenjin          String
+  english           String
+  notes             String?
+  imageUrl          String?
+  audioUrl          String?
+  audioRecordedById String?
+  audioRecordedAt   DateTime?
+  audioRecordedBy   User?                  @relation("ExampleSentenceAudioRecorder", fields: [audioRecordedById], references: [id], onDelete: SetNull)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  storySentence     StorySentence?         @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
+  words             WordSentence[]
+  tokens            ExampleSentenceToken[]
+  lessonWords       LessonWord[]
 
   @@index([kalenjin])
   @@index([kalenjin(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_kalenjin_trgm_idx")

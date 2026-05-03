@@ -3,16 +3,10 @@ import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
 import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
-import {
-	filterByPartOfSpeech,
-	matchesMissing,
-	missingWhereClause,
-	parseMissing
-} from '$lib/server/word-filters';
+import { filterByPartOfSpeech } from '$lib/server/word-filters';
 import type { PageServerLoad } from './$types';
 
-const PER_PAGE = 50;
-const MAX_PAGE = 200;
+const FETCH_LIMIT = 50;
 const SEARCH_LIMIT = 200;
 
 type WordRow = {
@@ -21,13 +15,6 @@ type WordRow = {
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 };
-
-function parsePage(value: string | null): number {
-	const n = Number(value ?? '1');
-	if (!Number.isFinite(n) || n < 1) return 1;
-	if (n > MAX_PAGE) return MAX_PAGE;
-	return Math.floor(n);
-}
 
 function shapeWord(word: {
 	id: string;
@@ -48,40 +35,29 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const posParam = url.searchParams.get('pos') ?? '';
 	const pos: PartOfSpeech | null = isPartOfSpeech(posParam) ? posParam : null;
-	const missing = parseMissing(url.searchParams.get('missing'));
 	const query = (url.searchParams.get('q') ?? '').trim();
-	const page = parsePage(url.searchParams.get('page'));
 
-	const missingWhere = missingWhereClause(missing);
 	const posWhere: Prisma.WordWhereInput | null = pos ? { partOfSpeech: pos } : null;
 	const filterAndClauses: Prisma.WordWhereInput[] = [{ audioUrl: null }];
 	if (posWhere) filterAndClauses.push(posWhere);
-	if (missingWhere) filterAndClauses.push(missingWhere);
 	const filterWhere: Prisma.WordWhereInput = { AND: filterAndClauses };
 
 	let words: WordRow[];
 	let total: number;
-	let truncated = false;
 
 	if (query) {
 		const searched = await searchWordsByKalenjin(prisma, query, SEARCH_LIMIT);
 		const scoped = searched.filter((w) => !w.audioUrl);
 		const posFiltered = filterByPartOfSpeech(scoped, pos);
-		const filtered = missing
-			? posFiltered.filter((word) => matchesMissing(word, missing))
-			: posFiltered;
-		words = filtered.map(shapeWord);
+		words = posFiltered.map(shapeWord);
 		total = words.length;
-		truncated = searched.length >= SEARCH_LIMIT;
 	} else {
-		const skip = (page - 1) * PER_PAGE;
 		const [count, rows] = await Promise.all([
 			prisma.word.count({ where: filterWhere }),
 			prisma.word.findMany({
 				where: filterWhere,
 				orderBy: [{ kalenjin: 'asc' }],
-				skip,
-				take: PER_PAGE,
+				take: FETCH_LIMIT,
 				select: {
 					id: true,
 					kalenjin: true,
@@ -97,11 +73,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	return {
 		words,
 		total,
-		page,
-		perPage: PER_PAGE,
+		fetchLimit: FETCH_LIMIT,
 		pos: posParam,
-		missing,
-		q: query,
-		truncated
+		q: query
 	};
 };

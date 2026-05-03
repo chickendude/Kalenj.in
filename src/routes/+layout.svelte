@@ -279,9 +279,9 @@
 									Cleanup
 								</a>
 								<a
-									href="/admin/record-audio"
+									href="/dictionary/record-audio"
 									role="menuitem"
-									class:active={isActive('/admin/record-audio')}
+									class:active={isActive('/dictionary/record-audio')}
 									onclick={closeMenu}
 								>
 									Record audio

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
 
@@ -10,23 +11,30 @@
 
 	type Props = {
 		words: WordItem[];
+		onclose?: () => void;
 	};
 
-	let { words }: Props = $props();
+	let { words, onclose }: Props = $props();
+	let currentWords = $state<WordItem[]>(untrack(() => [...words]));
 
 	type SessionState =
 		| { kind: 'idle' }
 		| { kind: 'priming'; targetWordId: string }
 		| { kind: 'speaking'; targetWordId: string; startedAt: number }
 		| { kind: 'waiting'; targetWordId: string }
+		| {
+				kind: 'paused';
+				resumeTo:
+					| { kind: 'priming'; targetWordId: string }
+					| { kind: 'speaking'; targetWordId: string; startedAt: number }
+					| { kind: 'waiting'; targetWordId: string };
+				pausedAt: number;
+		  }
 		| { kind: 'finishing' }
 		| { kind: 'processing' }
 		| { kind: 'reviewing' }
 		| { kind: 'saving' }
 		| { kind: 'discarding' }
-		| { kind: 'done'; saved: number }
-		| { kind: 'undoing' }
-		| { kind: 'undone'; count: number }
 		| { kind: 'error'; message: string };
 
 	type Segment = {
@@ -63,12 +71,13 @@
 	let skippedSet = $state<Set<string>>(new Set());
 	let resultRows = $state<ResultRow[]>([]);
 	let processingSkipped = $state<SkippedRow[]>([]);
-	let reviewSelected = $state<Set<string>>(new Set());
-	let savedRows = $state<ResultRow[]>([]);
+	type ReviewState = 'keep' | 'skip' | 'redo';
+	let reviewStates = $state<Map<string, ReviewState>>(new Map());
 	let playingWordId = $state<string | null>(null);
+	let playProgress = $state(0);
 	let playSequence: string[] = [];
 	let playSequenceIndex = 0;
-	let confirmUndo = $state(false);
+	let confirmRerecord = $state(false);
 	let skipPromptId = $state<string | null>(null);
 	let listEl = $state<HTMLDivElement | null>(null);
 	let audioEls: Map<string, HTMLAudioElement> = new Map();
@@ -85,7 +94,7 @@
 	let rafHandle: number | null = null;
 
 	const wordById = $derived(new Map(words.map((w) => [w.id, w])));
-	const totalWords = $derived(words.length);
+	const totalWords = $derived(currentWords.length);
 	const segmentByWordId = $derived(new Map(segments.map((s) => [s.wordId, s])));
 	const capturedCount = $derived(segments.length);
 	const skippedCount = $derived(skippedSet.size);
@@ -101,14 +110,17 @@
 		) {
 			return session.targetWordId;
 		}
+		if (session.kind === 'paused') {
+			return session.resumeTo.targetWordId;
+		}
 		return null;
 	});
 	const currentWord = $derived(targetWordId ? (wordById.get(targetWordId) ?? null) : null);
 	const nextWord = $derived.by(() => {
 		if (!targetWordId) return null;
-		const idx = words.findIndex((w) => w.id === targetWordId);
-		for (let i = idx + 1; i < words.length; i += 1) {
-			const w = words[i];
+		const idx = currentWords.findIndex((w) => w.id === targetWordId);
+		for (let i = idx + 1; i < currentWords.length; i += 1) {
+			const w = currentWords[i];
 			if (!segmentByWordId.has(w.id) && !skippedSet.has(w.id)) return w;
 		}
 		return null;
@@ -127,7 +139,7 @@
 	}
 
 	function findNextPendingId(): string | null {
-		for (const w of words) {
+		for (const w of currentWords) {
 			if (!segmentByWordId.has(w.id) && !skippedSet.has(w.id)) return w.id;
 		}
 		return null;
@@ -299,7 +311,7 @@
 
 		recordingStartTs = performance.now();
 		mediaRecorder.start();
-		const firstId = words[0]?.id;
+		const firstId = currentWords[0]?.id;
 		if (!firstId) {
 			teardown();
 			session = { kind: 'error', message: 'No words to record.' };
@@ -353,6 +365,59 @@
 
 	function ensureLoop() {
 		if (rafHandle === null && isActive) {
+			rafHandle = requestAnimationFrame(tick);
+		}
+	}
+
+	function pauseSession() {
+		if (
+			session.kind !== 'priming' &&
+			session.kind !== 'speaking' &&
+			session.kind !== 'waiting'
+		)
+			return;
+		if (mediaRecorder && mediaRecorder.state === 'recording') {
+			try {
+				mediaRecorder.pause();
+			} catch {
+				// ignore
+			}
+		}
+		if (rafHandle !== null) {
+			cancelAnimationFrame(rafHandle);
+			rafHandle = null;
+		}
+		const pausedAt = performance.now();
+		const resumeTo =
+			session.kind === 'speaking'
+				? {
+						kind: 'speaking' as const,
+						targetWordId: session.targetWordId,
+						startedAt: session.startedAt
+					}
+				: session.kind === 'waiting'
+					? { kind: 'waiting' as const, targetWordId: session.targetWordId }
+					: { kind: 'priming' as const, targetWordId: session.targetWordId };
+		session = { kind: 'paused', resumeTo, pausedAt };
+	}
+
+	function resumeSession() {
+		if (session.kind !== 'paused') return;
+		const now = performance.now();
+		const pauseDur = now - session.pausedAt;
+		// Shift the recording-time origin forward so elapsedMs continues from where we left off,
+		// keeping segment timestamps aligned with the (paused) MediaRecorder timeline.
+		recordingStartTs += pauseDur;
+		lastVoicedTs += pauseDur;
+		if (mediaRecorder && mediaRecorder.state === 'paused') {
+			try {
+				mediaRecorder.resume();
+			} catch {
+				// ignore
+			}
+		}
+		session = session.resumeTo;
+		if (rafHandle === null) {
 			rafHandle = requestAnimationFrame(tick);
 		}
 	}
@@ -424,7 +489,9 @@
 			const payload = (await res.json()) as { results: ResultRow[]; skipped: SkippedRow[] };
 			resultRows = payload.results;
 			processingSkipped = payload.skipped;
-			reviewSelected = new Set(payload.results.map((r) => r.wordId));
+			const initialStates = new Map<string, ReviewState>();
+			for (const r of payload.results) initialStates.set(r.wordId, 'keep');
+			reviewStates = initialStates;
 			session = { kind: 'reviewing' };
 		} catch (err) {
 			session = {
@@ -436,53 +503,145 @@
 		}
 	}
 
-	function toggleReviewSelected(wordId: string) {
-		const next = new Set(reviewSelected);
-		if (next.has(wordId)) next.delete(wordId);
-		else next.add(wordId);
-		reviewSelected = next;
+	function stateOf(wordId: string): ReviewState {
+		return reviewStates.get(wordId) ?? 'keep';
 	}
 
-	function selectAllReview() {
-		reviewSelected = new Set(resultRows.map((r) => r.wordId));
+	function setReviewState(wordId: string, next: ReviewState) {
+		const m = new Map(reviewStates);
+		m.set(wordId, next);
+		reviewStates = m;
 	}
 
-	function selectNoneReview() {
-		reviewSelected = new Set();
+	function toggleKeepSkip(wordId: string) {
+		const cur = stateOf(wordId);
+		setReviewState(wordId, cur === 'keep' ? 'skip' : 'keep');
+	}
+
+	function toggleRedo(wordId: string) {
+		const cur = stateOf(wordId);
+		setReviewState(wordId, cur === 'redo' ? 'keep' : 'redo');
+	}
+
+	const keepRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'keep'));
+	const skipRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'skip'));
+	const redoRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'redo'));
+	const keepCount = $derived(keepRows.length);
+	const redoCount = $derived(redoRows.length);
+	const totalAudioSec = $derived(keepRows.reduce((sum, r) => sum + (r.durationSec ?? 0), 0));
+
+	async function postCommit(
+		keep: { wordId: string; audioUrl: string }[],
+		discard: string[]
+	): Promise<Set<string>> {
+		const res = await fetch('/api/audio/bulk/commit', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ keep, discard })
+		});
+		if (!res.ok) {
+			const text = await res.text().catch(() => '');
+			throw new Error(text || `Save failed: ${res.status}`);
+		}
+		const payload = (await res.json()) as {
+			committed: { wordId: string; audioUrl: string }[];
+		};
+		return new Set(payload.committed.map((c) => c.wordId));
 	}
 
 	async function saveSelected() {
 		stopPlayback();
-		const keep = resultRows.filter((r) => reviewSelected.has(r.wordId));
-		const discard = resultRows.filter((r) => !reviewSelected.has(r.wordId)).map((r) => r.audioUrl);
-		if (keep.length === 0) {
+		if (resultRows.length === 0) {
+			session = { kind: 'idle' };
+			return;
+		}
+		const keep = keepRows.slice();
+		const skip = skipRows.slice();
+		const redo = redoRows.slice();
+
+		if (keep.length === 0 && redo.length === 0) {
 			void discardAll();
 			return;
 		}
+
+		// If there are redos, we save keeps + discard skips and leave the redos in the review.
+		// If no redos, we save keeps + discard skips and dismiss back to the missing-audio list.
 		session = { kind: 'saving' };
 		try {
-			const res = await fetch('/api/audio/bulk/commit', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					keep: keep.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl })),
-					discard
-				})
-			});
-			if (!res.ok) {
-				const text = await res.text().catch(() => '');
-				throw new Error(text || `Save failed: ${res.status}`);
-			}
-			const payload = (await res.json()) as {
-				committed: { wordId: string; audioUrl: string }[];
-			};
-			const committedIds = new Set(payload.committed.map((c) => c.wordId));
-			savedRows = keep.filter((r) => committedIds.has(r.wordId));
-			session = { kind: 'done', saved: savedRows.length };
-			toast.success(
-				`Saved ${savedRows.length} word${savedRows.length === 1 ? '' : 's'}.`
+			const committedIds = await postCommit(
+				keep.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl })),
+				skip.map((r) => r.audioUrl)
 			);
+			const newlySaved = keep.filter((r) => committedIds.has(r.wordId));
 			await invalidateAll();
+			if (newlySaved.length > 0) {
+				toast.success(
+					`Saved ${newlySaved.length} word${newlySaved.length === 1 ? '' : 's'}.`
+				);
+			}
+
+			if (redo.length === 0) {
+				resultRows = [];
+				reviewStates = new Map();
+				session = { kind: 'idle' };
+				onclose?.();
+				return;
+			}
+
+			// Drop kept and skipped rows from the review; only redos remain.
+			resultRows = redo;
+			const remainingStates = new Map<string, ReviewState>();
+			for (const r of redo) remainingStates.set(r.wordId, 'redo');
+			reviewStates = remainingStates;
+			session = { kind: 'reviewing' };
+		} catch (err) {
+			session = {
+				kind: 'error',
+				message: err instanceof Error ? err.message : 'Could not save audio.'
+			};
+		}
+	}
+
+	function requestRerecord() {
+		if (redoCount === 0) return;
+		if (keepCount > 0) {
+			confirmRerecord = true;
+			return;
+		}
+		void executeRerecord();
+	}
+
+	async function executeRerecord() {
+		confirmRerecord = false;
+		stopPlayback();
+		const keep = keepRows.slice();
+		const skip = skipRows.slice();
+		const redo = redoRows.slice();
+		if (redo.length === 0) return;
+
+		session = { kind: 'saving' };
+		try {
+			// Save keeps; discard skips + the existing redo files (about to be re-recorded).
+			const committedIds = await postCommit(
+				keep.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl })),
+				[...skip.map((r) => r.audioUrl), ...redo.map((r) => r.audioUrl)]
+			);
+			const newlySaved = keep.filter((r) => committedIds.has(r.wordId));
+			await invalidateAll();
+			if (newlySaved.length > 0) {
+				toast.success(`Saved ${newlySaved.length} word${newlySaved.length === 1 ? '' : 's'}.`);
+			}
+
+			// Restart the bulk session with only the redo'd words.
+			const redoWordIds = new Set(redo.map((r) => r.wordId));
+			const redoWords = currentWords.filter((w) => redoWordIds.has(w.id));
+			currentWords = redoWords;
+			resultRows = [];
+			reviewStates = new Map();
+			processingSkipped = [];
+			segments = [];
+			skippedSet = new Set();
+			await startSession();
 		} catch (err) {
 			session = {
 				kind: 'error',
@@ -496,6 +655,7 @@
 		const urls = resultRows.map((r) => r.audioUrl);
 		if (urls.length === 0) {
 			session = { kind: 'idle' };
+			onclose?.();
 			return;
 		}
 		session = { kind: 'discarding' };
@@ -506,9 +666,10 @@
 				body: JSON.stringify({ keep: [], discard: urls })
 			});
 			resultRows = [];
-			reviewSelected = new Set();
+			reviewStates = new Map();
 			session = { kind: 'idle' };
 			toast.success('Recording discarded.');
+			onclose?.();
 		} catch (err) {
 			session = {
 				kind: 'error',
@@ -518,23 +679,36 @@
 	}
 
 	function playRow(wordId: string) {
+		if (playingWordId === wordId) {
+			stopPlayback();
+			return;
+		}
 		const el = audioEls.get(wordId);
 		if (!el) return;
 		stopPlayback();
 		playingWordId = wordId;
+		playProgress = 0;
 		el.currentTime = 0;
+		el.ontimeupdate = () => {
+			if (!el.duration || !Number.isFinite(el.duration)) return;
+			playProgress = el.currentTime / el.duration;
+		};
 		el.onended = () => {
-			if (playingWordId === wordId) playingWordId = null;
+			if (playingWordId === wordId) {
+				playingWordId = null;
+				playProgress = 0;
+			}
 		};
 		el.play().catch(() => {
 			playingWordId = null;
+			playProgress = 0;
 		});
 	}
 
 	function playAll() {
 		stopPlayback();
 		const ids = resultRows
-			.filter((r) => reviewSelected.has(r.wordId))
+			.filter((r) => stateOf(r.wordId) === 'keep')
 			.map((r) => r.wordId);
 		if (ids.length === 0) return;
 		playSequence = ids;
@@ -545,6 +719,7 @@
 	function playNextInSequence() {
 		if (playSequenceIndex >= playSequence.length) {
 			playingWordId = null;
+			playProgress = 0;
 			playSequence = [];
 			return;
 		}
@@ -556,7 +731,12 @@
 			return;
 		}
 		playingWordId = wordId;
+		playProgress = 0;
 		el.currentTime = 0;
+		el.ontimeupdate = () => {
+			if (!el.duration || !Number.isFinite(el.duration)) return;
+			playProgress = el.currentTime / el.duration;
+		};
 		el.onended = () => {
 			playSequenceIndex += 1;
 			playNextInSequence();
@@ -567,12 +747,23 @@
 		});
 	}
 
+	function seekTo(wordId: string, fraction: number) {
+		const el = audioEls.get(wordId);
+		if (!el || !el.duration || !Number.isFinite(el.duration)) return;
+		el.currentTime = Math.max(0, Math.min(el.duration, el.duration * fraction));
+		playProgress = fraction;
+		if (playingWordId !== wordId) {
+			playRow(wordId);
+		}
+	}
+
 	function stopPlayback() {
 		if (playingWordId) {
 			const el = audioEls.get(playingWordId);
 			if (el) {
 				try {
 					el.pause();
+					el.ontimeupdate = null;
 					el.onended = null;
 				} catch {
 					// ignore
@@ -580,37 +771,38 @@
 			}
 		}
 		playingWordId = null;
+		playProgress = 0;
 		playSequence = [];
 		playSequenceIndex = 0;
 	}
 
-	async function undoSession() {
-		confirmUndo = false;
-		if (savedRows.length === 0) return;
-		session = { kind: 'undoing' };
-		try {
-			const res = await fetch('/api/audio/bulk/undo', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					entries: savedRows.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl }))
-				})
-			});
-			if (!res.ok) {
-				const text = await res.text().catch(() => '');
-				throw new Error(text || `Undo failed: ${res.status}`);
-			}
-			const count = savedRows.length;
-			savedRows = [];
-			session = { kind: 'undone', count };
-			toast.success(`Undid ${count} word${count === 1 ? '' : 's'}.`);
-			await invalidateAll();
-		} catch (err) {
-			session = {
-				kind: 'error',
-				message: err instanceof Error ? err.message : 'Could not undo audio.'
-			};
+	function seededWaveform(seed: number, len: number, lengthSec: number): number[] {
+		const bars: number[] = [];
+		let s = seed * 9301 + 49297;
+		for (let i = 0; i < len; i += 1) {
+			s = (s * 9301 + 49297) % 233280;
+			const r = s / 233280;
+			const t = i / Math.max(1, len - 1);
+			const env = Math.pow(Math.sin(t * Math.PI), 0.5);
+			const noise = 0.35 + r * 0.65;
+			bars.push(Math.max(0.18, env * noise));
 		}
+		const lenScale = Math.min(1, 0.55 + lengthSec * 0.4);
+		return bars.map((b) => b * lenScale);
+	}
+
+	function hashId(id: string): number {
+		let h = 0;
+		for (let i = 0; i < id.length; i += 1) {
+			h = (h * 31 + id.charCodeAt(i)) | 0;
+		}
+		return Math.abs(h) || 1;
+	}
+
+	function fmtSecMs(s: number): string {
+		const sec = Math.floor(s);
+		const cs = Math.round((s - sec) * 100);
+		return `0:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 	}
 
 	$effect(() => {
@@ -679,7 +871,7 @@
 				<span class="muted">{totalWords}</span>
 			</div>
 			<ol class="bulk-list bulk-preview-list">
-				{#each words as word, i (word.id)}
+				{#each currentWords as word, i (word.id)}
 					<li class="bulk-list-row bulk-preview-row">
 						<span class="bulk-preview-index">{i + 1}.</span>
 						<span class="bulk-list-word">{word.kalenjin}</span>
@@ -688,7 +880,7 @@
 				{/each}
 			</ol>
 		</div>
-	{:else if session.kind === 'priming' || session.kind === 'speaking' || session.kind === 'waiting' || session.kind === 'finishing'}
+	{:else if session.kind === 'priming' || session.kind === 'speaking' || session.kind === 'waiting' || session.kind === 'finishing' || session.kind === 'paused'}
 		<div class="bulk-active">
 			<div class="bulk-progress">
 				<div class="bulk-progress-bar">
@@ -704,6 +896,7 @@
 				class:bulk-status-speak={session.kind === 'speaking' ||
 					(session.kind === 'priming' && aboveSpeaking)}
 				class:bulk-status-wait={session.kind === 'waiting' || session.kind === 'priming'}
+				class:bulk-status-paused={session.kind === 'paused'}
 			>
 				{#if session.kind === 'priming'}
 					<span class="bulk-dot" aria-hidden="true"></span>
@@ -714,15 +907,39 @@
 				{:else if session.kind === 'waiting'}
 					<span class="bulk-dot bulk-dot-wait" aria-hidden="true"></span>
 					Speak now: next word.
+				{:else if session.kind === 'paused'}
+					<span class="bulk-dot bulk-dot-wait" aria-hidden="true"></span>
+					Recording paused.
 				{:else if session.kind === 'finishing'}
 					Finalising recording…
 				{/if}
 			</div>
 
 			{#if currentWord}
-				<div class="bulk-word">
-					<div class="bulk-word-current">{currentWord.kalenjin}</div>
-					<div class="bulk-word-translation">{currentWord.translations}</div>
+				<div class="bulk-word-row">
+					<button
+						type="button"
+						class="bulk-pause-btn"
+						class:is-paused={session.kind === 'paused'}
+						onclick={() => (session.kind === 'paused' ? resumeSession() : pauseSession())}
+						disabled={session.kind === 'finishing'}
+						aria-label={session.kind === 'paused' ? 'Resume recording' : 'Pause recording'}
+					>
+						{#if session.kind === 'paused'}
+							<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<path d="M7 5v14a1 1 0 0 0 1.55.83l11-7a1 1 0 0 0 0-1.66l-11-7A1 1 0 0 0 7 5z" />
+							</svg>
+						{:else}
+							<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+								<rect x="6" y="5" width="4" height="14" rx="1" />
+								<rect x="14" y="5" width="4" height="14" rx="1" />
+							</svg>
+						{/if}
+					</button>
+					<div class="bulk-word">
+						<div class="bulk-word-current">{currentWord.kalenjin}</div>
+						<div class="bulk-word-translation">{currentWord.translations}</div>
+					</div>
 				</div>
 				{#if nextWord}
 					<div class="bulk-word-next">
@@ -741,7 +958,7 @@
 				aria-label="Words in this session"
 				bind:this={listEl}
 			>
-				{#each words as word (word.id)}
+				{#each currentWords as word (word.id)}
 					{@const status = statusOf(word.id)}
 					<div
 						class="bulk-list-row"
@@ -814,97 +1031,257 @@
 		</div>
 	{:else if session.kind === 'reviewing'}
 		<div class="bulk-review">
-			<h3>Review {resultRows.length} clip{resultRows.length === 1 ? '' : 's'}</h3>
-			<p class="muted">
-				Listen to each clip and uncheck any you don't want to save. Nothing is saved to the
-				dictionary until you click <strong>Save selected</strong>.
-			</p>
+			<header class="review-head">
+				<div class="review-head-text">
+					<h3>Review your clips</h3>
+					<p>
+						Listen back to each recording and untick any you don't want to keep. Nothing is
+						saved until you press <b>Save selected</b>.
+					</p>
+				</div>
+				<div class="session-stats">
+					<div class="session-stat brand">
+						<b>{keepCount}<span class="muted-frac">/{resultRows.length}</span></b>
+						selected
+					</div>
+					<div class="session-stat">
+						<b>{totalAudioSec.toFixed(1)}s</b>
+						audio
+					</div>
+				</div>
+			</header>
 
-			<div class="bulk-actions">
-				<button
-					type="button"
-					class="btn primary"
-					onclick={saveSelected}
-					disabled={reviewSelected.size === 0}
-				>
-					Save selected ({reviewSelected.size})
-				</button>
+			<div class="session-actions">
 				{#if playingWordId}
-					<button type="button" class="btn" onclick={stopPlayback}>Stop playback</button>
+					<button type="button" class="btn ghost with-icon" onclick={stopPlayback}>
+						<svg class="icn" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+							<rect x="4" y="3" width="3" height="10" rx="1" />
+							<rect x="9" y="3" width="3" height="10" rx="1" />
+						</svg>
+						Stop
+					</button>
 				{:else}
 					<button
 						type="button"
-						class="btn"
+						class="btn ghost with-icon"
 						onclick={playAll}
-						disabled={reviewSelected.size === 0}
+						disabled={keepCount === 0}
 					>
+						<svg class="icn" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+							<path d="M3 4v8l6-4z" />
+							<path d="M9 4v8l6-4z" opacity="0.55" />
+						</svg>
 						Play all
 					</button>
 				{/if}
-				<button type="button" class="btn-sm ghost" onclick={selectAllReview}>Select all</button>
-				<button type="button" class="btn-sm ghost" onclick={selectNoneReview}>Select none</button>
-				<button type="button" class="btn-sm ghost danger" onclick={discardAll}>
-					Discard all
+				<button type="button" class="btn danger with-icon" onclick={discardAll}>
+					<svg
+						class="icn"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.5"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path
+							d="M3 4.5h10M6 4.5V3a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5M5 4.5l.7 9a1 1 0 0 0 1 .9h2.6a1 1 0 0 0 1-.9l.7-9"
+						/>
+					</svg>
+					Discard
 				</button>
+				<div class="actions-spacer"></div>
+				<button
+					type="button"
+					class="btn primary with-icon"
+					onclick={saveSelected}
+					disabled={keepCount === 0 && redoCount === 0}
+				>
+					<svg
+						class="icn"
+						viewBox="0 0 16 16"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.7"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M3 8.5l3.5 3.5L13 5" />
+					</svg>
+					Save selected
+					<span class="badge">{keepCount}</span>
+				</button>
+				{#if redoCount > 0}
+					<button type="button" class="btn accent with-icon" onclick={requestRerecord}>
+						<svg
+							width="14"
+							height="14"
+							viewBox="0 0 16 16"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.7"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M13 4v3.5h-3.5" />
+							<path d="M13 7.5A5 5 0 1 0 11.5 12" />
+						</svg>
+						Re-record {redoCount} {redoCount === 1 ? 'word' : 'words'}
+					</button>
+				{/if}
 			</div>
 
-			<table class="bulk-results">
+			<table class="session-table">
 				<thead>
 					<tr>
-						<th class="col-check">
-							<input
-								type="checkbox"
-								aria-label="Select all"
-								checked={reviewSelected.size === resultRows.length && resultRows.length > 0}
-								onchange={() =>
-									reviewSelected.size === resultRows.length
-										? selectNoneReview()
-										: selectAllReview()}
-							/>
-						</th>
+						<th class="col-idx num">#</th>
 						<th>Word</th>
 						<th>Translation</th>
 						<th>Audio</th>
-						<th class="num">Length</th>
+						<th class="col-action">Action</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each resultRows as row (row.wordId)}
+					{#each resultRows as row, i (row.wordId)}
 						{@const w = wordById.get(row.wordId)}
+						{@const state = stateOf(row.wordId)}
+						{@const seed = hashId(row.wordId)}
+						{@const dur = row.durationSec ?? 0}
+						{@const bars = seededWaveform(seed, 64, dur)}
 						<tr
 							data-row-word-id={row.wordId}
-							class:row-playing={playingWordId === row.wordId}
-							class:row-deselected={!reviewSelected.has(row.wordId)}
+							class:playing={playingWordId === row.wordId}
+							class:skip-row={state === 'skip'}
+							class:redo-row={state === 'redo'}
 						>
-							<td class="col-check">
-								<input
-									type="checkbox"
-									aria-label={`Save ${w?.kalenjin ?? row.wordId}`}
-									checked={reviewSelected.has(row.wordId)}
-									onchange={() => toggleReviewSelected(row.wordId)}
-								/>
+							<td class="col-idx">{String(i + 1).padStart(2, '0')}</td>
+							<td class="col-word">
+								<span class="word">{w?.kalenjin ?? row.wordId}</span>
 							</td>
-							<td>{w?.kalenjin ?? row.wordId}</td>
-							<td class="muted">{w?.translations ?? ''}</td>
-							<td>
+							<td class="col-trans">
+								<span class="gloss">{w?.translations ?? ''}</span>
+							</td>
+							<td class="col-audio">
+								<div class="player">
+									<button
+										type="button"
+										class="play-btn"
+										class:is-playing={playingWordId === row.wordId}
+										onclick={() => playRow(row.wordId)}
+										aria-label={playingWordId === row.wordId ? 'Pause' : 'Play'}
+									>
+										{#if playingWordId === row.wordId}
+											<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+												<rect x="4" y="3" width="3" height="10" rx="1" />
+												<rect x="9" y="3" width="3" height="10" rx="1" />
+											</svg>
+										{:else}
+											<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+												<path
+													d="M5 3.5v9a.5.5 0 0 0 .76.43l7-4.5a.5.5 0 0 0 0-.86l-7-4.5A.5.5 0 0 0 5 3.5z"
+												/>
+											</svg>
+										{/if}
+									</button>
+									<div
+										class="waveform"
+										role="slider"
+										tabindex="0"
+										aria-label="Seek"
+										aria-valuemin="0"
+										aria-valuemax="100"
+										aria-valuenow={Math.round((playingWordId === row.wordId ? playProgress : 0) * 100)}
+										onclick={(e) => {
+											const target = e.currentTarget as HTMLElement;
+											const r = target.getBoundingClientRect();
+											const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+											seekTo(row.wordId, p);
+										}}
+										onkeydown={(e) => {
+											if (e.key === 'ArrowLeft') seekTo(row.wordId, Math.max(0, playProgress - 0.05));
+											else if (e.key === 'ArrowRight') seekTo(row.wordId, Math.min(1, playProgress + 0.05));
+										}}
+									>
+										{#each bars as h, bi (bi)}
+											{@const played =
+												playingWordId === row.wordId && bi / bars.length <= playProgress}
+											<div
+												class="bar"
+												class:played
+												style:height="{Math.round(h * 100)}%"
+											></div>
+										{/each}
+									</div>
+									<span class="timestamp">{fmtSecMs(dur)}</span>
+								</div>
 								<audio
-									controls
 									src={row.audioUrl}
-									preload="none"
+									preload="metadata"
 									{@attach (el) => {
 										audioEls.set(row.wordId, el as HTMLAudioElement);
 										return () => audioEls.delete(row.wordId);
 									}}
 								></audio>
 							</td>
-							<td class="num">{row.durationSec ? row.durationSec.toFixed(2) + 's' : '—'}</td>
+							<td class="col-action">
+								<div class="row-actions">
+									<button
+										type="button"
+										class="keep-toggle"
+										class:is-keep={state === 'keep'}
+										onclick={() => toggleKeepSkip(row.wordId)}
+										aria-pressed={state === 'keep'}
+									>
+										<span class="pip">
+											<svg
+												viewBox="0 0 12 12"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+											>
+												<path d="M2 6.5l2.5 2.5L10 3.5" />
+											</svg>
+										</span>
+										{state === 'keep' ? 'Keep' : 'Skip'}
+									</button>
+									<button
+										type="button"
+										class="redo-btn"
+										class:is-on={state === 'redo'}
+										onclick={() => toggleRedo(row.wordId)}
+										aria-pressed={state === 'redo'}
+										title={state === 'redo' ? 'Cancel re-record' : 'Queue for re-record'}
+										aria-label="Queue for re-record"
+									>
+										<svg
+											width="14"
+											height="14"
+											viewBox="0 0 16 16"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="1.6"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											aria-hidden="true"
+										>
+											<path d="M13 4v3.5h-3.5" />
+											<path d="M13 7.5A5 5 0 1 0 11.5 12" />
+										</svg>
+									</button>
+								</div>
+							</td>
 						</tr>
 					{/each}
 				</tbody>
 			</table>
 
 			{#if processingSkipped.length > 0}
-				<h4>Skipped during processing</h4>
+				<h4 class="processing-skipped-title">Skipped during processing</h4>
 				<ul class="bulk-skipped">
 					{#each processingSkipped as row (row.wordId)}
 						{@const w = wordById.get(row.wordId)}
@@ -912,6 +1289,13 @@
 					{/each}
 				</ul>
 			{/if}
+
+			<div class="session-foot">
+				<div class="help">
+					Click <kbd>play</kbd> on each clip · click the waveform to seek · toggle
+					<kbd>Keep</kbd> / <kbd>Skip</kbd> per row
+				</div>
+			</div>
 		</div>
 	{:else if session.kind === 'saving'}
 		<div class="bulk-uploading">
@@ -920,47 +1304,6 @@
 	{:else if session.kind === 'discarding'}
 		<div class="bulk-uploading">
 			<p>Discarding…</p>
-		</div>
-	{:else if session.kind === 'undoing'}
-		<div class="bulk-uploading">
-			<p>Undoing session…</p>
-		</div>
-	{:else if session.kind === 'undone'}
-		<div class="bulk-done">
-			<h3>Undid {session.count} word{session.count === 1 ? '' : 's'}</h3>
-			<p class="muted">The audio has been removed and the words are back on the missing-audio list.</p>
-		</div>
-	{:else if session.kind === 'done'}
-		<div class="bulk-done">
-			<h3>Saved {session.saved} word{session.saved === 1 ? '' : 's'}</h3>
-			{#if savedRows.length > 0}
-				<table class="bulk-results">
-					<thead>
-						<tr>
-							<th>Word</th>
-							<th>Translation</th>
-							<th>Audio</th>
-							<th class="num">Length</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each savedRows as row (row.wordId)}
-							{@const w = wordById.get(row.wordId)}
-							<tr>
-								<td>{w?.kalenjin ?? row.wordId}</td>
-								<td class="muted">{w?.translations ?? ''}</td>
-								<td><audio controls src={row.audioUrl} preload="none"></audio></td>
-								<td class="num">{row.durationSec ? row.durationSec.toFixed(2) + 's' : '—'}</td>
-							</tr>
-						{/each}
-					</tbody>
-				</table>
-				<div class="bulk-actions">
-					<button type="button" class="btn danger" onclick={() => (confirmUndo = true)}>
-						Undo this session
-					</button>
-				</div>
-			{/if}
 		</div>
 	{:else if session.kind === 'error'}
 		<div class="bulk-error">
@@ -973,33 +1316,6 @@
 		</div>
 	{/if}
 </section>
-
-{#if confirmUndo}
-	<div
-		class="confirm-backdrop"
-		role="presentation"
-		onclick={(event) => {
-			if (event.target === event.currentTarget) confirmUndo = false;
-		}}
-		onkeydown={(event) => {
-			if (event.key === 'Escape') confirmUndo = false;
-		}}
-	>
-		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="undo-title">
-			<h3 id="undo-title">Undo this session?</h3>
-			<p>
-				All {resultRows.length} audio clip{resultRows.length === 1 ? '' : 's'} saved in this session
-				will be deleted. This cannot be undone.
-			</p>
-			<div class="bulk-actions">
-				<button type="button" class="btn danger" onclick={undoSession}>Undo session</button>
-				<button type="button" class="btn ghost" onclick={() => (confirmUndo = false)}>
-					Cancel
-				</button>
-			</div>
-		</div>
-	</div>
-{/if}
 
 {#if skipPromptId}
 	{@const skipWord = wordById.get(skipPromptId)}
@@ -1039,6 +1355,36 @@
 					</a>
 				{/if}
 				<button type="button" class="btn ghost" onclick={() => (skipPromptId = null)}>
+					Cancel
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
+
+{#if confirmRerecord}
+	<div
+		class="confirm-backdrop"
+		role="presentation"
+		onclick={(event) => {
+			if (event.target === event.currentTarget) confirmRerecord = false;
+		}}
+		onkeydown={(event) => {
+			if (event.key === 'Escape') confirmRerecord = false;
+		}}
+	>
+		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="rerec-title">
+			<h3 id="rerec-title">Save and re-record?</h3>
+			<p>
+				{keepCount} kept word{keepCount === 1 ? '' : 's'} will be saved, then you'll start a new
+				recording session for {redoCount} word{redoCount === 1 ? '' : 's'}. Skipped clips will be
+				discarded.
+			</p>
+			<div class="bulk-actions">
+				<button type="button" class="btn primary" onclick={executeRerecord}>
+					Save and re-record
+				</button>
+				<button type="button" class="btn ghost" onclick={() => (confirmRerecord = false)}>
 					Cancel
 				</button>
 			</div>
@@ -1135,6 +1481,9 @@
 	.bulk-status-wait {
 		color: var(--ink-soft);
 	}
+	.bulk-status-paused {
+		color: var(--ink-mute);
+	}
 	.bulk-dot {
 		background: #e11d48;
 		border-radius: 50%;
@@ -1161,11 +1510,54 @@
 			animation: none;
 		}
 	}
+	.bulk-word-row {
+		align-items: stretch;
+		display: flex;
+		gap: 16px;
+	}
+	.bulk-pause-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line-soft);
+		border-radius: 12px;
+		color: var(--brand);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		justify-content: center;
+		min-height: 96px;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 96px;
+	}
+	.bulk-pause-btn:hover:not(:disabled) {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: oklch(0.98 0.01 85);
+	}
+	.bulk-pause-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+	.bulk-pause-btn svg {
+		height: 44px;
+		width: 44px;
+	}
+	.bulk-pause-btn.is-paused {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: oklch(0.99 0.005 80);
+	}
+	.bulk-pause-btn.is-paused:hover:not(:disabled) {
+		background: color-mix(in oklch, var(--accent) 85%, var(--ink));
+		border-color: color-mix(in oklch, var(--accent) 85%, var(--ink));
+	}
 	.bulk-word {
 		background: var(--bg-raised);
 		border: 1px solid var(--line-soft);
 		border-radius: 12px;
 		color: var(--ink);
+		flex: 1;
+		min-width: 0;
 		padding: 24px 16px;
 		text-align: center;
 	}
@@ -1290,52 +1682,8 @@
 	.muted {
 		color: var(--ink-mute);
 	}
-	.bulk-done h3 {
-		margin: 0 0 12px 0;
-	}
 	.bulk-review h4 {
 		margin: 16px 0 8px 0;
-	}
-	.bulk-review h3 {
-		margin: 0 0 6px 0;
-	}
-	.bulk-review p {
-		margin: 0 0 12px 0;
-	}
-	.bulk-review .col-check {
-		width: 36px;
-	}
-	.bulk-results tr.row-playing {
-		background: color-mix(in oklch, var(--brand) 12%, transparent);
-	}
-	.bulk-results tr.row-deselected td {
-		opacity: 0.45;
-	}
-	.btn-sm.danger {
-		color: #b91c1c;
-	}
-	.btn-sm.danger:hover:not(:disabled) {
-		border-color: color-mix(in oklch, #b91c1c 40%, var(--line));
-	}
-	.bulk-results {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 14px;
-	}
-	.bulk-results th,
-	.bulk-results td {
-		text-align: left;
-		padding: 6px 8px;
-		border-bottom: 1px solid var(--line-soft);
-		vertical-align: middle;
-	}
-	.bulk-results .num {
-		text-align: right;
-		font-variant-numeric: tabular-nums;
-	}
-	.bulk-results audio {
-		max-width: 220px;
-		height: 32px;
 	}
 	.bulk-skipped {
 		margin: 0;
@@ -1344,6 +1692,400 @@
 	.bulk-error-msg {
 		color: #b91c1c;
 		margin: 0 0 8px 0;
+	}
+
+	/* ---------- Recording Session Review (designed per spec) ---------- */
+	.bulk-review {
+		display: flex;
+		flex-direction: column;
+		gap: 16px;
+	}
+	.review-head {
+		align-items: flex-start;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 24px;
+		justify-content: space-between;
+	}
+	.review-head-text {
+		max-width: 56ch;
+	}
+	.review-head h3 {
+		font-family: var(--font-display);
+		font-size: 28px;
+		font-weight: 500;
+		letter-spacing: -0.015em;
+		margin: 0 0 6px 0;
+		color: var(--ink);
+	}
+	.review-head p {
+		color: var(--ink-soft);
+		font-size: 15px;
+		margin: 0;
+	}
+	.review-head p b {
+		color: var(--ink);
+	}
+
+	@keyframes recPulse {
+		0% {
+			box-shadow: 0 0 0 0 color-mix(in oklch, var(--accent) 55%, transparent);
+		}
+		80% {
+			box-shadow: 0 0 0 7px color-mix(in oklch, var(--accent) 0%, transparent);
+		}
+		100% {
+			box-shadow: 0 0 0 0 color-mix(in oklch, var(--accent) 0%, transparent);
+		}
+	}
+
+	.session-stats {
+		display: flex;
+		gap: 36px;
+		align-items: flex-end;
+	}
+	.session-stat {
+		font-family: var(--font-mono);
+		font-size: 12px;
+		color: var(--ink-mute);
+		text-align: right;
+	}
+	.session-stat b {
+		display: block;
+		font-family: var(--font-display);
+		font-size: 28px;
+		line-height: 1;
+		color: var(--ink);
+		font-weight: 500;
+		letter-spacing: -0.015em;
+		font-variant-numeric: tabular-nums;
+		margin-bottom: 4px;
+	}
+	.session-stat.brand b {
+		color: var(--brand);
+	}
+	.muted-frac {
+		color: var(--ink-mute);
+		font-size: 18px;
+	}
+
+	.session-actions {
+		align-items: center;
+		border-bottom: 1px solid var(--line-soft);
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+		margin-bottom: 6px;
+		padding: 14px 0;
+	}
+	.actions-spacer {
+		flex: 1;
+	}
+	.session-actions .btn.with-icon {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.session-actions .btn.primary {
+		background: var(--brand);
+		border: 1px solid var(--brand);
+		color: oklch(0.98 0.01 85);
+	}
+	.session-actions .btn.primary:disabled {
+		cursor: not-allowed;
+		filter: none;
+		opacity: 0.5;
+	}
+	.session-actions .btn.primary .badge {
+		background: oklch(0.98 0.01 85 / 0.18);
+		color: oklch(0.98 0.01 85);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-weight: 600;
+		padding: 1px 7px;
+		border-radius: 999px;
+		letter-spacing: 0.04em;
+	}
+	.session-actions .btn.danger {
+		background: transparent;
+		border: 1px solid var(--line);
+		color: oklch(0.5 0.18 28);
+	}
+	.session-actions .btn.danger:hover {
+		background: color-mix(in oklch, oklch(0.5 0.18 28) 7%, transparent);
+		border-color: color-mix(in oklch, oklch(0.5 0.18 28) 45%, var(--line));
+		filter: none;
+	}
+	.session-actions .btn.accent {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: oklch(0.99 0.005 80);
+	}
+	.icn {
+		width: 14px;
+		height: 14px;
+		flex-shrink: 0;
+	}
+
+	.session-table {
+		width: 100%;
+		border-collapse: collapse;
+		font-size: 15px;
+	}
+	.session-table thead th {
+		border-bottom: 1px solid var(--line);
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		padding: 10px 14px;
+		text-align: left;
+		text-transform: uppercase;
+		white-space: nowrap;
+	}
+	.session-table thead th.num {
+		text-align: right;
+	}
+	.session-table tbody tr {
+		border-bottom: 1px solid var(--line-soft);
+		transition: background 0.12s;
+	}
+	.session-table tbody tr:hover {
+		background: var(--surface);
+	}
+	.session-table tbody tr.playing {
+		background: color-mix(in oklch, var(--accent-soft) 60%, transparent);
+	}
+	.session-table tbody tr.skip-row .col-word .word {
+		color: var(--ink-mute);
+		text-decoration: line-through;
+		text-decoration-color: var(--ink-mute);
+	}
+	.session-table tbody tr.skip-row .col-trans,
+	.session-table tbody tr.skip-row .player {
+		opacity: 0.5;
+	}
+	.session-table tbody tr.redo-row {
+		background: color-mix(in oklch, var(--accent-soft) 45%, transparent);
+	}
+	.session-table tbody td {
+		padding: 14px;
+		vertical-align: middle;
+	}
+
+	.col-idx {
+		color: var(--ink-mute);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		text-align: right;
+		width: 36px;
+	}
+	.col-word {
+		width: 24%;
+	}
+	.col-word .word {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 19px;
+		font-weight: 500;
+		letter-spacing: -0.005em;
+	}
+	.col-trans {
+		width: 26%;
+	}
+	.col-trans .gloss {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 17px;
+		line-height: 1.3;
+	}
+	.col-audio {
+		width: 42%;
+	}
+	.col-audio audio {
+		display: none;
+	}
+	.player {
+		align-items: center;
+		display: grid;
+		gap: 12px;
+		grid-template-columns: auto 1fr auto;
+	}
+	.play-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--brand);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		height: 32px;
+		justify-content: center;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 32px;
+	}
+	.play-btn:hover {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: oklch(0.98 0.01 85);
+	}
+	.play-btn.is-playing {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: oklch(0.99 0.005 80);
+	}
+	.waveform {
+		align-items: center;
+		cursor: pointer;
+		display: flex;
+		flex: 1;
+		gap: 1.5px;
+		height: 28px;
+		padding: 4px 0;
+	}
+	.waveform .bar {
+		background: var(--ink-mute);
+		border-radius: 1px;
+		flex: 1;
+		min-width: 2px;
+		opacity: 0.4;
+		transition: background 0.1s, opacity 0.1s;
+	}
+	.waveform .bar.played {
+		background: var(--brand);
+		opacity: 0.9;
+	}
+	.playing .waveform .bar.played {
+		background: var(--accent);
+	}
+	.timestamp {
+		color: var(--ink-mute);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.04em;
+		min-width: 70px;
+		text-align: right;
+		white-space: nowrap;
+	}
+
+	.col-action {
+		width: 200px;
+	}
+	.row-actions {
+		align-items: center;
+		display: inline-flex;
+		gap: 8px;
+	}
+	.keep-toggle {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		font: inherit;
+		font-size: 12px;
+		font-weight: 600;
+		gap: 8px;
+		letter-spacing: 0.06em;
+		padding: 4px 12px 4px 6px;
+		text-transform: uppercase;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+	}
+	.keep-toggle:hover {
+		border-color: var(--ink-mute);
+		color: var(--ink);
+	}
+	.keep-toggle .pip {
+		align-items: center;
+		background: var(--bg);
+		border: 1.5px solid var(--ink-mute);
+		border-radius: 50%;
+		display: inline-flex;
+		height: 16px;
+		justify-content: center;
+		transition: background 0.15s, border-color 0.15s;
+		width: 16px;
+	}
+	.keep-toggle .pip svg {
+		height: 10px;
+		opacity: 0;
+		transition: opacity 0.12s;
+		width: 10px;
+	}
+	.keep-toggle.is-keep {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: oklch(0.98 0.01 85);
+	}
+	.keep-toggle.is-keep .pip {
+		background: oklch(0.98 0.01 85 / 0.18);
+		border-color: transparent;
+	}
+	.keep-toggle.is-keep .pip svg {
+		color: oklch(0.98 0.01 85);
+		opacity: 1;
+	}
+	.redo-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		height: 30px;
+		justify-content: center;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 30px;
+	}
+	.redo-btn:hover {
+		background: var(--surface);
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	.redo-btn.is-on {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: oklch(0.99 0.005 80);
+	}
+
+	.session-foot {
+		align-items: center;
+		border-top: 1px solid var(--line);
+		display: flex;
+		flex-wrap: wrap;
+		gap: 16px;
+		justify-content: space-between;
+		margin-top: 14px;
+		padding-top: 22px;
+	}
+	.session-foot .help {
+		color: var(--ink-mute);
+		font-family: var(--font-mono);
+		font-size: 12px;
+		letter-spacing: 0.02em;
+	}
+	.session-foot .help kbd {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-bottom-width: 2px;
+		border-radius: 4px;
+		color: var(--ink);
+		font-family: var(--font-mono);
+		font-size: 11px;
+		margin: 0 2px;
+		padding: 1px 6px;
+	}
+	.processing-skipped-title {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 16px;
+		font-weight: 500;
+		margin: 16px 0 8px 0;
 	}
 
 	.confirm-backdrop {

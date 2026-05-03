@@ -20,7 +20,7 @@
 	</div>
 </div>
 
-<section class="cleanup-section">
+<section class="form-card cleanup-section">
 	<header class="cleanup-section-head">
 		<div>
 			<h2>Sentences with incomplete lemmatization</h2>
@@ -30,7 +30,7 @@
 	</header>
 
 	{#if data.incompleteSentences.items.length === 0}
-		<p class="cleanup-empty">All corpus sentences are fully lemmatized. 🎉</p>
+		<p class="empty-state">All corpus sentences are fully lemmatized. 🎉</p>
 	{:else}
 		<div class="table-scroll">
 			<table class="cleanup-table">
@@ -67,7 +67,7 @@
 	{/if}
 </section>
 
-<section class="cleanup-section">
+<section class="form-card cleanup-section">
 	<header class="cleanup-section-head">
 		<div>
 			<h2>Nouns and adjectives missing plurals</h2>
@@ -77,7 +77,7 @@
 	</header>
 
 	{#if data.missingPlurals.items.length === 0}
-		<p class="cleanup-empty">All nouns and adjectives have plurals (or are marked plural-only). 🎉</p>
+		<p class="empty-state">All nouns and adjectives have plurals (or are marked plural-only). 🎉</p>
 	{:else}
 		<div class="table-scroll">
 			<table class="cleanup-table">
@@ -115,13 +115,6 @@
 </section>
 
 <style>
-	.cleanup-section {
-		background: var(--bg-raised);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 18px 20px;
-		margin-bottom: 24px;
-	}
 	.cleanup-section-head {
 		display: flex;
 		align-items: flex-start;
@@ -149,12 +142,6 @@
 		color: var(--accent);
 		font-weight: 500;
 		flex-shrink: 0;
-	}
-	.cleanup-empty {
-		margin: 8px 0 0;
-		color: var(--ink-mute);
-		font-size: 14px;
-		font-style: italic;
 	}
 	.cleanup-truncated {
 		margin: 12px 0 0;

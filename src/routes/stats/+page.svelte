@@ -301,7 +301,7 @@
 	</div>
 </section>
 
-<form method="GET" class="stats-controls">
+<form method="GET" class="form-card stats-controls">
 	<input type="hidden" name="f" value="1" />
 	<div class="control-row">
 		<div class="control-group">
@@ -341,9 +341,9 @@
 	</fieldset>
 </form>
 
-<section class="chart-card">
+<section class="form-card chart-card">
 	{#if visibleMetrics.length === 0}
-		<p class="chart-empty">Select at least one metric to plot.</p>
+		<p class="empty-state">Select at least one metric to plot.</p>
 	{:else}
 		<div class="chart-wrap">
 			<svg
@@ -427,7 +427,7 @@
 	{/if}
 </section>
 
-<section class="stats-table-section">
+<section class="form-card stats-table-section">
 	<header class="stats-table-head">
 		<h2>Data</h2>
 		<span class="stats-table-meta">

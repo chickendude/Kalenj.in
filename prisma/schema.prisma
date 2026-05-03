@@ -78,41 +78,43 @@ model Session {
 }
 
 model Word {
-  id           String           @id @default(cuid())
-  kalenjin     String
-  translations String
-  kalenjinNormalized String
-  partOfSpeech PartOfSpeech?
-  notes        String?
-  pluralForm   String?
+  id                   String                        @id @default(cuid())
+  kalenjin             String
+  translations         String
+  kalenjinNormalized   String
+  partOfSpeech         PartOfSpeech?
+  notes                String?
+  pluralForm           String?
   pluralFormNormalized String?
-  isPluralOnly Boolean          @default(false)
-  presentAnee   String?
-  presentInyee  String?
-  presentInee   String?
-  presentEchek  String?
-  presentOkwek  String?
-  presentIchek  String?
-  imageUrl     String?
-  audioUrl     String?
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
-  sentences    WordSentence[]
-  tokenLinks   ExampleSentenceToken[]
-  storyTokenLinks StorySentenceToken[]
-  tokenSegments ExampleSentenceTokenSegment[]
-  storyTokenSegments StorySentenceTokenSegment[]
-  lessonWords  LessonWord[]
-  spellings    WordSpelling[]
-  wordOfDayEntries WordOfTheDay[]
-  relatedWords RelatedWord[] @relation("RelatedWordSource")
-  relatedToWords RelatedWord[] @relation("RelatedWordTarget")
-  observedForms ObservedWordForm[]
+  isPluralOnly         Boolean                       @default(false)
+  presentAnee          String?
+  presentInyee         String?
+  presentInee          String?
+  presentEchek         String?
+  presentOkwek         String?
+  presentIchek         String?
+  imageUrl             String?
+  audioUrl             String?
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+  sentences            WordSentence[]
+  tokenLinks           ExampleSentenceToken[]
+  storyTokenLinks      StorySentenceToken[]
+  tokenSegments        ExampleSentenceTokenSegment[]
+  storyTokenSegments   StorySentenceTokenSegment[]
+  lessonWords          LessonWord[]
+  spellings            WordSpelling[]
+  wordOfDayEntries     WordOfTheDay[]
+  relatedWords         RelatedWord[]                 @relation("RelatedWordSource")
+  relatedToWords       RelatedWord[]                 @relation("RelatedWordTarget")
+  observedForms        ObservedWordForm[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
   @@index([translations])
+  @@index([kalenjinNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_kalenjinNormalized_trgm_idx")
+  @@index([pluralFormNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_pluralFormNormalized_trgm_idx")
 }
 
 model WordOfTheDay {
@@ -138,6 +140,7 @@ model WordSpelling {
 
   @@unique([wordId, spellingNormalized])
   @@index([spellingNormalized])
+  @@index([spellingNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "WordSpelling_spellingNormalized_trgm_idx")
 }
 
 model RelatedWord {
@@ -171,36 +174,38 @@ model ObservedWordForm {
 }
 
 model ExampleSentence {
-  id              String               @id @default(cuid())
-  storySentenceId String?              @unique
+  id              String                 @id @default(cuid())
+  storySentenceId String?                @unique
   kalenjin        String
   english         String
   notes           String?
   imageUrl        String?
   audioUrl        String?
-  createdAt       DateTime             @default(now())
-  updatedAt       DateTime             @updatedAt
-  storySentence   StorySentence?       @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  storySentence   StorySentence?         @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
   words           WordSentence[]
   tokens          ExampleSentenceToken[]
   lessonWords     LessonWord[]
 
   @@index([kalenjin])
+  @@index([kalenjin(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_kalenjin_trgm_idx")
+  @@index([english(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_english_trgm_idx")
 }
 
 model ExampleSentenceToken {
-  id                String          @id @default(cuid())
-  exampleSentenceId String
-  wordId            String?
+  id                   String                        @id @default(cuid())
+  exampleSentenceId    String
+  wordId               String?
   inContextTranslation String?
-  tokenOrder        Int
-  surfaceForm       String
-  normalizedForm    String
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  exampleSentence   ExampleSentence @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
-  word              Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
-  segments          ExampleSentenceTokenSegment[]
+  tokenOrder           Int
+  surfaceForm          String
+  normalizedForm       String
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+  exampleSentence      ExampleSentence               @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
+  word                 Word?                         @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  segments             ExampleSentenceTokenSegment[]
 
   @@unique([exampleSentenceId, tokenOrder])
   @@index([exampleSentenceId])
@@ -209,18 +214,18 @@ model ExampleSentenceToken {
 }
 
 model ExampleSentenceTokenSegment {
-  id            String               @id @default(cuid())
-  tokenId       String
-  wordId        String?
-  segmentOrder  Int
-  segmentStart  Int
-  segmentEnd    Int
-  surfaceForm   String
+  id             String               @id @default(cuid())
+  tokenId        String
+  wordId         String?
+  segmentOrder   Int
+  segmentStart   Int
+  segmentEnd     Int
+  surfaceForm    String
   normalizedForm String
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
-  token         ExampleSentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
-  word          Word?                @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  token          ExampleSentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  word           Word?                @relation(fields: [wordId], references: [id], onDelete: SetNull)
 
   @@unique([tokenId, segmentOrder])
   @@index([tokenId])
@@ -250,17 +255,17 @@ model Story {
 }
 
 model StorySentence {
-  id            String   @id @default(cuid())
-  storyId       String
-  sentenceOrder Int
-  speaker       String?
-  kalenjin      String
-  english       String
-  grammarNotes  String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  story         Story    @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  tokens        StorySentenceToken[]
+  id             String               @id @default(cuid())
+  storyId        String
+  sentenceOrder  Int
+  speaker        String?
+  kalenjin       String
+  english        String
+  grammarNotes   String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  story          Story                @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  tokens         StorySentenceToken[]
   corpusSentence ExampleSentence?
 
   @@unique([storyId, sentenceOrder])
@@ -269,18 +274,18 @@ model StorySentence {
 }
 
 model StorySentenceToken {
-  id                  String        @id @default(cuid())
-  storySentenceId     String
-  wordId              String?
+  id                   String                      @id @default(cuid())
+  storySentenceId      String
+  wordId               String?
   inContextTranslation String?
-  tokenOrder          Int
-  surfaceForm         String
-  normalizedForm      String
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
-  storySentence       StorySentence @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
-  word                Word?         @relation(fields: [wordId], references: [id], onDelete: SetNull)
-  segments            StorySentenceTokenSegment[]
+  tokenOrder           Int
+  surfaceForm          String
+  normalizedForm       String
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  storySentence        StorySentence               @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
+  word                 Word?                       @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  segments             StorySentenceTokenSegment[]
 
   @@unique([storySentenceId, tokenOrder])
   @@index([storySentenceId])
@@ -289,18 +294,18 @@ model StorySentenceToken {
 }
 
 model StorySentenceTokenSegment {
-  id            String             @id @default(cuid())
-  tokenId       String
-  wordId        String?
-  segmentOrder  Int
-  segmentStart  Int
-  segmentEnd    Int
-  surfaceForm   String
+  id             String             @id @default(cuid())
+  tokenId        String
+  wordId         String?
+  segmentOrder   Int
+  segmentStart   Int
+  segmentEnd     Int
+  surfaceForm    String
   normalizedForm String
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  token         StorySentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
-  word          Word?              @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  token          StorySentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
+  word           Word?              @relation(fields: [wordId], references: [id], onDelete: SetNull)
 
   @@unique([tokenId, segmentOrder])
   @@index([tokenId])
@@ -309,14 +314,14 @@ model StorySentenceTokenSegment {
 }
 
 model CefrEnglishTarget {
-  id                    String       @id @default(cuid())
+  id                    String      @id @default(cuid())
   level                 CefrLevel
-  english               String       @unique
+  english               String      @unique
   notes                 String?
   coveredByLessonWordId String?
-  createdAt             DateTime     @default(now())
-  updatedAt             DateTime     @updatedAt
-  coveredByLessonWord   LessonWord?  @relation(fields: [coveredByLessonWordId], references: [id], onDelete: SetNull)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  coveredByLessonWord   LessonWord? @relation(fields: [coveredByLessonWordId], references: [id], onDelete: SetNull)
 
   @@index([level])
   @@index([coveredByLessonWordId])
@@ -344,36 +349,36 @@ model Lesson {
 }
 
 model LessonSection {
-  id        String           @id @default(cuid())
-  lessonId  String
-  title     String?
+  id           String       @id @default(cuid())
+  lessonId     String
+  title        String?
   sectionOrder Int
-  notes     String?
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
-  lesson    Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-  words     LessonWord[]
+  notes        String?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  lesson       Lesson       @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  words        LessonWord[]
 
   @@unique([lessonId, sectionOrder])
   @@index([lessonId])
 }
 
 model LessonWord {
-  id                     String          @id @default(cuid())
+  id                     String              @id @default(cuid())
   lessonSectionId        String
   wordId                 String?
   kalenjin               String
   translations           String
   itemOrder              Int
-  sentenceId             String?         @unique
+  sentenceId             String?             @unique
   sentenceTranslation    String?
   wordForWordTranslation String?
   notesMarkdown          String?
-  createdAt              DateTime        @default(now())
-  updatedAt              DateTime        @updatedAt
-  lessonSection          LessonSection   @relation(fields: [lessonSectionId], references: [id], onDelete: Cascade)
-  word                   Word?           @relation(fields: [wordId], references: [id], onDelete: SetNull)
-  sentence               ExampleSentence? @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  lessonSection          LessonSection       @relation(fields: [lessonSectionId], references: [id], onDelete: Cascade)
+  word                   Word?               @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  sentence               ExampleSentence?    @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
   coveredCefrTargets     CefrEnglishTarget[]
 
   @@unique([lessonSectionId, itemOrder])

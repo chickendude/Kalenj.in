@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { buildApostropheOptionalRegexSource } from '$lib/server/apostrophe-search';
+import { buildEquivalentSqlSearchPattern } from '$lib/server/kalenjin-equivalence';
+import { normalizeLemma } from '$lib/server/normalize-lemma';
 
 export type CorpusSearchLanguage = 'both' | 'kalenjin' | 'english';
 
@@ -43,7 +44,12 @@ export async function findKalenjinCorpusSentenceIds(
 	query: string,
 	limit = 500
 ): Promise<string[]> {
-	const pattern = buildApostropheOptionalRegexSource(query, true);
+	const normalized = normalizeLemma(query);
+	if (!normalized) {
+		return [];
+	}
+
+	const pattern = buildEquivalentSqlSearchPattern(normalized);
 	const rows = await prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
 		SELECT "id"
 		FROM "ExampleSentence"

@@ -12,11 +12,11 @@
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
-		word?: { kalenjin: string; translations: string } | null;
+		word?: { id: string; kalenjin: string; translations: string } | null;
 		segments?: Array<{
 			id: string;
 			surfaceForm: string;
-			word?: { kalenjin: string; translations: string } | null;
+			word?: { id: string; kalenjin: string; translations: string } | null;
 		}>;
 	};
 

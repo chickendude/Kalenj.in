@@ -9,6 +9,7 @@
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
+	import { renderMarkdown } from '$lib/markdown';
 
 	let { data, form } = $props();
 
@@ -23,7 +24,7 @@
 	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
-	type InlineSentenceField = 'kalenjin' | 'english';
+	type InlineSentenceField = 'kalenjin' | 'english' | 'notes';
 
 	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 
@@ -35,8 +36,10 @@
 	let inlineSentenceEditorHeight = $state<number | null>(null);
 	let kalenjinDisplayShell = $state<HTMLDivElement | null>(null);
 	let englishDisplayShell = $state<HTMLButtonElement | null>(null);
+	let notesDisplayShell = $state<HTMLDivElement | null>(null);
 	let sentenceKalenjin = $state('');
 	let sentenceEnglish = $state('');
+	let sentenceNotes = $state('');
 
 	let sentenceTokens = $state<SentenceToken[]>([]);
 	const displayedSentenceTokens = $derived(
@@ -83,6 +86,7 @@
 	$effect(() => {
 		sentenceKalenjin = data.sentence.kalenjin;
 		sentenceEnglish = data.sentence.english;
+		sentenceNotes = data.sentence.notes ?? '';
 	});
 
 	$effect(() => {
@@ -105,9 +109,16 @@
 		inlineSentenceEditorHeight =
 			field === 'kalenjin'
 				? kalenjinDisplayShell?.offsetHeight ?? null
-				: englishDisplayShell?.offsetHeight ?? null;
+				: field === 'english'
+					? englishDisplayShell?.offsetHeight ?? null
+					: notesDisplayShell?.offsetHeight ?? null;
 		inlineSentenceEdit = field;
-		inlineSentenceValue = field === 'kalenjin' ? sentenceKalenjin : sentenceEnglish;
+		inlineSentenceValue =
+			field === 'kalenjin'
+				? sentenceKalenjin
+				: field === 'english'
+					? sentenceEnglish
+					: sentenceNotes;
 		inlineSentenceError = null;
 	}
 
@@ -123,9 +134,14 @@
 
 		const field = inlineSentenceEdit;
 		const trimmedValue = inlineSentenceValue.trim();
-		const currentValue = field === 'kalenjin' ? sentenceKalenjin : sentenceEnglish;
+		const currentValue =
+			field === 'kalenjin'
+				? sentenceKalenjin
+				: field === 'english'
+					? sentenceEnglish
+					: sentenceNotes;
 
-		if (!trimmedValue) {
+		if (field !== 'notes' && !trimmedValue) {
 			inlineSentenceError = field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.';
 			return;
 		}
@@ -147,6 +163,7 @@
 					id: string;
 					kalenjin: string;
 					english: string;
+					notes: string | null;
 					tokens: SentenceToken[];
 				};
 			};
@@ -157,6 +174,7 @@
 
 			sentenceKalenjin = result.sentence.kalenjin;
 			sentenceEnglish = result.sentence.english;
+			sentenceNotes = result.sentence.notes ?? '';
 			sentenceTokens = result.sentence.tokens.map(cloneSentenceToken);
 			cancelInlineSentenceEdit();
 
@@ -309,9 +327,46 @@
 		{#if inlineSentenceError}
 			<p class="error-text">{inlineSentenceError}</p>
 		{/if}
-		{#if data.sentence.notes}
-			<div class="sentence-notes">{data.sentence.notes}</div>
-		{/if}
+		<div class="sentence-notes-row">
+			{#if inlineSentenceEdit === 'notes'}
+				<textarea
+					bind:this={inlineSentenceInput}
+					class="inline-sentence-input sentence-notes-input"
+					rows="2"
+					style:min-height={inlineSentenceEditorHeight ? `${inlineSentenceEditorHeight}px` : undefined}
+					bind:value={inlineSentenceValue}
+					onkeydown={handleInlineSentenceKeydown}
+					onblur={saveInlineSentenceEditOnBlur}
+				></textarea>
+			{:else if canEdit}
+				<div
+					bind:this={notesDisplayShell}
+					class="inline-edit-button editable-notes-shell"
+					class:is-empty={!sentenceNotes}
+					role="button"
+					tabindex="0"
+					aria-label="Edit notes"
+					onclick={(event) => {
+						if ((event.target as HTMLElement).closest('a')) return;
+						beginInlineSentenceEdit('notes');
+					}}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							beginInlineSentenceEdit('notes');
+						}
+					}}
+				>
+					{#if sentenceNotes}
+						<div class="notes-markdown sentence-notes">{@html renderMarkdown(sentenceNotes)}</div>
+					{:else}
+						<span class="sentence-notes-placeholder">Add notes…</span>
+					{/if}
+				</div>
+			{:else if sentenceNotes}
+				<div class="notes-markdown sentence-notes">{@html renderMarkdown(sentenceNotes)}</div>
+			{/if}
+		</div>
 		{#if data.sentence.imageUrl}
 			<img src={data.sentence.imageUrl} alt="" class="sentence-image" />
 		{/if}
@@ -468,10 +523,66 @@
 		outline: none;
 	}
 
+	.sentence-notes-row {
+		margin-top: 2px;
+	}
+
 	.sentence-notes {
 		color: var(--ink-mute);
 		font-size: 13px;
-		font-style: italic;
+	}
+
+	.editable-notes-shell {
+		color: var(--ink-mute);
+		cursor: text;
+		display: block;
+		font: inherit;
+		font-size: 13px;
+		text-align: left;
+		width: 100%;
+	}
+
+	.editable-notes-shell.is-empty {
+		opacity: 0.7;
+	}
+
+	.sentence-notes-placeholder {
+		color: var(--ink-faint, var(--ink-mute));
+	}
+
+	.sentence-notes-input {
+		font-size: 13px;
+	}
+
+	.notes-markdown :global(p) {
+		margin: 0 0 0.4em;
+	}
+	.notes-markdown :global(p:last-child) {
+		margin-bottom: 0;
+	}
+	.notes-markdown :global(ul),
+	.notes-markdown :global(ol) {
+		margin: 0 0 0.4em;
+		padding-left: 1.4em;
+	}
+	.notes-markdown :global(li) {
+		margin: 0.1em 0;
+	}
+	.notes-markdown :global(code) {
+		background: rgba(128, 128, 128, 0.15);
+		padding: 1px 4px;
+		border-radius: 3px;
+		font-size: 0.9em;
+		font-style: normal;
+	}
+	.notes-markdown :global(blockquote) {
+		margin: 0.4em 0;
+		padding-left: 10px;
+		border-left: 3px solid rgba(128, 128, 128, 0.4);
+	}
+	.notes-markdown :global(a) {
+		color: inherit;
+		text-decoration: underline;
 	}
 
 	.sentence-image {

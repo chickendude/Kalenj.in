@@ -61,7 +61,10 @@ export function buildEquivalentSearchRegexSource(query: string, sql = false): st
 		} else if (char === 'k' || char === 'g') {
 			source += '[kg]';
 		} else if ((char === 'p' || char === 'b') && isWordFinal) {
-			source += sql ? (nextChar ? '[pb]' : '[pb]($|[[:space:]])') : '[pb](?=$|\\s)';
+			// Word-final p/b are interchangeable, but only when the following
+			// character isn't another letter — sentence boundaries include
+			// punctuation (e.g. "ochob." in the corpus) as well as whitespace.
+			source += sql ? (nextChar ? '[pb]' : '[pb]($|[^[:alpha:]])') : '[pb](?![a-zA-Z])';
 		} else {
 			source += char.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
 		}

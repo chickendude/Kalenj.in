@@ -186,6 +186,7 @@
 			sentence{data.totalCount === 1 ? '' : 's'} collected
 			{#if canEdit}
 				<div class="page-stat-actions">
+					<a class="btn ghost sm" href="/corpus/record-audio">Record missing audio →</a>
 					<a class="btn ghost sm" href="/corpus/duplicates">Check duplicates</a>
 				</div>
 			{/if}

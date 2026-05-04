@@ -4,6 +4,7 @@ import {
 	findKalenjinCorpusSentenceIds,
 	parseCorpusSearchLanguage
 } from './corpus-search';
+import { matchesEquivalentSearch } from './kalenjin-equivalence';
 
 describe('parseCorpusSearchLanguage', () => {
 	it('defaults to Kalenjin search', () => {
@@ -95,5 +96,29 @@ describe('findKalenjinCorpusSentenceIds', () => {
 
 		expect(regex.test('keer')).toBe(true);
 		expect(regex.test('ker')).toBe(true);
+	});
+
+	it('matches a query ending in p/b against sentence-final punctuation', async () => {
+		// Regression: "ochob" should match "Omoche ochob." even though the b is
+		// followed by a period rather than whitespace or end-of-string.
+		const prisma = {
+			$queryRaw: vi.fn().mockResolvedValue([])
+		};
+
+		await findKalenjinCorpusSentenceIds(prisma, 'ochob', 100);
+		const pattern = prisma.$queryRaw.mock.calls[0][0].values[0] as string;
+
+		// SQL pattern uses a POSIX character class that Postgres understands but
+		// JS RegExp does not, so assert the substring rather than running it.
+		expect(pattern).toContain('[pb]($|[^[:alpha:]])');
+
+		// JS-side equivalence search (used outside the database) accepts the
+		// same range of trailing characters via a non-letter lookahead.
+		expect(matchesEquivalentSearch('Omoche ochob.', 'ochob', 'contains')).toBe(true);
+		expect(matchesEquivalentSearch('Omoche ochob,', 'ochob', 'contains')).toBe(true);
+		expect(matchesEquivalentSearch('Omoche ochob', 'ochob', 'contains')).toBe(true);
+		expect(matchesEquivalentSearch('Omoche ochob ', 'ochob', 'contains')).toBe(true);
+		// Still shouldn't match a longer word that merely contains "ochob".
+		expect(matchesEquivalentSearch('Omoche ochobi.', 'ochob', 'contains')).toBe(false);
 	});
 });

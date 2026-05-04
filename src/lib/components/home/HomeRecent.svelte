@@ -19,11 +19,11 @@
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
-		word?: { kalenjin: string; translations: string } | null;
+		word?: { id: string; kalenjin: string; translations: string } | null;
 		segments?: Array<{
 			id: string;
 			surfaceForm: string;
-			word?: { kalenjin: string; translations: string } | null;
+			word?: { id: string; kalenjin: string; translations: string } | null;
 		}>;
 	};
 
@@ -80,7 +80,7 @@
 				<ul class="recent-list">
 					{#each sentences as sentence (sentence.id)}
 						<li>
-							<div class="recent-sent">
+							<div class="recent-sent sentence-card">
 								<div class="recent-kal">
 									<AudioPlayButton
 										audioUrl={sentence.audioUrl}
@@ -93,7 +93,9 @@
 										tokens={sentence.tokens}
 									/>
 								</div>
-								<div class="recent-en"><SentenceTimeText text={sentence.english} /></div>
+								<a class="recent-en sentence-card-link" href={`/corpus/${sentence.id}`}>
+									<SentenceTimeText text={sentence.english} />
+								</a>
 							</div>
 						</li>
 					{/each}

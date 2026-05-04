@@ -209,6 +209,7 @@
 				name="kalenjin"
 				required
 				autofocus={autofocusLemma}
+				autocomplete="off"
 				bind:value={kalenjin}
 			/>
 		</div>
@@ -219,6 +220,7 @@
 				class="input"
 				name="alternativeSpellings"
 				placeholder={alternativeSpellingsHint}
+				autocomplete="off"
 				bind:value={alternativeSpellings}
 			/>
 		</div>
@@ -238,6 +240,7 @@
 							class="input"
 							placeholder="e.g. chego"
 							disabled={isPluralOnly}
+							autocomplete="off"
 							bind:value={pluralForm}
 						/>
 					</div>
@@ -248,6 +251,7 @@
 							class="input"
 							placeholder="comma, separated"
 							disabled={isPluralOnly}
+							autocomplete="off"
 							bind:value={alternativePluralForms}
 						/>
 					</div>
@@ -267,6 +271,7 @@
 						<input
 							id="{idPrefix}-anee"
 							class="input"
+							autocomplete="off"
 							bind:value={presentAnee}
 						/>
 					</div>
@@ -275,6 +280,7 @@
 						<input
 							id="{idPrefix}-echek"
 							class="input"
+							autocomplete="off"
 							bind:value={presentEchek}
 						/>
 					</div>
@@ -283,6 +289,7 @@
 						<input
 							id="{idPrefix}-inyee"
 							class="input"
+							autocomplete="off"
 							bind:value={presentInyee}
 						/>
 					</div>
@@ -291,6 +298,7 @@
 						<input
 							id="{idPrefix}-okwek"
 							class="input"
+							autocomplete="off"
 							bind:value={presentOkwek}
 						/>
 					</div>
@@ -299,6 +307,7 @@
 						<input
 							id="{idPrefix}-inee"
 							class="input"
+							autocomplete="off"
 							bind:value={presentInee}
 						/>
 					</div>
@@ -307,6 +316,7 @@
 						<input
 							id="{idPrefix}-ichek"
 							class="input"
+							autocomplete="off"
 							bind:value={presentIchek}
 						/>
 					</div>
@@ -323,6 +333,7 @@
 			name="translations"
 			required
 			placeholder="translation one; translation two"
+			autocomplete="off"
 			bind:value={translations}
 		/>
 	</div>
@@ -334,6 +345,7 @@
 			class="input"
 			name="notes"
 			placeholder="Optional"
+			autocomplete="off"
 			bind:value={notes}
 		/>
 	</div>

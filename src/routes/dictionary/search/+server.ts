@@ -1,6 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
+import {
+	scoreKalenjinWordMatch,
+	searchWordsByKalenjin
+} from '$lib/server/kalenjin-word-search';
 import {
 	isNumericTranslationSearchQuery,
 	sortTranslationSearchResults
@@ -9,6 +12,9 @@ import type { RequestHandler } from './$types';
 
 const MAX_RESULTS = 7;
 const TRANSLATION_CANDIDATE_LIMIT = MAX_RESULTS * 10;
+// Score 8+ corresponds to "contains" matches (mid-word substring); below that
+// is exact or prefix. Duplicate detection only wants the latter.
+const PREFIX_OR_EXACT_SCORE_LIMIT = 8;
 
 type SearchResult = {
 	id: string;
@@ -33,9 +39,18 @@ function toResult(word: {
 
 export const GET: RequestHandler = async ({ url }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
+	const kalenjinOnly = url.searchParams.get('lang') === 'kalenjin';
 
 	if (!query) {
 		return json({ results: [] satisfies SearchResult[] });
+	}
+
+	if (kalenjinOnly) {
+		const kalenjinMatches = await searchWordsByKalenjin(prisma, query, MAX_RESULTS);
+		const prefixOrExact = kalenjinMatches.filter(
+			(word) => scoreKalenjinWordMatch(word, query) < PREFIX_OR_EXACT_SCORE_LIMIT
+		);
+		return json({ results: prefixOrExact.map(toResult) });
 	}
 
 	const prioritizeTranslations = isNumericTranslationSearchQuery(query);

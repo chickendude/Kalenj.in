@@ -9,6 +9,7 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
+	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	const POS_CORE = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
@@ -152,6 +153,8 @@
 	let addWordPresentOkwek = $state('');
 	let addWordPresentIchek = $state('');
 	let addWordKalenjinInput = $state<HTMLInputElement | null>(null);
+
+	const addWordDuplicateQuery = $derived(addWordKalenjin.trim());
 
 	function resetAddWordForm() {
 		addWordKalenjin = '';
@@ -494,6 +497,15 @@
 					alternativeSpellingsHint="comma, separated"
 				/>
 				<ImageUploadField name="image" idPrefix="dict-add-word-image" />
+				<DuplicateSuggestions
+					searchEndpoint="/dictionary/search?lang=kalenjin"
+					query={addWordDuplicateQuery}
+					linkBase="/dictionary/"
+					primaryKey="kalenjin"
+					secondaryKey="translations"
+					label="Possible matching words"
+					minQueryLength={2}
+				/>
 				<div class="add-word-actions">
 					<button
 						type="button"

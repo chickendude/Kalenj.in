@@ -10,6 +10,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
 
 	let { data, form } = $props();
 
@@ -20,7 +21,23 @@
 
 	let composeOpen = $state(false);
 	let composeTab = $state<'single' | 'bulk'>('single');
+	let composeKalenjin = $state(untrack(() => form?.values?.kalenjin ?? ''));
+	let composeEnglish = $state(untrack(() => form?.values?.english ?? ''));
+	let composeNotes = $state(untrack(() => form?.values?.notes ?? ''));
 	let bulkReviewRows = $state<BulkSentenceReviewRow[]>([]);
+
+	$effect(() => {
+		const values = form?.values;
+		untrack(() => {
+			if (values) {
+				composeKalenjin = String(values.kalenjin ?? '');
+				composeEnglish = String(values.english ?? '');
+				composeNotes = String(values.notes ?? '');
+			}
+		});
+	});
+
+	const composeDuplicateQuery = $derived(composeKalenjin.trim());
 	const bulkReviewRowsJson = $derived(
 		JSON.stringify(
 			bulkReviewRows.map((row) => ({
@@ -266,7 +283,10 @@
 										class="textarea"
 										rows="3"
 										required
-										placeholder="Chamgei!">{form?.values?.kalenjin ?? ''}</textarea>
+										placeholder="Chamgei!"
+										autocomplete="off"
+										bind:value={composeKalenjin}
+									></textarea>
 								</div>
 
 								<div class="field">
@@ -277,7 +297,10 @@
 										class="textarea"
 										rows="3"
 										required
-										placeholder="Hello!">{form?.values?.english ?? ''}</textarea>
+										placeholder="Hello!"
+										autocomplete="off"
+										bind:value={composeEnglish}
+									></textarea>
 								</div>
 
 								<div class="field">
@@ -286,10 +309,21 @@
 										id="compose-notes"
 										name="notes"
 										class="input"
-										value={form?.values?.notes ?? ''}
 										placeholder="Context, usage, idiomatic meaning..."
+										autocomplete="off"
+										bind:value={composeNotes}
 									/>
 								</div>
+
+								<DuplicateSuggestions
+									searchEndpoint="/corpus/search"
+									query={composeDuplicateQuery}
+									linkBase="/corpus/"
+									primaryKey="kalenjin"
+									secondaryKey="english"
+									label="Possible matching sentences"
+									minQueryLength={3}
+								/>
 
 								<div class="form-actions">
 									<button type="submit" class="btn">Create &amp; map tokens</button>

@@ -18,17 +18,19 @@
 		<div class="home-greeting-en">Hello, my friend.</div>
 	</section>
 
-	<HomeSearch totalCount={data.wordCount} />
+	<div class="home-top">
+		<HomeSearch totalCount={data.wordCount} />
 
-	<div class="home-stats">
-		<a class="home-stat" href="/dictionary">
-			<b>{data.wordCount.toLocaleString()}</b>
-			<span>headword{data.wordCount === 1 ? '' : 's'}</span>
-		</a>
-		<a class="home-stat" href="/corpus">
-			<b>{data.sentenceCount.toLocaleString()}</b>
-			<span>sentence{data.sentenceCount === 1 ? '' : 's'}</span>
-		</a>
+		<div class="home-stats">
+			<a class="home-stat" href="/dictionary">
+				<b>{data.wordCount.toLocaleString()}</b>
+				<span>headword{data.wordCount === 1 ? '' : 's'}</span>
+			</a>
+			<a class="home-stat" href="/corpus">
+				<b>{data.sentenceCount.toLocaleString()}</b>
+				<span>sentence{data.sentenceCount === 1 ? '' : 's'}</span>
+			</a>
+		</div>
 	</div>
 
 	{#if data.wordOfDay}

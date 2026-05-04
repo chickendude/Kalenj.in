@@ -1572,11 +1572,11 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .home-greeting {
   font-family: var(--font-display);
-  font-size: 68px;
+  font-size: 48px;
   line-height: 0.98;
   letter-spacing: -0.028em;
   font-weight: 500;
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   color: var(--ink);
   text-wrap: balance;
 }
@@ -1585,7 +1585,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 .home-greeting-en {
   font-family: var(--font-display);
   font-style: italic;
-  font-size: 22px;
+  font-size: 18px;
   color: var(--ink-soft);
   margin-bottom: 0;
 }
@@ -1599,6 +1599,15 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   text-wrap: pretty;
 }
 
+.home-top {
+  display: flex;
+  align-items: stretch;
+  gap: 24px;
+  margin: 20px 0 36px;
+}
+.home-top .home-search { flex: 1; min-width: 0; margin: 0; }
+.home-top .home-stats { margin: 0; max-width: none; flex: 0 0 auto; }
+
 .home-stats {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -1609,9 +1618,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   margin-bottom: 32px;
 }
 .home-stat {
-  padding: 18px 20px;
+  padding: 10px 20px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 2px;
   color: var(--ink);
   border-right: 1px solid var(--line-soft);
@@ -1626,7 +1636,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .home-stat b {
   font-family: var(--font-display);
-  font-size: 34px;
+  font-size: 28px;
   font-weight: 500;
   line-height: 1;
   letter-spacing: -0.02em;
@@ -2066,7 +2076,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 
 @media (max-width: 900px) {
-  .home-greeting { font-size: 52px; }
+  .home-greeting { font-size: 38px; }
+  .home-top { flex-direction: column; gap: 0; }
+  .home-top .home-search { margin: 20px 0 0; }
+  .home-top .home-stats { margin-top: 24px; }
   .home-stats { grid-template-columns: repeat(2, 1fr); }
   .wod-body { grid-template-columns: 1fr; gap: 28px; }
   .wod-word { font-size: 54px; }

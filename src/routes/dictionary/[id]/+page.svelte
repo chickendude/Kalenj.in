@@ -6,6 +6,7 @@
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { parseTranslationList } from '$lib/translations';
@@ -117,6 +118,25 @@
 	let relatedSearchLoading = $state(false);
 	let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null;
 	let relatedSearchSeq = 0;
+
+	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
+
+	function requestDeleteEntry(event: SubmitEvent) {
+		if (pendingDeleteForm === event.currentTarget) return;
+		event.preventDefault();
+		pendingDeleteForm = event.currentTarget as HTMLFormElement;
+	}
+
+	function cancelPendingDelete() {
+		pendingDeleteForm = null;
+	}
+
+	function confirmPendingDelete() {
+		if (!pendingDeleteForm) return;
+		const form = pendingDeleteForm;
+		pendingDeleteForm = null;
+		form.submit();
+	}
 
 	const relatedWordIds = $derived(new Set(data.word.relatedWords.map((link) => link.word.id)));
 	const attachableRelatedResults = $derived(
@@ -617,7 +637,7 @@
 
 				<div class="side-card">
 					<h3>Danger zone</h3>
-					<form method="POST" action="?/delete">
+					<form method="POST" action="?/delete" onsubmit={requestDeleteEntry}>
 						<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
 					</form>
 				</div>
@@ -650,6 +670,16 @@
 		>×</button>
 	</div>
 {/if}
+
+<ConfirmDialog
+	open={pendingDeleteForm !== null}
+	title="Delete this entry?"
+	message={`"${kalenjinValue || data.word.kalenjin}" will be permanently removed from the dictionary.`}
+	confirmLabel="Delete entry"
+	variant="danger"
+	onconfirm={confirmPendingDelete}
+	oncancel={cancelPendingDelete}
+/>
 
 <style>
 	.translations-body {

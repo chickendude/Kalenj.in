@@ -3,31 +3,34 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
 
-	type WordItem = {
+	type TargetType = 'word' | 'sentence';
+
+	type RecorderItem = {
 		id: string;
-		kalenjin: string;
-		translations: string;
+		primary: string;
+		secondary: string;
 	};
 
 	type Props = {
-		words: WordItem[];
+		items: RecorderItem[];
+		targetType?: TargetType;
 		onclose?: () => void;
 	};
 
-	let { words, onclose }: Props = $props();
-	let currentWords = $state<WordItem[]>(untrack(() => [...words]));
+	let { items, targetType = 'word', onclose }: Props = $props();
+	let currentItems = $state<RecorderItem[]>(untrack(() => [...items]));
 
 	type SessionState =
 		| { kind: 'idle' }
-		| { kind: 'priming'; targetWordId: string }
-		| { kind: 'speaking'; targetWordId: string; startedAt: number }
-		| { kind: 'waiting'; targetWordId: string }
+		| { kind: 'priming'; targetItemId: string }
+		| { kind: 'speaking'; targetItemId: string; startedAt: number }
+		| { kind: 'waiting'; targetItemId: string }
 		| {
 				kind: 'paused';
 				resumeTo:
-					| { kind: 'priming'; targetWordId: string }
-					| { kind: 'speaking'; targetWordId: string; startedAt: number }
-					| { kind: 'waiting'; targetWordId: string };
+					| { kind: 'priming'; targetItemId: string }
+					| { kind: 'speaking'; targetItemId: string; startedAt: number }
+					| { kind: 'waiting'; targetItemId: string };
 				pausedAt: number;
 		  }
 		| { kind: 'finishing' }
@@ -38,29 +41,44 @@
 		| { kind: 'error'; message: string };
 
 	type Segment = {
-		wordId: string;
+		targetId: string;
 		startMs: number;
 		endMs: number;
 	};
 
 	type ResultRow = {
-		wordId: string;
+		targetId: string;
 		audioUrl: string;
 		durationSec: number | null;
 	};
 
 	type SkippedRow = {
-		wordId: string;
+		targetId: string;
 		reason: string;
 	};
 
-	type WordStatus = 'pending' | 'current' | 'captured' | 'skipped';
+	type ItemStatus = 'pending' | 'current' | 'captured' | 'skipped';
+
+	const TIMING = {
+		word: { silenceHoldMs: 900, maxItemMs: 6000, minItemMs: 200 },
+		sentence: { silenceHoldMs: 1500, maxItemMs: 25000, minItemMs: 400 }
+	} as const;
+
+	const LABELS = {
+		word: { singular: 'word', plural: 'words', primary: 'Kalenjin', secondary: 'Translation' },
+		sentence: {
+			singular: 'sentence',
+			plural: 'sentences',
+			primary: 'Kalenjin',
+			secondary: 'English'
+		}
+	} as const;
+
+	const labels = $derived(LABELS[targetType]);
+	const timing = $derived(TIMING[targetType]);
 
 	const SILENCE_RMS = 0.012;
 	const SPEAKING_RMS = 0.04;
-	const SILENCE_HOLD_MS = 900;
-	const MAX_WORD_MS = 6000;
-	const MIN_WORD_MS = 200;
 	const ANALYSER_FFT = 2048;
 	const LEAD_IN_MS = 180;
 	const TAIL_MS = 220;
@@ -73,7 +91,7 @@
 	let processingSkipped = $state<SkippedRow[]>([]);
 	type ReviewState = 'keep' | 'skip' | 'redo';
 	let reviewStates = $state<Map<string, ReviewState>>(new Map());
-	let playingWordId = $state<string | null>(null);
+	let playingItemId = $state<string | null>(null);
 	let playProgress = $state(0);
 	let playSequence: string[] = [];
 	let playSequenceIndex = 0;
@@ -93,35 +111,35 @@
 	let lastVoicedTs = 0;
 	let rafHandle: number | null = null;
 
-	const wordById = $derived(new Map(words.map((w) => [w.id, w])));
-	const totalWords = $derived(currentWords.length);
-	const segmentByWordId = $derived(new Map(segments.map((s) => [s.wordId, s])));
+	const itemById = $derived(new Map(items.map((it) => [it.id, it])));
+	const totalItems = $derived(currentItems.length);
+	const segmentByTargetId = $derived(new Map(segments.map((s) => [s.targetId, s])));
 	const capturedCount = $derived(segments.length);
 	const skippedCount = $derived(skippedSet.size);
 	const completedCount = $derived(capturedCount + skippedCount);
 	const progressPct = $derived(
-		totalWords === 0 ? 0 : Math.round((completedCount / totalWords) * 100)
+		totalItems === 0 ? 0 : Math.round((completedCount / totalItems) * 100)
 	);
-	const targetWordId = $derived.by(() => {
+	const targetItemId = $derived.by(() => {
 		if (
 			session.kind === 'priming' ||
 			session.kind === 'speaking' ||
 			session.kind === 'waiting'
 		) {
-			return session.targetWordId;
+			return session.targetItemId;
 		}
 		if (session.kind === 'paused') {
-			return session.resumeTo.targetWordId;
+			return session.resumeTo.targetItemId;
 		}
 		return null;
 	});
-	const currentWord = $derived(targetWordId ? (wordById.get(targetWordId) ?? null) : null);
-	const nextWord = $derived.by(() => {
-		if (!targetWordId) return null;
-		const idx = currentWords.findIndex((w) => w.id === targetWordId);
-		for (let i = idx + 1; i < currentWords.length; i += 1) {
-			const w = currentWords[i];
-			if (!segmentByWordId.has(w.id) && !skippedSet.has(w.id)) return w;
+	const currentItem = $derived(targetItemId ? (itemById.get(targetItemId) ?? null) : null);
+	const nextItem = $derived.by(() => {
+		if (!targetItemId) return null;
+		const idx = currentItems.findIndex((it) => it.id === targetItemId);
+		for (let i = idx + 1; i < currentItems.length; i += 1) {
+			const it = currentItems[i];
+			if (!segmentByTargetId.has(it.id) && !skippedSet.has(it.id)) return it;
 		}
 		return null;
 	});
@@ -131,16 +149,16 @@
 	const meterPct = $derived(Math.min(100, Math.round((level / 0.3) * 100)));
 	const aboveSpeaking = $derived(level >= SPEAKING_RMS);
 
-	function statusOf(wordId: string): WordStatus {
-		if (segmentByWordId.has(wordId)) return 'captured';
-		if (skippedSet.has(wordId)) return 'skipped';
-		if (targetWordId === wordId) return 'current';
+	function statusOf(targetId: string): ItemStatus {
+		if (segmentByTargetId.has(targetId)) return 'captured';
+		if (skippedSet.has(targetId)) return 'skipped';
+		if (targetItemId === targetId) return 'current';
 		return 'pending';
 	}
 
 	function findNextPendingId(): string | null {
-		for (const w of currentWords) {
-			if (!segmentByWordId.has(w.id) && !skippedSet.has(w.id)) return w.id;
+		for (const it of currentItems) {
+			if (!segmentByTargetId.has(it.id) && !skippedSet.has(it.id)) return it.id;
 		}
 		return null;
 	}
@@ -191,7 +209,7 @@
 				lastVoicedTs = elapsedMs;
 				session = {
 					kind: 'speaking',
-					targetWordId: session.targetWordId,
+					targetItemId: session.targetItemId,
 					startedAt
 				};
 			}
@@ -201,10 +219,13 @@
 			}
 			const silenceFor = elapsedMs - lastVoicedTs;
 			const spokenFor = elapsedMs - session.startedAt;
-			if (spokenFor > MAX_WORD_MS) {
-				captureSegment(session.targetWordId, session.startedAt, elapsedMs + TAIL_MS);
-			} else if (silenceFor >= SILENCE_HOLD_MS && spokenFor >= SILENCE_HOLD_MS + MIN_WORD_MS) {
-				captureSegment(session.targetWordId, session.startedAt, lastVoicedTs + TAIL_MS);
+			if (spokenFor > timing.maxItemMs) {
+				captureSegment(session.targetItemId, session.startedAt, elapsedMs + TAIL_MS);
+			} else if (
+				silenceFor >= timing.silenceHoldMs &&
+				spokenFor >= timing.silenceHoldMs + timing.minItemMs
+			) {
+				captureSegment(session.targetItemId, session.startedAt, lastVoicedTs + TAIL_MS);
 			}
 		} else if (session.kind === 'waiting') {
 			if (rms >= SPEAKING_RMS) {
@@ -212,7 +233,7 @@
 				lastVoicedTs = elapsedMs;
 				session = {
 					kind: 'speaking',
-					targetWordId: session.targetWordId,
+					targetItemId: session.targetItemId,
 					startedAt
 				};
 			}
@@ -223,17 +244,17 @@
 		}
 	}
 
-	function captureSegment(wordId: string, startMs: number, endMs: number) {
-		const safeEnd = Math.max(startMs + MIN_WORD_MS, endMs);
-		const filtered = segments.filter((s) => s.wordId !== wordId);
-		segments = [...filtered, { wordId, startMs, endMs: safeEnd }];
+	function captureSegment(targetId: string, startMs: number, endMs: number) {
+		const safeEnd = Math.max(startMs + timing.minItemMs, endMs);
+		const filtered = segments.filter((s) => s.targetId !== targetId);
+		segments = [...filtered, { targetId, startMs, endMs: safeEnd }];
 		advanceToNext();
 	}
 
 	function advanceToNext() {
 		const nextId = findNextPendingId();
 		if (nextId) {
-			session = { kind: 'waiting', targetWordId: nextId };
+			session = { kind: 'waiting', targetItemId: nextId };
 		} else {
 			void completeAndUpload();
 		}
@@ -311,55 +332,55 @@
 
 		recordingStartTs = performance.now();
 		mediaRecorder.start();
-		const firstId = currentWords[0]?.id;
+		const firstId = currentItems[0]?.id;
 		if (!firstId) {
 			teardown();
-			session = { kind: 'error', message: 'No words to record.' };
+			session = { kind: 'error', message: `No ${labels.plural} to record.` };
 			return;
 		}
-		session = { kind: 'priming', targetWordId: firstId };
+		session = { kind: 'priming', targetItemId: firstId };
 		rafHandle = requestAnimationFrame(tick);
 	}
 
-	function requestSkip(wordId: string) {
-		skipPromptId = wordId;
+	function requestSkip(targetId: string) {
+		skipPromptId = targetId;
 	}
 
 	function confirmSkip() {
-		const wordId = skipPromptId;
+		const targetId = skipPromptId;
 		skipPromptId = null;
-		if (!wordId) return;
+		if (!targetId) return;
 		const next = new Set(skippedSet);
-		next.add(wordId);
+		next.add(targetId);
 		skippedSet = next;
-		const filtered = segments.filter((s) => s.wordId !== wordId);
+		const filtered = segments.filter((s) => s.targetId !== targetId);
 		if (filtered.length !== segments.length) segments = filtered;
-		if (targetWordId === wordId) advanceToNext();
+		if (targetItemId === targetId) advanceToNext();
 		if (!isActive) return;
 		ensureLoop();
 	}
 
-	function restoreWord(wordId: string) {
-		if (!skippedSet.has(wordId)) return;
+	function restoreItem(targetId: string) {
+		if (!skippedSet.has(targetId)) return;
 		const next = new Set(skippedSet);
-		next.delete(wordId);
+		next.delete(targetId);
 		skippedSet = next;
 		if (isActive) {
-			session = { kind: 'waiting', targetWordId: wordId };
+			session = { kind: 'waiting', targetItemId: targetId };
 			ensureLoop();
 		}
 	}
 
-	function redoWord(wordId: string) {
+	function redoItem(targetId: string) {
 		if (!isActive) return;
-		const filtered = segments.filter((s) => s.wordId !== wordId);
+		const filtered = segments.filter((s) => s.targetId !== targetId);
 		if (filtered.length !== segments.length) segments = filtered;
 		const next = new Set(skippedSet);
-		if (next.has(wordId)) {
-			next.delete(wordId);
+		if (next.has(targetId)) {
+			next.delete(targetId);
 			skippedSet = next;
 		}
-		session = { kind: 'waiting', targetWordId: wordId };
+		session = { kind: 'waiting', targetItemId: targetId };
 		ensureLoop();
 	}
 
@@ -392,12 +413,12 @@
 			session.kind === 'speaking'
 				? {
 						kind: 'speaking' as const,
-						targetWordId: session.targetWordId,
+						targetItemId: session.targetItemId,
 						startedAt: session.startedAt
 					}
 				: session.kind === 'waiting'
-					? { kind: 'waiting' as const, targetWordId: session.targetWordId }
-					: { kind: 'priming' as const, targetWordId: session.targetWordId };
+					? { kind: 'waiting' as const, targetItemId: session.targetItemId }
+					: { kind: 'priming' as const, targetItemId: session.targetItemId };
 		session = { kind: 'paused', resumeTo, pausedAt };
 	}
 
@@ -426,9 +447,9 @@
 		if (session.kind === 'speaking') {
 			const now = performance.now() - recordingStartTs;
 			captureSegment(
-				session.targetWordId,
+				session.targetItemId,
 				session.startedAt,
-				Math.max(session.startedAt + MIN_WORD_MS, now) + TAIL_MS
+				Math.max(session.startedAt + timing.minItemMs, now) + TAIL_MS
 			);
 			return;
 		}
@@ -459,7 +480,7 @@
 
 		if (segments.length === 0) {
 			teardown();
-			session = { kind: 'error', message: 'No words were recorded.' };
+			session = { kind: 'error', message: `No ${labels.plural} were recorded.` };
 			return;
 		}
 
@@ -475,9 +496,12 @@
 				: 'webm';
 		const formData = new FormData();
 		formData.append('file', blob, `bulk.${ext}`);
+		formData.append('targetType', targetType);
 		formData.append(
 			'segments',
-			JSON.stringify(segments.map((s) => ({ wordId: s.wordId, startMs: s.startMs, endMs: s.endMs })))
+			JSON.stringify(
+				segments.map((s) => ({ targetId: s.targetId, startMs: s.startMs, endMs: s.endMs }))
+			)
 		);
 
 		try {
@@ -490,7 +514,7 @@
 			resultRows = payload.results;
 			processingSkipped = payload.skipped;
 			const initialStates = new Map<string, ReviewState>();
-			for (const r of payload.results) initialStates.set(r.wordId, 'keep');
+			for (const r of payload.results) initialStates.set(r.targetId, 'keep');
 			reviewStates = initialStates;
 			session = { kind: 'reviewing' };
 		} catch (err) {
@@ -503,50 +527,50 @@
 		}
 	}
 
-	function stateOf(wordId: string): ReviewState {
-		return reviewStates.get(wordId) ?? 'keep';
+	function stateOf(targetId: string): ReviewState {
+		return reviewStates.get(targetId) ?? 'keep';
 	}
 
-	function setReviewState(wordId: string, next: ReviewState) {
+	function setReviewState(targetId: string, next: ReviewState) {
 		const m = new Map(reviewStates);
-		m.set(wordId, next);
+		m.set(targetId, next);
 		reviewStates = m;
 	}
 
-	function toggleKeepSkip(wordId: string) {
-		const cur = stateOf(wordId);
-		setReviewState(wordId, cur === 'keep' ? 'skip' : 'keep');
+	function toggleKeepSkip(targetId: string) {
+		const cur = stateOf(targetId);
+		setReviewState(targetId, cur === 'keep' ? 'skip' : 'keep');
 	}
 
-	function toggleRedo(wordId: string) {
-		const cur = stateOf(wordId);
-		setReviewState(wordId, cur === 'redo' ? 'keep' : 'redo');
+	function toggleRedo(targetId: string) {
+		const cur = stateOf(targetId);
+		setReviewState(targetId, cur === 'redo' ? 'keep' : 'redo');
 	}
 
-	const keepRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'keep'));
-	const skipRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'skip'));
-	const redoRows = $derived(resultRows.filter((r) => stateOf(r.wordId) === 'redo'));
+	const keepRows = $derived(resultRows.filter((r) => stateOf(r.targetId) === 'keep'));
+	const skipRows = $derived(resultRows.filter((r) => stateOf(r.targetId) === 'skip'));
+	const redoRows = $derived(resultRows.filter((r) => stateOf(r.targetId) === 'redo'));
 	const keepCount = $derived(keepRows.length);
 	const redoCount = $derived(redoRows.length);
 	const totalAudioSec = $derived(keepRows.reduce((sum, r) => sum + (r.durationSec ?? 0), 0));
 
 	async function postCommit(
-		keep: { wordId: string; audioUrl: string }[],
+		keep: { targetId: string; audioUrl: string }[],
 		discard: string[]
 	): Promise<Set<string>> {
 		const res = await fetch('/api/audio/bulk/commit', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ keep, discard })
+			body: JSON.stringify({ targetType, keep, discard })
 		});
 		if (!res.ok) {
 			const text = await res.text().catch(() => '');
 			throw new Error(text || `Save failed: ${res.status}`);
 		}
 		const payload = (await res.json()) as {
-			committed: { wordId: string; audioUrl: string }[];
+			committed: { targetId: string; audioUrl: string }[];
 		};
-		return new Set(payload.committed.map((c) => c.wordId));
+		return new Set(payload.committed.map((c) => c.targetId));
 	}
 
 	async function saveSelected() {
@@ -569,15 +593,14 @@
 		session = { kind: 'saving' };
 		try {
 			const committedIds = await postCommit(
-				keep.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl })),
+				keep.map((r) => ({ targetId: r.targetId, audioUrl: r.audioUrl })),
 				skip.map((r) => r.audioUrl)
 			);
-			const newlySaved = keep.filter((r) => committedIds.has(r.wordId));
+			const newlySaved = keep.filter((r) => committedIds.has(r.targetId));
 			await invalidateAll();
 			if (newlySaved.length > 0) {
-				toast.success(
-					`Saved ${newlySaved.length} word${newlySaved.length === 1 ? '' : 's'}.`
-				);
+				const noun = newlySaved.length === 1 ? labels.singular : labels.plural;
+				toast.success(`Saved ${newlySaved.length} ${noun}.`);
 			}
 
 			if (redo.length === 0) {
@@ -591,7 +614,7 @@
 			// Drop kept and skipped rows from the review; only redos remain.
 			resultRows = redo;
 			const remainingStates = new Map<string, ReviewState>();
-			for (const r of redo) remainingStates.set(r.wordId, 'redo');
+			for (const r of redo) remainingStates.set(r.targetId, 'redo');
 			reviewStates = remainingStates;
 			session = { kind: 'reviewing' };
 		} catch (err) {
@@ -623,19 +646,20 @@
 		try {
 			// Save keeps; discard skips + the existing redo files (about to be re-recorded).
 			const committedIds = await postCommit(
-				keep.map((r) => ({ wordId: r.wordId, audioUrl: r.audioUrl })),
+				keep.map((r) => ({ targetId: r.targetId, audioUrl: r.audioUrl })),
 				[...skip.map((r) => r.audioUrl), ...redo.map((r) => r.audioUrl)]
 			);
-			const newlySaved = keep.filter((r) => committedIds.has(r.wordId));
+			const newlySaved = keep.filter((r) => committedIds.has(r.targetId));
 			await invalidateAll();
 			if (newlySaved.length > 0) {
-				toast.success(`Saved ${newlySaved.length} word${newlySaved.length === 1 ? '' : 's'}.`);
+				const noun = newlySaved.length === 1 ? labels.singular : labels.plural;
+				toast.success(`Saved ${newlySaved.length} ${noun}.`);
 			}
 
-			// Restart the bulk session with only the redo'd words.
-			const redoWordIds = new Set(redo.map((r) => r.wordId));
-			const redoWords = currentWords.filter((w) => redoWordIds.has(w.id));
-			currentWords = redoWords;
+			// Restart the bulk session with only the redo'd items.
+			const redoIds = new Set(redo.map((r) => r.targetId));
+			const redoItems = currentItems.filter((it) => redoIds.has(it.id));
+			currentItems = redoItems;
 			resultRows = [];
 			reviewStates = new Map();
 			processingSkipped = [];
@@ -663,7 +687,7 @@
 			await fetch('/api/audio/bulk/commit', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ keep: [], discard: urls })
+				body: JSON.stringify({ targetType, keep: [], discard: urls })
 			});
 			resultRows = [];
 			reviewStates = new Map();
@@ -678,15 +702,15 @@
 		}
 	}
 
-	function playRow(wordId: string) {
-		if (playingWordId === wordId) {
+	function playRow(targetId: string) {
+		if (playingItemId === targetId) {
 			stopPlayback();
 			return;
 		}
-		const el = audioEls.get(wordId);
+		const el = audioEls.get(targetId);
 		if (!el) return;
 		stopPlayback();
-		playingWordId = wordId;
+		playingItemId = targetId;
 		playProgress = 0;
 		el.currentTime = 0;
 		el.ontimeupdate = () => {
@@ -694,13 +718,13 @@
 			playProgress = el.currentTime / el.duration;
 		};
 		el.onended = () => {
-			if (playingWordId === wordId) {
-				playingWordId = null;
+			if (playingItemId === targetId) {
+				playingItemId = null;
 				playProgress = 0;
 			}
 		};
 		el.play().catch(() => {
-			playingWordId = null;
+			playingItemId = null;
 			playProgress = 0;
 		});
 	}
@@ -708,8 +732,8 @@
 	function playAll() {
 		stopPlayback();
 		const ids = resultRows
-			.filter((r) => stateOf(r.wordId) === 'keep')
-			.map((r) => r.wordId);
+			.filter((r) => stateOf(r.targetId) === 'keep')
+			.map((r) => r.targetId);
 		if (ids.length === 0) return;
 		playSequence = ids;
 		playSequenceIndex = 0;
@@ -718,19 +742,19 @@
 
 	function playNextInSequence() {
 		if (playSequenceIndex >= playSequence.length) {
-			playingWordId = null;
+			playingItemId = null;
 			playProgress = 0;
 			playSequence = [];
 			return;
 		}
-		const wordId = playSequence[playSequenceIndex];
-		const el = audioEls.get(wordId);
+		const targetId = playSequence[playSequenceIndex];
+		const el = audioEls.get(targetId);
 		if (!el) {
 			playSequenceIndex += 1;
 			playNextInSequence();
 			return;
 		}
-		playingWordId = wordId;
+		playingItemId = targetId;
 		playProgress = 0;
 		el.currentTime = 0;
 		el.ontimeupdate = () => {
@@ -747,19 +771,19 @@
 		});
 	}
 
-	function seekTo(wordId: string, fraction: number) {
-		const el = audioEls.get(wordId);
+	function seekTo(targetId: string, fraction: number) {
+		const el = audioEls.get(targetId);
 		if (!el || !el.duration || !Number.isFinite(el.duration)) return;
 		el.currentTime = Math.max(0, Math.min(el.duration, el.duration * fraction));
 		playProgress = fraction;
-		if (playingWordId !== wordId) {
-			playRow(wordId);
+		if (playingItemId !== targetId) {
+			playRow(targetId);
 		}
 	}
 
 	function stopPlayback() {
-		if (playingWordId) {
-			const el = audioEls.get(playingWordId);
+		if (playingItemId) {
+			const el = audioEls.get(playingItemId);
 			if (el) {
 				try {
 					el.pause();
@@ -770,7 +794,7 @@
 				}
 			}
 		}
-		playingWordId = null;
+		playingItemId = null;
 		playProgress = 0;
 		playSequence = [];
 		playSequenceIndex = 0;
@@ -825,10 +849,10 @@
 	});
 
 	$effect(() => {
-		const id = targetWordId;
+		const id = targetItemId;
 		const container = listEl;
 		if (!id || !container) return;
-		const row = container.querySelector<HTMLElement>(`[data-word-id="${CSS.escape(id)}"]`);
+		const row = container.querySelector<HTMLElement>(`[data-item-id="${CSS.escape(id)}"]`);
 		if (!row) return;
 		const target = row.offsetTop - (container.clientHeight - row.offsetHeight) / 2;
 		const max = container.scrollHeight - container.clientHeight;
@@ -839,9 +863,9 @@
 	});
 
 	$effect(() => {
-		const id = playingWordId;
+		const id = playingItemId;
 		if (!id) return;
-		const row = document.querySelector<HTMLElement>(`tr[data-row-word-id="${CSS.escape(id)}"]`);
+		const row = document.querySelector<HTMLElement>(`tr[data-row-item-id="${CSS.escape(id)}"]`);
 		if (!row) return;
 		row.scrollIntoView({ block: 'center', behavior: 'smooth' });
 	});
@@ -856,26 +880,26 @@
 				</button>
 			</div>
 			<p>
-				You'll record <strong>{totalWords}</strong> word{totalWords === 1 ? '' : 's'} in one
-				continuous take. Pause for about a second between words; the recorder will advance
+				You'll record <strong>{totalItems}</strong> {totalItems === 1 ? labels.singular : labels.plural} in one
+				continuous take. Pause for about a second between {labels.plural}; the recorder will advance
 				automatically.
 			</p>
 			<ul class="bulk-tips">
 				<li>Speak at a steady volume.</li>
-				<li>The list shows every word's status as you go — click <em>Redo</em> on any captured word to re-record it.</li>
-				<li>Use <em>Skip</em> on a word you don't want to record this session.</li>
+				<li>The list shows every {labels.singular}'s status as you go — click <em>Redo</em> on any captured {labels.singular} to re-record it.</li>
+				<li>Use <em>Skip</em> on a {labels.singular} you don't want to record this session.</li>
 			</ul>
 
 			<div class="bulk-preview-head">
-				<span class="bulk-preview-label">Words in this session</span>
-				<span class="muted">{totalWords}</span>
+				<span class="bulk-preview-label">{labels.plural[0].toUpperCase()}{labels.plural.slice(1)} in this session</span>
+				<span class="muted">{totalItems}</span>
 			</div>
 			<ol class="bulk-list bulk-preview-list">
-				{#each currentWords as word, i (word.id)}
+				{#each currentItems as item, i (item.id)}
 					<li class="bulk-list-row bulk-preview-row">
 						<span class="bulk-preview-index">{i + 1}.</span>
-						<span class="bulk-list-word">{word.kalenjin}</span>
-						<span class="bulk-list-trans muted">{word.translations}</span>
+						<span class="bulk-list-word">{item.primary}</span>
+						<span class="bulk-list-trans muted">{item.secondary}</span>
 					</li>
 				{/each}
 			</ol>
@@ -887,7 +911,7 @@
 					<div class="bulk-progress-fill" style:width="{progressPct}%"></div>
 				</div>
 				<div class="bulk-progress-label">
-					{capturedCount} captured · {skippedCount} skipped · {totalWords - completedCount} pending
+					{capturedCount} captured · {skippedCount} skipped · {totalItems - completedCount} pending
 				</div>
 			</div>
 
@@ -900,13 +924,13 @@
 			>
 				{#if session.kind === 'priming'}
 					<span class="bulk-dot" aria-hidden="true"></span>
-					Speak the first word when you're ready…
+					Speak the first {labels.singular} when you're ready…
 				{:else if session.kind === 'speaking'}
 					<span class="bulk-dot" aria-hidden="true"></span>
 					Recording — pause briefly when done.
 				{:else if session.kind === 'waiting'}
 					<span class="bulk-dot bulk-dot-wait" aria-hidden="true"></span>
-					Speak now: next word.
+					Speak now: next {labels.singular}.
 				{:else if session.kind === 'paused'}
 					<span class="bulk-dot bulk-dot-wait" aria-hidden="true"></span>
 					Recording paused.
@@ -915,7 +939,7 @@
 				{/if}
 			</div>
 
-			{#if currentWord}
+			{#if currentItem}
 				<div class="bulk-word-row">
 					<button
 						type="button"
@@ -936,14 +960,21 @@
 							</svg>
 						{/if}
 					</button>
-					<div class="bulk-word">
-						<div class="bulk-word-current">{currentWord.kalenjin}</div>
-						<div class="bulk-word-translation">{currentWord.translations}</div>
+					<div class="bulk-word" class:bulk-word-sentence={targetType === 'sentence'}>
+						<div class="bulk-word-current">{currentItem.primary}</div>
+						<div class="bulk-word-translation">{currentItem.secondary}</div>
 					</div>
 				</div>
-				{#if nextWord}
+				{#if nextItem}
 					<div class="bulk-word-next">
-						<span class="muted">Next:</span> {nextWord.kalenjin}
+						<span class="muted">Next:</span> {nextItem.primary}
+					</div>
+				{/if}
+				{#if targetType === 'sentence' && session.kind === 'speaking'}
+					<div class="bulk-actions next-action-row">
+						<button type="button" class="btn-sm" onclick={stopEarly}>
+							Done with this sentence →
+						</button>
 					</div>
 				{/if}
 			{/if}
@@ -955,28 +986,28 @@
 			<div
 				class="bulk-list"
 				role="list"
-				aria-label="Words in this session"
+				aria-label={`${labels.plural[0].toUpperCase()}${labels.plural.slice(1)} in this session`}
 				bind:this={listEl}
 			>
-				{#each currentWords as word (word.id)}
-					{@const status = statusOf(word.id)}
+				{#each currentItems as item (item.id)}
+					{@const status = statusOf(item.id)}
 					<div
 						class="bulk-list-row"
 						class:current={status === 'current'}
 						role="listitem"
-						data-word-id={word.id}
+						data-item-id={item.id}
 					>
 						<span class="bulk-list-status status-{status}" aria-label={status}>
 							{#if status === 'captured'}✓{:else if status === 'skipped'}✕{:else if status === 'current'}●{:else}·{/if}
 						</span>
-						<span class="bulk-list-word">{word.kalenjin}</span>
-						<span class="bulk-list-trans muted">{word.translations}</span>
+						<span class="bulk-list-word">{item.primary}</span>
+						<span class="bulk-list-trans muted">{item.secondary}</span>
 						<span class="bulk-list-actions">
 							{#if status === 'captured'}
 								<button
 									type="button"
 									class="btn-mini"
-									onclick={() => redoWord(word.id)}
+									onclick={() => redoItem(item.id)}
 									disabled={session.kind === 'finishing'}
 								>
 									Redo
@@ -984,7 +1015,7 @@
 								<button
 									type="button"
 									class="btn-mini ghost"
-									onclick={() => requestSkip(word.id)}
+									onclick={() => requestSkip(item.id)}
 									disabled={session.kind === 'finishing'}
 								>
 									Skip
@@ -993,7 +1024,7 @@
 								<button
 									type="button"
 									class="btn-mini"
-									onclick={() => restoreWord(word.id)}
+									onclick={() => restoreItem(item.id)}
 									disabled={session.kind === 'finishing'}
 								>
 									Restore
@@ -1002,7 +1033,7 @@
 								<button
 									type="button"
 									class="btn-mini ghost"
-									onclick={() => requestSkip(word.id)}
+									onclick={() => requestSkip(item.id)}
 									disabled={session.kind === 'finishing'}
 								>
 									Skip
@@ -1052,7 +1083,7 @@
 			</header>
 
 			<div class="session-actions">
-				{#if playingWordId}
+				{#if playingItemId}
 					<button type="button" class="btn ghost with-icon" onclick={stopPlayback}>
 						<svg class="icn" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
 							<rect x="4" y="3" width="3" height="10" rx="1" />
@@ -1129,51 +1160,51 @@
 							<path d="M13 4v3.5h-3.5" />
 							<path d="M13 7.5A5 5 0 1 0 11.5 12" />
 						</svg>
-						Re-record {redoCount} {redoCount === 1 ? 'word' : 'words'}
+						Re-record {redoCount} {redoCount === 1 ? labels.singular : labels.plural}
 					</button>
 				{/if}
 			</div>
 
-			<table class="session-table">
+			<table class="session-table" class:session-table-sentence={targetType === 'sentence'}>
 				<thead>
 					<tr>
 						<th class="col-idx num">#</th>
-						<th>Word</th>
-						<th>Translation</th>
+						<th>{labels.primary}</th>
+						<th>{labels.secondary}</th>
 						<th>Audio</th>
 						<th class="col-action">Action</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each resultRows as row, i (row.wordId)}
-						{@const w = wordById.get(row.wordId)}
-						{@const state = stateOf(row.wordId)}
-						{@const seed = hashId(row.wordId)}
+					{#each resultRows as row, i (row.targetId)}
+						{@const it = itemById.get(row.targetId)}
+						{@const state = stateOf(row.targetId)}
+						{@const seed = hashId(row.targetId)}
 						{@const dur = row.durationSec ?? 0}
 						{@const bars = seededWaveform(seed, 64, dur)}
 						<tr
-							data-row-word-id={row.wordId}
-							class:playing={playingWordId === row.wordId}
+							data-row-item-id={row.targetId}
+							class:playing={playingItemId === row.targetId}
 							class:skip-row={state === 'skip'}
 							class:redo-row={state === 'redo'}
 						>
 							<td class="col-idx">{String(i + 1).padStart(2, '0')}</td>
 							<td class="col-word">
-								<span class="word">{w?.kalenjin ?? row.wordId}</span>
+								<span class="word">{it?.primary ?? row.targetId}</span>
 							</td>
 							<td class="col-trans">
-								<span class="gloss">{w?.translations ?? ''}</span>
+								<span class="gloss">{it?.secondary ?? ''}</span>
 							</td>
 							<td class="col-audio">
 								<div class="player">
 									<button
 										type="button"
 										class="play-btn"
-										class:is-playing={playingWordId === row.wordId}
-										onclick={() => playRow(row.wordId)}
-										aria-label={playingWordId === row.wordId ? 'Pause' : 'Play'}
+										class:is-playing={playingItemId === row.targetId}
+										onclick={() => playRow(row.targetId)}
+										aria-label={playingItemId === row.targetId ? 'Pause' : 'Play'}
 									>
-										{#if playingWordId === row.wordId}
+										{#if playingItemId === row.targetId}
 											<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
 												<rect x="4" y="3" width="3" height="10" rx="1" />
 												<rect x="9" y="3" width="3" height="10" rx="1" />
@@ -1193,21 +1224,21 @@
 										aria-label="Seek"
 										aria-valuemin="0"
 										aria-valuemax="100"
-										aria-valuenow={Math.round((playingWordId === row.wordId ? playProgress : 0) * 100)}
+										aria-valuenow={Math.round((playingItemId === row.targetId ? playProgress : 0) * 100)}
 										onclick={(e) => {
 											const target = e.currentTarget as HTMLElement;
 											const r = target.getBoundingClientRect();
 											const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-											seekTo(row.wordId, p);
+											seekTo(row.targetId, p);
 										}}
 										onkeydown={(e) => {
-											if (e.key === 'ArrowLeft') seekTo(row.wordId, Math.max(0, playProgress - 0.05));
-											else if (e.key === 'ArrowRight') seekTo(row.wordId, Math.min(1, playProgress + 0.05));
+											if (e.key === 'ArrowLeft') seekTo(row.targetId, Math.max(0, playProgress - 0.05));
+											else if (e.key === 'ArrowRight') seekTo(row.targetId, Math.min(1, playProgress + 0.05));
 										}}
 									>
 										{#each bars as h, bi (bi)}
 											{@const played =
-												playingWordId === row.wordId && bi / bars.length <= playProgress}
+												playingItemId === row.targetId && bi / bars.length <= playProgress}
 											<div
 												class="bar"
 												class:played
@@ -1221,8 +1252,8 @@
 									src={row.audioUrl}
 									preload="metadata"
 									{@attach (el) => {
-										audioEls.set(row.wordId, el as HTMLAudioElement);
-										return () => audioEls.delete(row.wordId);
+										audioEls.set(row.targetId, el as HTMLAudioElement);
+										return () => audioEls.delete(row.targetId);
 									}}
 								></audio>
 							</td>
@@ -1232,7 +1263,7 @@
 										type="button"
 										class="keep-toggle"
 										class:is-keep={state === 'keep'}
-										onclick={() => toggleKeepSkip(row.wordId)}
+										onclick={() => toggleKeepSkip(row.targetId)}
 										aria-pressed={state === 'keep'}
 									>
 										<span class="pip">
@@ -1253,7 +1284,7 @@
 										type="button"
 										class="redo-btn"
 										class:is-on={state === 'redo'}
-										onclick={() => toggleRedo(row.wordId)}
+										onclick={() => toggleRedo(row.targetId)}
 										aria-pressed={state === 'redo'}
 										title={state === 'redo' ? 'Cancel re-record' : 'Queue for re-record'}
 										aria-label="Queue for re-record"
@@ -1283,9 +1314,9 @@
 			{#if processingSkipped.length > 0}
 				<h4 class="processing-skipped-title">Skipped during processing</h4>
 				<ul class="bulk-skipped">
-					{#each processingSkipped as row (row.wordId)}
-						{@const w = wordById.get(row.wordId)}
-						<li><strong>{w?.kalenjin ?? row.wordId}</strong> — {row.reason}</li>
+					{#each processingSkipped as row (row.targetId)}
+						{@const it = itemById.get(row.targetId)}
+						<li><strong>{it?.primary ?? row.targetId}</strong> — {row.reason}</li>
 					{/each}
 				</ul>
 			{/if}
@@ -1318,7 +1349,9 @@
 </section>
 
 {#if skipPromptId}
-	{@const skipWord = wordById.get(skipPromptId)}
+	{@const skipItem = itemById.get(skipPromptId)}
+	{@const detailHref = targetType === 'word' ? `/dictionary/${skipPromptId}` : `/corpus/${skipPromptId}`}
+	{@const detailLabel = targetType === 'word' ? 'Open in dictionary →' : 'Open in corpus →'}
 	<div
 		class="confirm-backdrop"
 		role="presentation"
@@ -1331,27 +1364,22 @@
 	>
 		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="skip-title">
 			<h3 id="skip-title">Double-check this entry</h3>
-			{#if skipWord}
+			{#if skipItem}
 				<div class="skip-preview">
-					<div class="skip-preview-word">{skipWord.kalenjin}</div>
-					<div class="skip-preview-trans">{skipWord.translations}</div>
+					<div class="skip-preview-word">{skipItem.primary}</div>
+					<div class="skip-preview-trans">{skipItem.secondary}</div>
 				</div>
 			{/if}
 			<p>
-				Make sure the Kalenjin spelling and translation are correct before skipping. If something
-				looks off, open the dictionary entry to fix it; if it's right but you can't record it now,
-				you can skip.
+				Make sure the {labels.primary} and {labels.secondary.toLowerCase()} are correct before
+				skipping. If something looks off, open the entry to fix it; if it's right but you can't
+				record it now, you can skip.
 			</p>
 			<div class="bulk-actions">
-				<button type="button" class="btn" onclick={confirmSkip}>Skip this word</button>
-				{#if skipWord}
-					<a
-						class="btn ghost"
-						href={`/dictionary/${skipWord.id}`}
-						target="_blank"
-						rel="noopener"
-					>
-						Open in dictionary →
+				<button type="button" class="btn" onclick={confirmSkip}>Skip this {labels.singular}</button>
+				{#if skipItem}
+					<a class="btn ghost" href={detailHref} target="_blank" rel="noopener">
+						{detailLabel}
 					</a>
 				{/if}
 				<button type="button" class="btn ghost" onclick={() => (skipPromptId = null)}>
@@ -1376,9 +1404,9 @@
 		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="rerec-title">
 			<h3 id="rerec-title">Save and re-record?</h3>
 			<p>
-				{keepCount} kept word{keepCount === 1 ? '' : 's'} will be saved, then you'll start a new
-				recording session for {redoCount} word{redoCount === 1 ? '' : 's'}. Skipped clips will be
-				discarded.
+				{keepCount} kept {keepCount === 1 ? labels.singular : labels.plural} will be saved, then
+				you'll start a new recording session for {redoCount}
+				{redoCount === 1 ? labels.singular : labels.plural}. Skipped clips will be discarded.
 			</p>
 			<div class="bulk-actions">
 				<button type="button" class="btn primary" onclick={executeRerecord}>
@@ -1567,10 +1595,21 @@
 		font-weight: 600;
 		line-height: 1.2;
 	}
+	.bulk-word-sentence .bulk-word-current {
+		font-size: 22px;
+		line-height: 1.35;
+	}
+	.bulk-word-sentence .bulk-word-translation {
+		font-size: 15px;
+		margin-top: 8px;
+	}
 	.bulk-word-translation {
 		color: var(--ink-soft);
 		font-size: 16px;
 		margin-top: 4px;
+	}
+	.next-action-row {
+		justify-content: center;
 	}
 	.bulk-word-next {
 		text-align: center;
@@ -1634,12 +1673,14 @@
 	}
 	.bulk-list-word {
 		font-weight: 500;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
 	.bulk-list-trans {
 		font-size: 13px;
+		min-width: 0;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

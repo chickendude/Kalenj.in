@@ -284,7 +284,15 @@
 									class:active={isActive('/dictionary/record-audio')}
 									onclick={closeMenu}
 								>
-									Record audio
+									Record word audio
+								</a>
+								<a
+									href="/corpus/record-audio"
+									role="menuitem"
+									class:active={isActive('/corpus/record-audio')}
+									onclick={closeMenu}
+								>
+									Record sentence audio
 								</a>
 							{/if}
 							{#if data.user.role === 'ADMIN'}

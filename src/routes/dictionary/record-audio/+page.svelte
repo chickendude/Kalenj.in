@@ -30,7 +30,8 @@
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let batchSize = $state(10);
-	let sessionWords = $state<typeof data.words | null>(null);
+	type RecorderItem = { id: string; primary: string; secondary: string };
+	let sessionItems = $state<RecorderItem[] | null>(null);
 
 	let posOtherOpen = $state(false);
 	let posOtherWrap = $state<HTMLDivElement | null>(null);
@@ -110,11 +111,15 @@
 
 	function startRecording() {
 		if (visibleWords.length === 0) return;
-		sessionWords = visibleWords;
+		sessionItems = visibleWords.map((word) => ({
+			id: word.id,
+			primary: word.kalenjin,
+			secondary: word.translations
+		}));
 	}
 
 	function closeSession() {
-		sessionWords = null;
+		sessionItems = null;
 	}
 </script>
 
@@ -131,16 +136,16 @@
 		</div>
 	</div>
 
-	{#if sessionWords}
+	{#if sessionItems}
 		<section class="form-card">
 			<header class="record-section-head">
 				<div>
 					<h2>Recording session</h2>
-					<p>{sessionWords.length} word{sessionWords.length === 1 ? '' : 's'} selected.</p>
+					<p>{sessionItems.length} word{sessionItems.length === 1 ? '' : 's'} selected.</p>
 				</div>
 				<button type="button" class="btn-sm ghost" onclick={closeSession}>Close</button>
 			</header>
-			<BulkAudioRecorder words={sessionWords} onclose={closeSession} />
+			<BulkAudioRecorder items={sessionItems} targetType="word" onclose={closeSession} />
 		</section>
 	{:else}
 		<div class="controls">

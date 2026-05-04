@@ -6,7 +6,12 @@ import { deleteAudio } from '$lib/server/audio-storage';
 
 const MAX_ENTRIES = 100;
 
-type KeepEntry = { wordId: string; audioUrl: string };
+type TargetType = 'word' | 'sentence';
+type KeepEntry = { targetId: string; audioUrl: string };
+
+function isTargetType(value: unknown): value is TargetType {
+	return value === 'word' || value === 'sentence';
+}
 
 function parseKeep(raw: unknown): KeepEntry[] {
 	if (raw === undefined || raw === null) return [];
@@ -18,13 +23,13 @@ function parseKeep(raw: unknown): KeepEntry[] {
 	for (let i = 0; i < raw.length; i += 1) {
 		const item: unknown = raw[i];
 		if (!item || typeof item !== 'object') error(400, `keep[${i}] is not an object.`);
-		const wordId: unknown = (item as { wordId?: unknown }).wordId;
+		const targetId: unknown = (item as { targetId?: unknown }).targetId;
 		const audioUrl: unknown = (item as { audioUrl?: unknown }).audioUrl;
-		if (typeof wordId !== 'string' || !wordId) error(400, `keep[${i}] missing wordId.`);
+		if (typeof targetId !== 'string' || !targetId) error(400, `keep[${i}] missing targetId.`);
 		if (typeof audioUrl !== 'string' || !audioUrl) error(400, `keep[${i}] missing audioUrl.`);
-		if (seen.has(wordId)) error(400, `Word ${wordId} appears more than once in keep.`);
-		seen.add(wordId);
-		entries.push({ wordId, audioUrl });
+		if (seen.has(targetId)) error(400, `Target ${targetId} appears more than once in keep.`);
+		seen.add(targetId);
+		entries.push({ targetId, audioUrl });
 	}
 	return entries;
 }
@@ -47,6 +52,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const payload = await request.json().catch(() => null);
 	if (!payload || typeof payload !== 'object') error(400, 'Invalid request body.');
+	const targetTypeRaw = (payload as { targetType?: unknown }).targetType ?? 'word';
+	if (!isTargetType(targetTypeRaw)) error(400, 'Invalid targetType.');
+	const targetType: TargetType = targetTypeRaw;
+
 	const keep = parseKeep((payload as { keep?: unknown }).keep);
 	const discard = parseDiscard((payload as { discard?: unknown }).discard);
 
@@ -54,37 +63,49 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(400, 'No keep or discard entries provided.');
 	}
 
-	const committed: { wordId: string; audioUrl: string }[] = [];
-	const failed: { wordId: string; reason: string }[] = [];
+	const committed: { targetId: string; audioUrl: string }[] = [];
+	const failed: { targetId: string; reason: string }[] = [];
 
 	if (keep.length > 0) {
-		const existing = await prisma.word.findMany({
-			where: { id: { in: keep.map((e) => e.wordId) } },
-			select: { id: true, audioUrl: true }
-		});
-		const existingById = new Map(existing.map((w) => [w.id, w.audioUrl]));
+		const ids = keep.map((e) => e.targetId);
+		const existing =
+			targetType === 'word'
+				? await prisma.word.findMany({
+						where: { id: { in: ids } },
+						select: { id: true, audioUrl: true }
+					})
+				: await prisma.exampleSentence.findMany({
+						where: { id: { in: ids } },
+						select: { id: true, audioUrl: true }
+					});
+		const existingById = new Map(existing.map((row) => [row.id, row.audioUrl]));
 
 		const now = new Date();
 		for (const entry of keep) {
-			if (!existingById.has(entry.wordId)) {
-				failed.push({ wordId: entry.wordId, reason: 'Word not found.' });
+			if (!existingById.has(entry.targetId)) {
+				failed.push({
+					targetId: entry.targetId,
+					reason: `${targetType === 'word' ? 'Word' : 'Sentence'} not found.`
+				});
 				continue;
 			}
-			const previousUrl = existingById.get(entry.wordId) ?? null;
-			await prisma.word.update({
-				where: { id: entry.wordId },
-				data: {
-					audioUrl: entry.audioUrl,
-					audioRecordedById: user.id,
-					audioRecordedAt: now
-				}
-			});
+			const previousUrl = existingById.get(entry.targetId) ?? null;
+			const data = {
+				audioUrl: entry.audioUrl,
+				audioRecordedById: user.id,
+				audioRecordedAt: now
+			};
+			if (targetType === 'word') {
+				await prisma.word.update({ where: { id: entry.targetId }, data });
+			} else {
+				await prisma.exampleSentence.update({ where: { id: entry.targetId }, data });
+			}
 			if (previousUrl && previousUrl !== entry.audioUrl) {
 				await deleteAudio(previousUrl).catch((err) => {
 					console.warn('Failed to delete previous audio', previousUrl, err);
 				});
 			}
-			committed.push({ wordId: entry.wordId, audioUrl: entry.audioUrl });
+			committed.push({ targetId: entry.targetId, audioUrl: entry.audioUrl });
 		}
 	}
 

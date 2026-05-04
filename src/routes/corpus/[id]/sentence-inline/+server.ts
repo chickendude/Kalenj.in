@@ -5,7 +5,7 @@ import { requireEditor } from '$lib/server/guards';
 import type { RequestHandler } from './$types';
 
 type Payload = {
-	field?: 'kalenjin' | 'english';
+	field?: 'kalenjin' | 'english' | 'notes';
 	value?: string;
 };
 
@@ -37,11 +37,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const field = payload.field;
 	const value = clean(payload.value);
 
-	if (field !== 'kalenjin' && field !== 'english') {
+	if (field !== 'kalenjin' && field !== 'english' && field !== 'notes') {
 		return json({ error: 'A valid field is required.' }, { status: 400 });
 	}
 
-	if (!value) {
+	if (field !== 'notes' && !value) {
 		return json(
 			{ error: field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.' },
 			{ status: 400 }
@@ -57,10 +57,17 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		error(404, 'Sentence not found.');
 	}
 
+	const updateData =
+		field === 'kalenjin'
+			? { kalenjin: value }
+			: field === 'english'
+				? { english: value }
+				: { notes: value || null };
+
 	const updatedSentence = await prisma.$transaction(async (tx) => {
 		await tx.exampleSentence.update({
 			where: { id: params.id },
-			data: field === 'kalenjin' ? { kalenjin: value } : { english: value }
+			data: updateData
 		});
 
 		if (field === 'kalenjin') {
@@ -73,6 +80,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				id: true,
 				kalenjin: true,
 				english: true,
+				notes: true,
 				tokens: {
 					orderBy: { tokenOrder: 'asc' },
 					include: {

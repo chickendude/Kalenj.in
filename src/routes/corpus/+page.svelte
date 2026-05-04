@@ -496,10 +496,6 @@
 											? ''
 											: 's'} mapped
 									</span>
-									{#if sentence.notes}
-										<span>·</span>
-										<span>{sentence.notes}</span>
-									{/if}
 								</div>
 							</div>
 							<div class="actions">

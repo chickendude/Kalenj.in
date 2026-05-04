@@ -472,11 +472,8 @@
 			{:else}
 				<ul class="sentence-list">
 					{#each data.sentences as sentence (sentence.id)}
-						{@const mappedCount = sentence.tokens.filter(
-							(t) => t.word || t.segments?.some((s) => s.word)
-						).length}
-						<li class="sentence-row">
-							<div class="sentence-row-body">
+						<li>
+							<div class="sentence-row sentence-card">
 								<div class="kal">
 									<AudioPlayButton
 										audioUrl={sentence.audioUrl}
@@ -489,18 +486,8 @@
 										tokens={sentence.tokens}
 									/>
 								</div>
-								<div class="en"><SentenceTimeText text={sentence.english} /></div>
-								<div class="meta">
-									<span>
-										{mappedCount} / {sentence._count.tokens} token{sentence._count.tokens === 1
-											? ''
-											: 's'} mapped
-									</span>
-								</div>
-							</div>
-							<div class="actions">
-								<a class="btn ghost sm" href={`/corpus/${sentence.id}`}>
-									{canEdit ? 'Open mapping' : 'View'}
+								<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
+									<SentenceTimeText text={sentence.english} />
 								</a>
 							</div>
 						</li>
@@ -784,23 +771,17 @@
 		margin: 0;
 		padding: 0;
 	}
-	.sentence-row {
-		padding: 22px 0;
+	.sentence-list li {
 		border-bottom: 1px solid var(--line-soft);
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		gap: 24px;
-		align-items: start;
 	}
-	.sentence-row:last-child {
+	.sentence-list li:last-child {
 		border-bottom: 0;
 	}
-	.sentence-row-body {
-		min-width: 0;
+	.sentence-row {
+		padding: 22px 0;
 	}
 	.sentence-row .kal {
 		align-items: baseline;
-		color: var(--ink);
 		display: flex;
 		flex-wrap: wrap;
 		font-family: var(--font-display);
@@ -813,22 +794,6 @@
 		color: var(--ink-soft);
 		font-size: 15px;
 	}
-	.sentence-row .meta {
-		font-family: var(--font-mono);
-		font-size: 11px;
-		color: var(--ink-mute);
-		margin-top: 8px;
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-	}
-	.sentence-row .actions {
-		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		align-items: flex-end;
-	}
 
 	@media (max-width: 900px) {
 		.corpus-layout {
@@ -840,15 +805,8 @@
 	}
 
 	@media (max-width: 720px) {
-		.sentence-row {
-			grid-template-columns: 1fr;
-			gap: 12px;
-		}
 		.sentence-row .kal {
 			font-size: 19px;
-		}
-		.sentence-row .actions {
-			align-items: flex-start;
 		}
 	}
 </style>

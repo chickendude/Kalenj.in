@@ -3,6 +3,7 @@
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 
 	type TokenWord = {
+		id: string;
 		kalenjin: string;
 		translations: string;
 	};
@@ -25,6 +26,7 @@
 		english: string | null;
 		westernTime: string | null;
 		timeNote: string | null;
+		hasInfo: boolean;
 	};
 
 	let { sentenceId = 'sentence', tokens, onTokenClick } = $props<{
@@ -43,26 +45,31 @@
 		word: TokenWord | null | undefined
 	): PopupPart {
 		const timeAnnotation = getSentenceTimeAnnotation(surfaceForm);
+		const english = word?.translations ?? null;
+		const westernTime = timeAnnotation?.westernTime ?? null;
 		return {
 			key,
 			kalenjin: word?.kalenjin ?? surfaceForm,
-			english: word?.translations ?? null,
-			westernTime: timeAnnotation?.westernTime ?? null,
-			timeNote: timeAnnotation?.note ?? null
+			english,
+			westernTime,
+			timeNote: timeAnnotation?.note ?? null,
+			hasInfo: Boolean(english || westernTime)
 		};
 	}
 </script>
 
 {#snippet tooltipContent(popup: PopupPart)}
-	<span class="token-tooltip" role="tooltip"
-		><span class="tooltip-part">
-			<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
-			{#if popup.westernTime}
-				<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
-				<span class="time-note-detail">{popup.timeNote}</span>
-			{/if}
-		</span></span
-	>
+	{#if popup.hasInfo}
+		<span class="token-tooltip" role="tooltip"
+			><span class="tooltip-part">
+				<em>{popup.kalenjin}</em>{#if popup.english}<span>{popup.english}</span>{/if}
+				{#if popup.westernTime}
+					<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
+					<span class="time-note-detail">{popup.timeNote}</span>
+				{/if}
+			</span></span
+		>
+	{/if}
 {/snippet}
 
 <div class="sentence-preview" aria-label="Token preview">
@@ -74,35 +81,53 @@
 						{#each token.segments as segment (segment.id)}
 							{@const tooltipKey = `${sentenceId}:${token.id}:${segment.id}`}
 							{@const popup = buildPopupPart(segment.id, segment.surfaceForm, segment.word)}
-							<button
-								type="button"
-								class="token-part"
-								class:linked={Boolean(segment.word)}
-								class:pinned={pinnedTooltipKey === tooltipKey}
-								onclick={() => {
-									pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
-									onTokenClick?.(token);
-								}}
-							>
-								{segment.surfaceForm}{@render tooltipContent(popup)}
-							</button>
+							{#if segment.word && !onTokenClick}
+								<a
+									href={`/dictionary/${segment.word.id}`}
+									class="token-part linked"
+								>
+									{segment.surfaceForm}{@render tooltipContent(popup)}
+								</a>
+							{:else}
+								<button
+									type="button"
+									class="token-part"
+									class:linked={Boolean(segment.word)}
+									class:pinned={pinnedTooltipKey === tooltipKey}
+									onclick={() => {
+										pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
+										onTokenClick?.(token);
+									}}
+								>
+									{segment.surfaceForm}{@render tooltipContent(popup)}
+								</button>
+							{/if}
 						{/each}
 					</span>
 				{:else}
 					{@const tooltipKey = `${sentenceId}:${token.id}`}
 					{@const popup = buildPopupPart(token.id, token.surfaceForm, token.word)}
-					<button
-						type="button"
-						class="token-part"
-						class:linked={Boolean(token.word)}
-						class:pinned={pinnedTooltipKey === tooltipKey}
-						onclick={() => {
-							pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
-							onTokenClick?.(token);
-						}}
-					>
-						{token.surfaceForm}{@render tooltipContent(popup)}
-					</button>
+					{#if token.word && !onTokenClick}
+						<a
+							href={`/dictionary/${token.word.id}`}
+							class="token-part linked"
+						>
+							{token.surfaceForm}{@render tooltipContent(popup)}
+						</a>
+					{:else}
+						<button
+							type="button"
+							class="token-part"
+							class:linked={Boolean(token.word)}
+							class:pinned={pinnedTooltipKey === tooltipKey}
+							onclick={() => {
+								pinnedTooltipKey = pinnedTooltipKey === tooltipKey ? null : tooltipKey;
+								onTokenClick?.(token);
+							}}
+						>
+							{token.surfaceForm}{@render tooltipContent(popup)}
+						</button>
+					{/if}
 				{/if}
 			{/each}
 		</span>
@@ -132,11 +157,14 @@
 		background: transparent;
 		border: none;
 		border-radius: 0.2rem;
+		color: inherit;
+		display: inline-block;
 		font: inherit;
 		letter-spacing: inherit;
 		margin: 0;
 		padding: 0;
 		position: relative;
+		text-decoration: none;
 		white-space: nowrap;
 		cursor: default;
 	}
@@ -144,12 +172,30 @@
 	.token-part.linked {
 		font-weight: 600;
 		cursor: pointer;
+		text-decoration: none;
 	}
 
-	.token-part:hover,
-	.token-part:focus-visible {
-		background: var(--info-soft);
+	.token-part.linked::after {
+		content: '';
+		position: absolute;
+		left: 0.15em;
+		right: 0.15em;
+		bottom: -0.2em;
+		height: 1px;
+		background-image: linear-gradient(to right, var(--accent) 1px, transparent 1px);
+		background-size: 3px 1px;
+		background-repeat: repeat-x;
+	}
+
+	.token-part.linked:hover,
+	.token-part.linked:focus-visible {
 		outline: none;
+	}
+
+	.token-part.linked:hover::after,
+	.token-part.linked:focus-visible::after {
+		background-image: none;
+		background-color: var(--ink);
 	}
 
 	.token-tooltip {
@@ -172,6 +218,7 @@
 	.tooltip-part {
 		display: grid;
 		gap: 0.08rem;
+		text-align: center;
 	}
 
 	.time-note {

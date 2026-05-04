@@ -107,6 +107,26 @@ body {
 a { color: var(--brand); text-decoration: none; }
 a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoration-thickness: 1px; }
 
+.sentence-card { position: relative; }
+.sentence-card-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.sentence-card-link:hover { text-decoration: none; color: inherit; }
+.sentence-card-link::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.sentence-card .audio-btn,
+.sentence-card .token-part,
+.sentence-card .sentence-time-mark { position: relative; z-index: 1; }
+.sentence-card:hover .wod-kal,
+.sentence-card:hover .recent-kal,
+.sentence-card:hover .kal { color: var(--accent); }
+
 /* ---------- Topbar ---------- */
 .topbar {
   border-bottom: 1px solid var(--line);
@@ -1903,10 +1923,11 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   padding: 0;
 }
 .recent-list li {
-  padding: 14px 0;
   border-bottom: 1px solid var(--line-soft);
 }
 .recent-list li:last-child { border-bottom: 0; }
+.recent-list .recent-row,
+.recent-list > li > .sentence-card { padding: 14px 0; }
 .recent-entry {
   display: flex;
   align-items: baseline;
@@ -1916,7 +1937,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   text-decoration: none;
 }
 .recent-entry:hover { text-decoration: none; }
-.recent-entry:hover .recent-word { color: var(--brand); }
+.recent-entry:hover .recent-word { color: var(--accent); }
 .recent-word {
   font-family: var(--font-display);
   font-size: 18px;

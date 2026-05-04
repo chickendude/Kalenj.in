@@ -329,7 +329,7 @@
 				<p class="muted" style="font-size: 15px; margin: 0;">No corpus examples yet.</p>
 			{:else}
 				{#each data.word.sentences as link}
-					<div class="example">
+					<div class="example sentence-card">
 						<div class="kal">
 							<TokenHoverPreview
 								sentenceId={link.exampleSentence.id}
@@ -337,7 +337,9 @@
 								tokens={link.exampleSentence.tokens}
 							/>
 						</div>
-						<div class="en"><SentenceTimeText text={link.exampleSentence.english} /></div>
+						<a class="en sentence-card-link" href={`/corpus/${link.exampleSentence.id}`}>
+							<SentenceTimeText text={link.exampleSentence.english} />
+						</a>
 					</div>
 				{/each}
 			{/if}

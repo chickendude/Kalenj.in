@@ -52,7 +52,13 @@ export const load: PageServerLoad = async ({ params }) => {
 						include: {
 							tokens: {
 								orderBy: { tokenOrder: 'asc' },
-								include: { word: true }
+								include: {
+									word: true,
+									segments: {
+										orderBy: { segmentOrder: 'asc' },
+										include: { word: true }
+									}
+								}
 							}
 						}
 					}

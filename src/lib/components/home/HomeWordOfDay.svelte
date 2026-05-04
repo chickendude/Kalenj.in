@@ -95,7 +95,7 @@
 		<aside class="wod-aside">
 			{#if example}
 				<div class="home-kicker small">In a sentence</div>
-				<div class="wod-example">
+				<div class="wod-example sentence-card">
 					<div class="wod-kal">
 						<TokenHoverPreview
 							sentenceId={example.id}
@@ -104,7 +104,9 @@
 						/>
 						<AudioPlayButton audioUrl={example.audioUrl} size="sm" label="Play sentence" />
 					</div>
-					<div class="wod-en"><SentenceTimeText text={example.english} /></div>
+					<a class="wod-en sentence-card-link" href={`/corpus/${example.id}`}>
+						<SentenceTimeText text={example.english} />
+					</a>
 				</div>
 			{:else}
 				<div class="home-kicker small">

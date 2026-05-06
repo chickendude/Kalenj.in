@@ -8,8 +8,13 @@ const LIST_LIMIT = 100;
 export const load: PageServerLoad = async ({ locals }) => {
 	requireEditor(locals);
 
+	const unlinkedTokenWhere: Prisma.ExampleSentenceTokenWhereInput = {
+		wordId: null,
+		OR: [{ segments: { none: {} } }, { segments: { some: { wordId: null } } }]
+	};
+
 	const incompleteSentencesWhere: Prisma.ExampleSentenceWhereInput = {
-		tokens: { some: { wordId: null } }
+		tokens: { some: unlinkedTokenWhere }
 	};
 
 	const missingPluralWhere: Prisma.WordWhereInput = {
@@ -36,7 +41,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 				updatedAt: true,
 				_count: { select: { tokens: true } },
 				tokens: {
-					where: { wordId: null },
+					where: unlinkedTokenWhere,
 					select: { id: true }
 				}
 			}

@@ -76,7 +76,14 @@ describe('cleanup page loader — query shapes', () => {
 
 	it('queries sentences whose tokens contain at least one unlinked token', async () => {
 		await call(adminLocals);
-		const expectedWhere = { tokens: { some: { wordId: null } } };
+		const expectedWhere = {
+			tokens: {
+				some: {
+					wordId: null,
+					OR: [{ segments: { none: {} } }, { segments: { some: { wordId: null } } }]
+				}
+			}
+		};
 		expect(mocks.prisma.exampleSentence.count).toHaveBeenCalledWith({ where: expectedWhere });
 		expect(mocks.prisma.exampleSentence.findMany).toHaveBeenCalledWith(
 			expect.objectContaining({

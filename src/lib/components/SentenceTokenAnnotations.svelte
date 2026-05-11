@@ -181,6 +181,8 @@
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let modalElement = $state<HTMLDivElement | null>(null);
+	let shortcutsOpen = $state(false);
+	let shortcutsWrap = $state<HTMLDivElement | null>(null);
 
 	const isMac =
 		typeof navigator !== 'undefined' &&
@@ -188,6 +190,11 @@
 	const navShortcutModifier = isMac ? '⌃⌥' : 'Ctrl+Alt+';
 	const prevShortcutTitle = `Previous word (${navShortcutModifier}←)`;
 	const nextShortcutTitle = `Next word (${navShortcutModifier}→)`;
+	const shortcutEntries = [
+		{ label: 'Previous word', keys: isMac ? ['⌃', '⌥', '←'] : ['Ctrl', 'Alt', '←'] },
+		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Ctrl', 'Alt', '→'] },
+		{ label: 'Close picker', keys: ['Esc'] }
+	];
 	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
@@ -485,6 +492,23 @@
 			}
 
 			posOtherOpen = false;
+		}
+
+		window.addEventListener('pointerdown', handlePointerDown, true);
+		return () => window.removeEventListener('pointerdown', handlePointerDown, true);
+	});
+
+	$effect(() => {
+		if (!shortcutsOpen) {
+			return;
+		}
+
+		function handlePointerDown(event: MouseEvent) {
+			const wrap = shortcutsWrap;
+			if (!wrap) return;
+			const target = event.target;
+			if (target instanceof Node && wrap.contains(target)) return;
+			shortcutsOpen = false;
 		}
 
 		window.addEventListener('pointerdown', handlePointerDown, true);
@@ -1343,6 +1367,38 @@
 							</button>
 						</div>
 						<div class="lemma-modal-head-actions-row lemma-modal-head-actions-row--secondary">
+							<div class="shortcuts-wrap" bind:this={shortcutsWrap}>
+								<button
+									type="button"
+									class="icon-btn"
+									class:icon-btn--active={shortcutsOpen}
+									aria-label="Keyboard shortcuts"
+									aria-haspopup="dialog"
+									aria-expanded={shortcutsOpen}
+									data-tooltip="Keyboard shortcuts"
+									onclick={() => (shortcutsOpen = !shortcutsOpen)}
+								>
+									?
+								</button>
+								{#if shortcutsOpen}
+									<div class="shortcuts-popup" role="dialog" aria-label="Keyboard shortcuts">
+										<h4 class="shortcuts-title">Keyboard shortcuts</h4>
+										<dl class="shortcuts-list">
+											{#each shortcutEntries as entry (entry.label)}
+												<div class="shortcuts-row">
+													<dt class="shortcuts-row-label">{entry.label}</dt>
+													<dd class="shortcuts-row-keys">
+														{#each entry.keys as key, idx}
+															{#if idx > 0}<span class="shortcuts-plus" aria-hidden="true">+</span>{/if}
+															<kbd class="shortcuts-kbd">{key}</kbd>
+														{/each}
+													</dd>
+												</div>
+											{/each}
+										</dl>
+									</div>
+								{/if}
+							</div>
 							<button
 								type="button"
 								class="icon-btn"
@@ -2131,6 +2187,69 @@
 	}
 	.lemma-modal-head-actions-row--secondary {
 		justify-content: flex-end;
+	}
+	.shortcuts-wrap {
+		position: relative;
+	}
+	.shortcuts-popup {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.25);
+		min-width: 240px;
+		padding: 12px 14px;
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 30;
+	}
+	.shortcuts-title {
+		color: var(--ink-mute);
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		margin: 0 0 10px;
+		text-transform: uppercase;
+	}
+	.shortcuts-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 0;
+	}
+	.shortcuts-row {
+		align-items: center;
+		display: flex;
+		gap: 12px;
+		justify-content: space-between;
+	}
+	.shortcuts-row-label {
+		color: var(--ink);
+		font-size: 13px;
+	}
+	.shortcuts-row-keys {
+		align-items: center;
+		display: flex;
+		gap: 4px;
+		margin: 0;
+	}
+	.shortcuts-kbd {
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 3px;
+		color: var(--ink);
+		font-family: var(--font-mono, var(--font-body));
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1;
+		min-width: 1.4em;
+		padding: 3px 5px;
+		text-align: center;
+	}
+	.shortcuts-plus {
+		color: var(--ink-mute);
+		font-size: 11px;
 	}
 
 	/* Splitter */

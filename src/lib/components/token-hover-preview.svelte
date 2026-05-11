@@ -230,6 +230,7 @@
 			{/if}<span class="tooltip-part">
 				{#if popup.inContextTranslation}
 					<span class="in-context">{popup.inContextTranslation}</span>
+					<span class="tooltip-divider" aria-hidden="true"></span>
 				{/if}
 				<span class="lemma-line"
 					><em>{popup.kalenjin}</em
@@ -435,7 +436,13 @@
 		display: block;
 		text-align: center;
 		font-weight: 600;
-		margin-bottom: 0.15rem;
+	}
+
+	.tooltip-divider {
+		display: block;
+		height: 1px;
+		margin: 0.3rem 0;
+		background: color-mix(in oklab, var(--tooltip-ink) 25%, transparent);
 	}
 
 	.lemma-line {

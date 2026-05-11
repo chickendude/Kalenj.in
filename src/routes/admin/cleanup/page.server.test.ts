@@ -9,6 +9,9 @@ const mocks = vi.hoisted(() => {
 		word: {
 			count: vi.fn(),
 			findMany: vi.fn()
+		},
+		ignoredWordForm: {
+			findMany: vi.fn()
 		}
 	};
 	return { prisma };
@@ -47,6 +50,7 @@ describe('cleanup page loader — auth', () => {
 		mocks.prisma.exampleSentence.findMany.mockResolvedValue([]);
 		mocks.prisma.word.count.mockResolvedValue(0);
 		mocks.prisma.word.findMany.mockResolvedValue([]);
+		mocks.prisma.ignoredWordForm.findMany.mockResolvedValue([]);
 	});
 
 	it('rejects anonymous requests with a 404 (does not leak the route)', async () => {
@@ -68,10 +72,12 @@ describe('cleanup page loader — query shapes', () => {
 		mocks.prisma.exampleSentence.findMany.mockReset();
 		mocks.prisma.word.count.mockReset();
 		mocks.prisma.word.findMany.mockReset();
+		mocks.prisma.ignoredWordForm.findMany.mockReset();
 		mocks.prisma.exampleSentence.count.mockResolvedValue(0);
 		mocks.prisma.exampleSentence.findMany.mockResolvedValue([]);
 		mocks.prisma.word.count.mockResolvedValue(0);
 		mocks.prisma.word.findMany.mockResolvedValue([]);
+		mocks.prisma.ignoredWordForm.findMany.mockResolvedValue([]);
 	});
 
 	it('queries sentences whose tokens contain at least one unlinked token', async () => {
@@ -80,7 +86,18 @@ describe('cleanup page loader — query shapes', () => {
 			tokens: {
 				some: {
 					wordId: null,
-					OR: [{ segments: { none: {} } }, { segments: { some: { wordId: null } } }]
+					normalizedForm: { notIn: [] },
+					OR: [
+						{ segments: { none: {} } },
+						{
+							segments: {
+								some: {
+									wordId: null,
+									normalizedForm: { notIn: [] }
+								}
+							}
+						}
+					]
 				}
 			}
 		};
@@ -91,6 +108,36 @@ describe('cleanup page loader — query shapes', () => {
 				orderBy: { updatedAt: 'desc' }
 			})
 		);
+	});
+
+	it('excludes tokens whose normalizedForm is in the IgnoredWordForm list', async () => {
+		mocks.prisma.ignoredWordForm.findMany.mockResolvedValue([
+			{ normalizedForm: 'kipchoge', note: null, createdAt: new Date('2026-05-06T00:00:00Z') },
+			{ normalizedForm: 'kapchorwa', note: 'place', createdAt: new Date('2026-05-06T00:00:00Z') }
+		]);
+
+		await call(adminLocals);
+
+		const expectedWhere = {
+			tokens: {
+				some: {
+					wordId: null,
+					normalizedForm: { notIn: ['kipchoge', 'kapchorwa'] },
+					OR: [
+						{ segments: { none: {} } },
+						{
+							segments: {
+								some: {
+									wordId: null,
+									normalizedForm: { notIn: ['kipchoge', 'kapchorwa'] }
+								}
+							}
+						}
+					]
+				}
+			}
+		};
+		expect(mocks.prisma.exampleSentence.count).toHaveBeenCalledWith({ where: expectedWhere });
 	});
 
 	it('queries nouns/adjectives that have no plural form and are not plural-only', async () => {
@@ -190,5 +237,17 @@ describe('cleanup page loader — output shape', () => {
 			kalenjin: 'maiwek',
 			partOfSpeech: 'NOUN'
 		});
+	});
+
+	it('exposes the list of ignored word forms', async () => {
+		mocks.prisma.ignoredWordForm.findMany.mockResolvedValue([
+			{ normalizedForm: 'kipchoge', note: null, createdAt: new Date('2026-05-06T00:00:00Z') }
+		]);
+
+		const result = await call(adminLocals);
+
+		expect(result.ignoredForms).toEqual([
+			{ normalizedForm: 'kipchoge', note: null, createdAt: new Date('2026-05-06T00:00:00Z') }
+		]);
 	});
 });

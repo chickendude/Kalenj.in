@@ -1,11 +1,13 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { stripWordLinks } from '$lib/word-links';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
@@ -31,6 +33,7 @@
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
+		normalizedForm: string;
 		wordId: string | null;
 		inContextTranslation?: string | null;
 		word?: {
@@ -57,6 +60,7 @@
 		segmentStart: number;
 		segmentEnd: number;
 		surfaceForm: string;
+		normalizedForm: string;
 		wordId: string | null;
 		word?: {
 			id: string;
@@ -134,6 +138,7 @@
 		sentenceText,
 		tokens,
 		dictionaryWords,
+		ignoredNormalizedForms = [],
 		updateAction,
 		createAction,
 		searchEndpoint,
@@ -150,6 +155,7 @@
 		sentenceText: string;
 		tokens: SentenceToken[];
 		dictionaryWords: DictionaryWord[];
+		ignoredNormalizedForms?: string[];
 		updateAction: string;
 		createAction: string;
 		searchEndpoint: string;
@@ -175,6 +181,21 @@
 	let localTokens = $state<SentenceToken[]>([]);
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
+	let modalElement = $state<HTMLDivElement | null>(null);
+	let shortcutsOpen = $state(false);
+	let shortcutsWrap = $state<HTMLDivElement | null>(null);
+
+	const isMac =
+		typeof navigator !== 'undefined' &&
+		/mac|iphone|ipad|ipod/i.test(navigator.platform ?? navigator.userAgent ?? '');
+	const navShortcutModifier = isMac ? '⌃⌥' : 'Ctrl+Alt+';
+	const prevShortcutTitle = `Previous word (${navShortcutModifier}←)`;
+	const nextShortcutTitle = `Next word (${navShortcutModifier}→)`;
+	const shortcutEntries = [
+		{ label: 'Previous word', keys: isMac ? ['⌃', '⌥', '←'] : ['Ctrl', 'Alt', '←'] },
+		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Ctrl', 'Alt', '→'] },
+		{ label: 'Close picker', keys: ['Esc'] }
+	];
 	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
@@ -215,6 +236,13 @@
 	const activeSurface = $derived(activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '');
 	const activeWord = $derived(activeSegment?.word ?? activeToken?.word ?? null);
 	const activeWordId = $derived(activeSegment?.wordId ?? activeToken?.wordId ?? null);
+	const activeNormalizedForm = $derived(
+		activeSegment?.normalizedForm ?? activeToken?.normalizedForm ?? ''
+	);
+	const ignoredFormsSet = $derived(new Set(ignoredNormalizedForms));
+	const activeIsIgnored = $derived(
+		activeNormalizedForm.length > 0 && ignoredFormsSet.has(activeNormalizedForm)
+	);
 	const isFirstSegmentActive = $derived(
 		Boolean(activeToken?.segments?.[0]?.id && activeToken.segments[0].id === activeSegment?.id)
 	);
@@ -246,7 +274,7 @@
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
 				wordTranslations: token.word?.translations ? stripWordLinks(token.word.translations) : null,
-				wordNotes: token.word?.notes ? stripWordLinks(token.word.notes) : null,
+				wordNotes: token.word?.notes ?? null,
 				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? [],
 				segments:
 					token.segments?.map((segment) => ({
@@ -255,7 +283,7 @@
 						wordId: segment.wordId,
 						wordKalenjin: segment.word?.kalenjin ?? null,
 						wordTranslations: segment.word?.translations ? stripWordLinks(segment.word.translations) : null,
-						wordNotes: segment.word?.notes ? stripWordLinks(segment.word.notes) : null,
+						wordNotes: segment.word?.notes ?? null,
 						wordSpellings: segment.word?.spellings?.map((spelling) => spelling.spelling) ?? []
 					})) ?? []
 			}))
@@ -276,7 +304,7 @@
 				selectedWordId: token.word?.id ?? '',
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
 				createTranslations: stripWordLinks(token.word?.translations ?? ''),
-				createNotes: stripWordLinks(token.word?.notes ?? ''),
+				createNotes: token.word?.notes ?? '',
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
 				createPluralForm: tokenPluralForms.pluralForm,
 				createAlternativePluralForms: tokenPluralForms.alternativePluralForms,
@@ -291,7 +319,7 @@
 					selectedWordId: segment.word?.id ?? '',
 					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
 					createTranslations: stripWordLinks(segment.word?.translations ?? ''),
-					createNotes: stripWordLinks(segment.word?.notes ?? ''),
+					createNotes: segment.word?.notes ?? '',
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
 					createPluralForm: segmentPluralForms.pluralForm,
 					createAlternativePluralForms: segmentPluralForms.alternativePluralForms,
@@ -471,6 +499,23 @@
 		return () => window.removeEventListener('pointerdown', handlePointerDown, true);
 	});
 
+	$effect(() => {
+		if (!shortcutsOpen) {
+			return;
+		}
+
+		function handlePointerDown(event: MouseEvent) {
+			const wrap = shortcutsWrap;
+			if (!wrap) return;
+			const target = event.target;
+			if (target instanceof Node && wrap.contains(target)) return;
+			shortcutsOpen = false;
+		}
+
+		window.addEventListener('pointerdown', handlePointerDown, true);
+		return () => window.removeEventListener('pointerdown', handlePointerDown, true);
+	});
+
 	function activatePickerToken(token: SentenceToken, segmentId: string | null = null) {
 		openTokenId = token.id;
 		const segment = token.segments?.find((entry) => entry.id === segmentId) ?? null;
@@ -548,7 +593,15 @@
 			return;
 		}
 
-		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+		// Ctrl+Option (Mac) / Ctrl+Alt (Win/Linux) + arrow.
+		// Plain Option+arrow is reserved for native text-input word jump on Mac.
+		if (
+			event.ctrlKey &&
+			event.altKey &&
+			!event.metaKey &&
+			!event.shiftKey &&
+			(event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+		) {
 			event.preventDefault();
 			event.stopPropagation();
 			gotoAdjacentWord(event.key === 'ArrowRight' ? 1 : -1);
@@ -743,6 +796,32 @@
 			const revert = { ...splitMarkers };
 			delete revert[tokenId];
 			splitMarkers = revert;
+		}
+	}
+
+	async function toggleIgnoreActiveWord(): Promise<void> {
+		if (!activeToken) return;
+		const normalizedForm = activeNormalizedForm;
+		const surfaceForm = (activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '').trim();
+		if (!normalizedForm || !surfaceForm) return;
+
+		const wasIgnored = activeIsIgnored;
+		try {
+			const response = await fetch('/admin/ignored-word-forms', {
+				method: wasIgnored ? 'DELETE' : 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ normalizedForm, surfaceForm })
+			});
+			if (!response.ok) {
+				const data = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(data.error ?? 'Could not update the ignore list.');
+			}
+			await invalidateAll();
+		} catch (ignoreError) {
+			groupActionError =
+				ignoreError instanceof Error
+					? ignoreError.message
+					: 'Could not update the ignore list.';
 		}
 	}
 
@@ -977,7 +1056,10 @@
 					if (nextSegment && updatedActiveToken) {
 						activatePickerToken(updatedActiveToken, nextSegment.id);
 					} else {
-						closePicker();
+						// The submit button keeps focus by default, so Alt+←/→ keydowns
+						// don't bubble to the modal. Restore focus to the dialog so the
+						// nav shortcuts work right away.
+						queueMicrotask(() => modalElement?.focus());
 					}
 					window.setTimeout(() => {
 						if (createState[tokenId] === 'saved') {
@@ -1023,7 +1105,7 @@
 					drafts[tokenUpdate.tokenId]?.createTranslations ??
 					'',
 				createNotes:
-					(tokenUpdate.word?.notes ? stripWordLinks(tokenUpdate.word.notes) : undefined) ??
+					(tokenUpdate.word?.notes ?? undefined) ??
 					drafts[tokenUpdate.tokenId]?.createNotes ??
 					'',
 				createAlternativeSpellings:
@@ -1059,7 +1141,7 @@
 						drafts[segment.id]?.createTranslations ??
 						'',
 					createNotes:
-						(segment.word?.notes ? stripWordLinks(segment.word.notes) : undefined) ??
+						(segment.word?.notes ?? undefined) ??
 						drafts[segment.id]?.createNotes ??
 						'',
 					createAlternativeSpellings: segment.word?.spellings
@@ -1094,17 +1176,34 @@
 			{@const lexicalSegments = primaryToken.segments ?? []}
 			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
 			{@const timeAnnotation = getSentenceTimeAnnotation(group.fullSurface)}
+			{@const tokenIsIgnored =
+				!sharedWord &&
+				lexicalSegments.length === 0 &&
+				ignoredFormsSet.has(primaryToken.normalizedForm)}
+			{@const tokenIsUnlinked =
+				!sharedWord && lexicalSegments.length === 0 && !tokenIsIgnored}
 			<div class="token-group">
 				<div class="token-card">
-					<div class:unlinked-lemma={!sharedWord && lexicalSegments.length === 0} class="lemma-label">
+					<div
+						class:unlinked-lemma={tokenIsUnlinked}
+						class:ignored-lemma={tokenIsIgnored}
+						class="lemma-label"
+					>
 						{#if lexicalSegments.length > 0}
 							{#each lexicalSegments as segment, segmentIndex}
 								{#if segmentIndex > 0}<span class="segment-divider">+</span>{/if}
-								<span class:unlinked-segment={!segment.word}>{segment.word?.kalenjin ?? segment.surfaceForm}</span>
+								{@const segmentIgnored =
+									!segment.word && ignoredFormsSet.has(segment.normalizedForm)}
+								<span
+									class:unlinked-segment={!segment.word && !segmentIgnored}
+									class:ignored-segment={segmentIgnored}
+								>
+									{segment.word?.kalenjin ?? segment.surfaceForm}
+								</span>
 							{/each}
 						{:else if sharedWord}
 							{sharedWord.kalenjin}
-						{:else}
+						{:else if tokenIsUnlinked}
 							<span class="unlinked-marker" aria-hidden="true"></span>
 						{/if}
 					</div>
@@ -1215,6 +1314,7 @@
 			onkeydown={handleBackdropKeydown}
 		>
 			<div
+				bind:this={modalElement}
 				class="lemma-modal"
 				role="dialog"
 				aria-modal="true"
@@ -1237,34 +1337,83 @@
 						</h3>
 					</div>
 					<div class="lemma-modal-head-actions">
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Previous word"
-							title="Previous word (Alt+←)"
-							disabled={!hasPrevWord}
-							onclick={() => gotoAdjacentWord(-1)}
-						>
-							‹
-						</button>
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Next word"
-							title="Next word (Alt+→)"
-							disabled={!hasNextWord}
-							onclick={() => gotoAdjacentWord(1)}
-						>
-							›
-						</button>
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Close"
-							onclick={() => closePicker()}
-						>
-							×
-						</button>
+						<div class="lemma-modal-head-actions-row">
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Previous word"
+								data-tooltip={prevShortcutTitle}
+								disabled={!hasPrevWord}
+								onclick={() => gotoAdjacentWord(-1)}
+							>
+								‹
+							</button>
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Next word"
+								data-tooltip={nextShortcutTitle}
+								disabled={!hasNextWord}
+								onclick={() => gotoAdjacentWord(1)}
+							>
+								›
+							</button>
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Close"
+								onclick={() => closePicker()}
+							>
+								×
+							</button>
+						</div>
+						<div class="lemma-modal-head-actions-row lemma-modal-head-actions-row--secondary">
+							<div class="shortcuts-wrap" bind:this={shortcutsWrap}>
+								<button
+									type="button"
+									class="icon-btn"
+									class:icon-btn--active={shortcutsOpen}
+									aria-label="Keyboard shortcuts"
+									aria-haspopup="dialog"
+									aria-expanded={shortcutsOpen}
+									data-tooltip="Keyboard shortcuts"
+									onclick={() => (shortcutsOpen = !shortcutsOpen)}
+								>
+									?
+								</button>
+								{#if shortcutsOpen}
+									<div class="shortcuts-popup" role="dialog" aria-label="Keyboard shortcuts">
+										<h4 class="shortcuts-title">Keyboard shortcuts</h4>
+										<dl class="shortcuts-list">
+											{#each shortcutEntries as entry (entry.label)}
+												<div class="shortcuts-row">
+													<dt class="shortcuts-row-label">{entry.label}</dt>
+													<dd class="shortcuts-row-keys">
+														{#each entry.keys as key, idx}
+															{#if idx > 0}<span class="shortcuts-plus" aria-hidden="true">+</span>{/if}
+															<kbd class="shortcuts-kbd">{key}</kbd>
+														{/each}
+													</dd>
+												</div>
+											{/each}
+										</dl>
+									</div>
+								{/if}
+							</div>
+							<button
+								type="button"
+								class="icon-btn"
+								class:icon-btn--active={activeIsIgnored}
+								aria-label={activeIsIgnored
+									? 'Stop ignoring this word'
+									: 'Ignore this word'}
+								aria-pressed={activeIsIgnored}
+								data-tooltip="Ignore word"
+								onclick={() => void toggleIgnoreActiveWord()}
+							>
+								⊘
+							</button>
+						</div>
 					</div>
 				</div>
 
@@ -1688,20 +1837,16 @@
 					<div class="lemma-notes-image-grid">
 						<div class="field notes-field">
 							<label for="lemma-field-notes">Notes</label>
-							<textarea
+							<WordLinkEditor
 								id="lemma-field-notes"
-								class="input notes-input"
 								name="notes"
-								placeholder="Optional"
-								rows="4"
+								className="input notes-input"
+								multiline
+								rows={4}
+								placeholder="Optional. Type [ to link another lemma."
 								value={drafts[activeDraftKey]?.createNotes ?? ''}
-								oninput={(event) =>
-									updateDraft(
-										activeDraftKey,
-										'createNotes',
-										(event.currentTarget as HTMLTextAreaElement).value
-									)}
-							></textarea>
+								oninput={(next) => updateDraft(activeDraftKey, 'createNotes', next)}
+							/>
 						</div>
 						<ImageUploadField
 							name="image"
@@ -1810,6 +1955,14 @@
 
 	.unlinked-segment {
 		color: var(--danger-strong);
+	}
+
+	.ignored-lemma {
+		background: var(--surface);
+	}
+
+	.ignored-segment {
+		color: var(--ink-mute);
 	}
 
 	.token-button {
@@ -1975,7 +2128,30 @@
 		justify-content: center;
 		line-height: 1;
 		padding: 0;
+		position: relative;
 		width: 32px;
+	}
+	.icon-btn[data-tooltip]::after {
+		background: var(--ink);
+		border-radius: 3px;
+		bottom: calc(100% + 0.35rem);
+		color: var(--bg-raised);
+		content: attr(data-tooltip);
+		font-size: 0.78rem;
+		left: 50%;
+		line-height: 1.2;
+		opacity: 0;
+		padding: 0.3rem 0.4rem;
+		pointer-events: none;
+		position: absolute;
+		transform: translateX(-50%);
+		transition: opacity 0.04s ease;
+		white-space: nowrap;
+		z-index: 20;
+	}
+	.icon-btn[data-tooltip]:hover::after,
+	.icon-btn[data-tooltip]:focus-visible::after {
+		opacity: 1;
 	}
 	.icon-btn:hover:not(:disabled) {
 		background: var(--surface);
@@ -1985,12 +2161,92 @@
 		cursor: not-allowed;
 		opacity: 0.35;
 	}
+	.icon-btn--active {
+		background: color-mix(in oklch, var(--accent) 15%, transparent);
+		color: var(--accent);
+	}
+	.icon-btn--active:hover:not(:disabled) {
+		background: color-mix(in oklch, var(--accent) 25%, transparent);
+		color: var(--accent);
+	}
 	.lemma-modal-head-actions {
+		align-items: flex-end;
+		display: flex;
+		flex-direction: column;
+		flex-shrink: 0;
+		gap: 4px;
+		margin: -4px -6px 0 0;
+	}
+	.lemma-modal-head-actions-row {
 		align-items: center;
 		display: flex;
-		flex-shrink: 0;
 		gap: 2px;
-		margin: -4px -6px 0 0;
+	}
+	.lemma-modal-head-actions-row--secondary {
+		justify-content: flex-end;
+	}
+	.shortcuts-wrap {
+		position: relative;
+	}
+	.shortcuts-popup {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 6px;
+		box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.25);
+		min-width: 240px;
+		padding: 12px 14px;
+		position: absolute;
+		right: 0;
+		top: calc(100% + 6px);
+		z-index: 30;
+	}
+	.shortcuts-title {
+		color: var(--ink-mute);
+		font-family: var(--font-display);
+		font-size: 12px;
+		font-weight: 600;
+		letter-spacing: 0.08em;
+		margin: 0 0 10px;
+		text-transform: uppercase;
+	}
+	.shortcuts-list {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin: 0;
+	}
+	.shortcuts-row {
+		align-items: center;
+		display: flex;
+		gap: 12px;
+		justify-content: space-between;
+	}
+	.shortcuts-row-label {
+		color: var(--ink);
+		font-size: 13px;
+	}
+	.shortcuts-row-keys {
+		align-items: center;
+		display: flex;
+		gap: 4px;
+		margin: 0;
+	}
+	.shortcuts-kbd {
+		background: var(--surface);
+		border: 1px solid var(--line);
+		border-radius: 3px;
+		color: var(--ink);
+		font-family: var(--font-mono, var(--font-body));
+		font-size: 11px;
+		font-weight: 600;
+		line-height: 1;
+		min-width: 1.4em;
+		padding: 3px 5px;
+		text-align: center;
+	}
+	.shortcuts-plus {
+		color: var(--ink-mute);
+		font-size: 11px;
 	}
 
 	/* Splitter */
@@ -2320,11 +2576,17 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.lemma-notes-image-grid .notes-input {
+	.lemma-notes-image-grid :global(.notes-input) {
 		flex: 1;
 		min-height: 0;
 		resize: none;
 		font-family: inherit;
+	}
+	.lemma-notes-image-grid .notes-field :global(.wle-wrap) {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-height: 0;
 	}
 	.lemma-notes-image-grid :global(.image-upload) {
 		height: 100%;

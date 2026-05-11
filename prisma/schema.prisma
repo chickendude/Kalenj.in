@@ -178,6 +178,16 @@ model ObservedWordForm {
   @@index([normalizedForm(ops: raw("gin_trgm_ops"))], type: Gin, map: "ObservedWordForm_normalizedForm_trgm_idx")
 }
 
+// Surface forms (e.g. proper nouns like names) that should not be flagged as
+// missing a lemma. The cleanup page treats any token whose normalizedForm
+// matches an entry here as resolved.
+model IgnoredWordForm {
+  normalizedForm String   @id
+  note           String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 model ExampleSentence {
   id                String                 @id @default(cuid())
   storySentenceId   String?                @unique

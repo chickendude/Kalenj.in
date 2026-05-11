@@ -1,11 +1,17 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import { toast } from '$lib/stores/toast.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
-	import type { PageData } from './$types';
+	import type { ActionData, PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
+
+	$effect(() => {
+		if (form && 'ignoreSuccess' in form && form.ignoreSuccess) toast.success(form.ignoreSuccess);
+	});
 </script>
 
 <svelte:head>
@@ -114,6 +120,67 @@
 	{/if}
 </section>
 
+<section class="form-card cleanup-section">
+	<header class="cleanup-section-head">
+		<div>
+			<h2>Ignored word forms</h2>
+			<p>
+				Surface forms (e.g. names) that should not be flagged as missing a lemma. Any token whose
+				normalized form matches an entry here is treated as resolved everywhere.
+			</p>
+		</div>
+		<span class="cleanup-count">{data.ignoredForms.length.toLocaleString()}</span>
+	</header>
+
+	{#if form && 'ignoreError' in form && form.ignoreError}
+		<div class="form-feedback error">{form.ignoreError}</div>
+	{/if}
+
+	<form method="POST" action="?/addIgnore" use:enhance class="ignore-add-form">
+		<input
+			name="normalizedForm"
+			class="input"
+			placeholder="Word to ignore (e.g. Kipchoge)"
+			autocomplete="off"
+			required
+		/>
+		<input name="note" class="input" placeholder="Note (optional)" autocomplete="off" />
+		<button type="submit" class="btn">Ignore</button>
+	</form>
+
+	{#if data.ignoredForms.length === 0}
+		<p class="empty-state">No ignored word forms yet.</p>
+	{:else}
+		<div class="table-scroll">
+			<table class="cleanup-table">
+				<thead>
+					<tr>
+						<th>Word</th>
+						<th>Note</th>
+						<th>Added</th>
+						<th aria-label="Actions"></th>
+					</tr>
+				</thead>
+				<tbody>
+					{#each data.ignoredForms as entry (entry.normalizedForm)}
+						<tr>
+							<td>{entry.normalizedForm}</td>
+							<td class="muted">{entry.note ?? '—'}</td>
+							<td class="muted">{dateFmt.format(entry.createdAt)}</td>
+							<td class="num">
+								<form method="POST" action="?/removeIgnore" use:enhance>
+									<input type="hidden" name="normalizedForm" value={entry.normalizedForm} />
+									<button type="submit" class="btn-sm ghost">Remove</button>
+								</form>
+							</td>
+						</tr>
+					{/each}
+				</tbody>
+			</table>
+		</div>
+	{/if}
+</section>
+
 <style>
 	.cleanup-section-head {
 		display: flex;
@@ -195,5 +262,16 @@
 	.cleanup-link:hover {
 		color: var(--accent);
 		text-decoration: underline;
+	}
+	.ignore-add-form {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		align-items: center;
+		margin-bottom: 16px;
+	}
+	.ignore-add-form .input {
+		flex: 1 1 180px;
+		min-width: 0;
 	}
 </style>

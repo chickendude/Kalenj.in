@@ -181,6 +181,13 @@
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
 	let modalElement = $state<HTMLDivElement | null>(null);
+
+	const isMac =
+		typeof navigator !== 'undefined' &&
+		/mac|iphone|ipad|ipod/i.test(navigator.platform ?? navigator.userAgent ?? '');
+	const navShortcutModifier = isMac ? '⌃⌥' : 'Ctrl+Alt+';
+	const prevShortcutTitle = `Previous word (${navShortcutModifier}←)`;
+	const nextShortcutTitle = `Next word (${navShortcutModifier}→)`;
 	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
@@ -561,7 +568,15 @@
 			return;
 		}
 
-		if (event.altKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+		// Ctrl+Option (Mac) / Ctrl+Alt (Win/Linux) + arrow.
+		// Plain Option+arrow is reserved for native text-input word jump on Mac.
+		if (
+			event.ctrlKey &&
+			event.altKey &&
+			!event.metaKey &&
+			!event.shiftKey &&
+			(event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+		) {
 			event.preventDefault();
 			event.stopPropagation();
 			gotoAdjacentWord(event.key === 'ArrowRight' ? 1 : -1);
@@ -1302,7 +1317,7 @@
 								type="button"
 								class="icon-btn"
 								aria-label="Previous word"
-								title="Previous word (Alt+←)"
+								data-tooltip={prevShortcutTitle}
 								disabled={!hasPrevWord}
 								onclick={() => gotoAdjacentWord(-1)}
 							>
@@ -1312,7 +1327,7 @@
 								type="button"
 								class="icon-btn"
 								aria-label="Next word"
-								title="Next word (Alt+→)"
+								data-tooltip={nextShortcutTitle}
 								disabled={!hasNextWord}
 								onclick={() => gotoAdjacentWord(1)}
 							>

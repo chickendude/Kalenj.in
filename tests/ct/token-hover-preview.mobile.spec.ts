@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/experimental-ct-svelte';
 import type { ComponentFixtures } from '@playwright/experimental-ct-svelte';
+import type { Page } from 'playwright/test';
 import TokenHoverPreviewHarness from './TokenHoverPreviewHarness.svelte';
 
 const tokens = [
@@ -36,6 +37,25 @@ async function mountPreview(
 	});
 }
 
+async function expectTooltipWithinViewport(page: Page) {
+	const viewport = page.viewportSize();
+	expect(viewport).not.toBeNull();
+
+	await expect
+		.poll(async () => {
+			const box = await page.getByRole('tooltip').boundingBox();
+			return box?.x ?? Number.NEGATIVE_INFINITY;
+		})
+		.toBeGreaterThanOrEqual(11);
+
+	await expect
+		.poll(async () => {
+			const box = await page.getByRole('tooltip').boundingBox();
+			return box ? box.x + box.width : Number.POSITIVE_INFINITY;
+		})
+		.toBeLessThanOrEqual(viewport!.width - 11);
+}
+
 test('mobile taps show one preview with a full-entry affordance', async ({ mount, page }) => {
 	const component = await mountPreview(mount);
 
@@ -59,12 +79,13 @@ test('mobile previews stay onscreen and remain centered when there is room', asy
 	let component = await mountPreview(mount);
 	await component.getByRole('link', { name: /^Ngunon$/ }).click();
 
-	const viewport = page.viewportSize();
-	expect(viewport).not.toBeNull();
-	const edgeTooltip = await page.getByRole('tooltip').boundingBox();
-	expect(edgeTooltip).not.toBeNull();
-	expect(edgeTooltip!.x).toBeGreaterThanOrEqual(11);
-	expect(edgeTooltip!.x + edgeTooltip!.width).toBeLessThanOrEqual(viewport!.width - 11);
+	await expectTooltipWithinViewport(page);
+
+	await component.unmount();
+	component = await mountPreview(mount, { containerStyle: 'margin-left: 315px; width: 70px;' });
+
+	await component.getByRole('link', { name: /^Ngunon$/ }).click();
+	await expectTooltipWithinViewport(page);
 
 	await component.unmount();
 	component = await mountPreview(mount, { containerStyle: 'margin-left: 150px; width: 220px;' });

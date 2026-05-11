@@ -118,6 +118,24 @@
 		const next = new Map(tooltipOffsets);
 		next.set(tooltipKey, offset);
 		tooltipOffsets = next;
+		void tick().then(() => correctTooltipOffset(tooltipKey, element));
+	}
+
+	function correctTooltipOffset(tooltipKey: string, element: HTMLElement) {
+		const tooltip = element.querySelector<HTMLElement>('[data-token-tooltip]');
+		if (!tooltip) return;
+
+		const rect = tooltip.getBoundingClientRect();
+		const rightOverflow = rect.right - (window.innerWidth - TOOLTIP_VIEWPORT_GUTTER);
+		const leftOverflow = TOOLTIP_VIEWPORT_GUTTER - rect.left;
+		const correction =
+			rightOverflow > 0 ? -Math.ceil(rightOverflow) : leftOverflow > 0 ? Math.ceil(leftOverflow) : 0;
+
+		if (correction === 0) return;
+
+		const next = new Map(tooltipOffsets);
+		next.set(tooltipKey, (next.get(tooltipKey) ?? 0) + correction);
+		tooltipOffsets = next;
 	}
 
 	function prepareTooltip(tooltipKey: string, element: HTMLElement) {
@@ -368,7 +386,8 @@
 		position: absolute;
 		bottom: calc(100% + 0.3rem);
 		left: 50%;
-		transform: translateX(calc(-50% + var(--tooltip-offset, 0px)));
+		margin-left: var(--tooltip-offset, 0px);
+		transform: translateX(-50%);
 		background: var(--tooltip-bg);
 		border-radius: 0.45rem;
 		color: var(--tooltip-ink);

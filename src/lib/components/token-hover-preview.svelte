@@ -13,6 +13,7 @@
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
+		inContextTranslation?: string | null;
 		word?: TokenWord | null;
 		segments?: Array<{
 			id: string;
@@ -25,6 +26,7 @@
 		key: string;
 		kalenjin: string;
 		english: string | null;
+		inContextTranslation: string | null;
 		westernTime: string | null;
 		timeNote: string | null;
 		wordId: string | null;
@@ -73,20 +75,23 @@
 	function buildPopupPart(
 		key: string,
 		surfaceForm: string,
-		word: TokenWord | null | undefined
+		word: TokenWord | null | undefined,
+		inContextTranslation: string | null | undefined
 	): PopupPart {
 		const timeAnnotation = getSentenceTimeAnnotation(surfaceForm);
 		const english = word?.translations ?? null;
+		const inContext = inContextTranslation?.trim() ? inContextTranslation.trim() : null;
 		const westernTime = timeAnnotation?.westernTime ?? null;
 		const wordId = word?.id ?? null;
 		return {
 			key,
 			kalenjin: word?.kalenjin ?? surfaceForm,
 			english,
+			inContextTranslation: inContext,
 			westernTime,
 			timeNote: timeAnnotation?.note ?? null,
 			wordId,
-			hasInfo: Boolean(english || westernTime || wordId)
+			hasInfo: Boolean(english || inContext || westernTime || wordId)
 		};
 	}
 
@@ -204,29 +209,34 @@
 			data-token-tooltip
 			role="tooltip"
 			style={tooltipStyleFor(popup.key)}
-			><span class="tooltip-part">
-				<span class="tooltip-heading">
-					<em>{popup.kalenjin}</em>
-					{#if popup.wordId && tapPreviewMode}
-						<a
-							href={`/dictionary/${popup.wordId}`}
-							class="tooltip-entry-link"
-							aria-label={`Open dictionary entry for ${popup.kalenjin}`}
-							onclick={(event) => event.stopPropagation()}
-						>
-							<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-								<path
-									d="M6 4H4.75A1.75 1.75 0 0 0 3 5.75v5.5C3 12.22 3.78 13 4.75 13h5.5A1.75 1.75 0 0 0 12 11.25V10M9 3h4v4M8 8l5-5"
-									stroke="currentColor"
-									stroke-width="1.5"
-									stroke-linecap="round"
-									stroke-linejoin="round"
-								/>
-							</svg>
-						</a>
-					{/if}
-				</span>
-				{#if popup.english}<span>{popup.english}</span>{/if}
+			class:has-entry-link={Boolean(popup.wordId && tapPreviewMode)}
+			>{#if popup.wordId && tapPreviewMode}
+				<a
+					href={`/dictionary/${popup.wordId}`}
+					class="tooltip-entry-link"
+					aria-label={`Open dictionary entry for ${popup.kalenjin}`}
+					onclick={(event) => event.stopPropagation()}
+				>
+					<svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+						<path
+							d="M6 4H4.75A1.75 1.75 0 0 0 3 5.75v5.5C3 12.22 3.78 13 4.75 13h5.5A1.75 1.75 0 0 0 12 11.25V10M9 3h4v4M8 8l5-5"
+							stroke="currentColor"
+							stroke-width="1.5"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						/>
+					</svg>
+				</a>
+			{/if}<span class="tooltip-part">
+				{#if popup.inContextTranslation}
+					<span class="in-context">{popup.inContextTranslation}</span>
+				{/if}
+				<span class="lemma-line"
+					><em>{popup.kalenjin}</em
+					>{#if popup.english}<span class="lemma-sep" aria-hidden="true">|</span><span
+							>{popup.english}</span
+						>{/if}</span
+				>
 				{#if popup.westernTime}
 					<span class="time-note"><strong>Western time:</strong> {popup.westernTime}</span>
 					<span class="time-note-detail">{popup.timeNote}</span>
@@ -244,7 +254,12 @@
 					<span class="token-split" aria-label={token.surfaceForm}>
 						{#each token.segments as segment (segment.id)}
 							{@const tooltipKey = `${sentenceId}:${token.id}:${segment.id}`}
-							{@const popup = buildPopupPart(tooltipKey, segment.surfaceForm, segment.word)}
+							{@const popup = buildPopupPart(
+								tooltipKey,
+								segment.surfaceForm,
+								segment.word,
+								token.inContextTranslation
+							)}
 							{#if popup.wordId && !onTokenClick}
 								<!-- svelte-ignore a11y_no_static_element_interactions -->
 								<span
@@ -280,7 +295,12 @@
 					</span>
 				{:else}
 					{@const tooltipKey = `${sentenceId}:${token.id}`}
-					{@const popup = buildPopupPart(tooltipKey, token.surfaceForm, token.word)}
+					{@const popup = buildPopupPart(
+						tooltipKey,
+						token.surfaceForm,
+						token.word,
+						token.inContextTranslation
+					)}
 					{#if popup.wordId && !onTokenClick}
 						<!-- svelte-ignore a11y_no_static_element_interactions -->
 						<span
@@ -401,17 +421,33 @@
 		z-index: 10;
 	}
 
+	.token-tooltip.has-entry-link {
+		padding-right: 1.75rem;
+	}
+
 	.tooltip-part {
 		display: grid;
 		gap: 0.08rem;
 		text-align: center;
 	}
 
-	.tooltip-heading {
-		align-items: center;
-		display: flex;
-		gap: 0.35rem;
-		justify-content: space-between;
+	.in-context {
+		display: block;
+		text-align: center;
+		font-weight: 600;
+		margin-bottom: 0.15rem;
+	}
+
+	.lemma-line {
+		display: block;
+		text-align: left;
+		padding-left: 0.9rem;
+		text-indent: -0.9rem;
+	}
+
+	.lemma-sep {
+		margin: 0 0.3rem;
+		color: color-mix(in oklab, var(--tooltip-ink) 60%, transparent);
 	}
 
 	.tooltip-entry-link {
@@ -419,10 +455,11 @@
 		border-radius: 999px;
 		color: inherit;
 		display: inline-flex;
-		flex: 0 0 auto;
 		height: 1.35rem;
 		justify-content: center;
-		margin: -0.15rem -0.2rem -0.15rem 0;
+		position: absolute;
+		right: 0.2rem;
+		top: 0.2rem;
 		width: 1.35rem;
 	}
 

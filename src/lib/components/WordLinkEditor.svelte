@@ -19,6 +19,7 @@
 		multiline?: boolean;
 		rows?: number;
 		className?: string;
+		oninput?: (value: string) => void;
 	};
 
 	let {
@@ -29,7 +30,8 @@
 		required = false,
 		multiline = false,
 		rows = 3,
-		className
+		className,
+		oninput
 	}: Props = $props();
 
 	let el: HTMLInputElement | HTMLTextAreaElement | undefined = $state();
@@ -110,6 +112,7 @@
 		const caret = caretPos();
 		const { nextValue, nextCaret } = buildWordLinkInsertion(value, triggerStart, caret, pick);
 		value = nextValue;
+		oninput?.(nextValue);
 		closeMenu();
 		const target = el;
 		queueMicrotask(() => {
@@ -126,6 +129,7 @@
 			}
 		}
 		updateQuery();
+		oninput?.(value);
 	}
 
 	function onKeyDown(event: KeyboardEvent) {

@@ -7,6 +7,7 @@
 	import { stripWordLinks } from '$lib/word-links';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
@@ -273,7 +274,7 @@
 				inContextTranslation: token.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
 				wordTranslations: token.word?.translations ? stripWordLinks(token.word.translations) : null,
-				wordNotes: token.word?.notes ? stripWordLinks(token.word.notes) : null,
+				wordNotes: token.word?.notes ?? null,
 				wordSpellings: token.word?.spellings?.map((spelling) => spelling.spelling) ?? [],
 				segments:
 					token.segments?.map((segment) => ({
@@ -282,7 +283,7 @@
 						wordId: segment.wordId,
 						wordKalenjin: segment.word?.kalenjin ?? null,
 						wordTranslations: segment.word?.translations ? stripWordLinks(segment.word.translations) : null,
-						wordNotes: segment.word?.notes ? stripWordLinks(segment.word.notes) : null,
+						wordNotes: segment.word?.notes ?? null,
 						wordSpellings: segment.word?.spellings?.map((spelling) => spelling.spelling) ?? []
 					})) ?? []
 			}))
@@ -303,7 +304,7 @@
 				selectedWordId: token.word?.id ?? '',
 				createLemma: token.word?.kalenjin ?? normalizeSearchQuery(token.surfaceForm),
 				createTranslations: stripWordLinks(token.word?.translations ?? ''),
-				createNotes: stripWordLinks(token.word?.notes ?? ''),
+				createNotes: token.word?.notes ?? '',
 				createAlternativeSpellings: serializeSpellings(token.word?.spellings),
 				createPluralForm: tokenPluralForms.pluralForm,
 				createAlternativePluralForms: tokenPluralForms.alternativePluralForms,
@@ -318,7 +319,7 @@
 					selectedWordId: segment.word?.id ?? '',
 					createLemma: segment.word?.kalenjin ?? normalizeSearchQuery(segment.surfaceForm),
 					createTranslations: stripWordLinks(segment.word?.translations ?? ''),
-					createNotes: stripWordLinks(segment.word?.notes ?? ''),
+					createNotes: segment.word?.notes ?? '',
 					createAlternativeSpellings: serializeSpellings(segment.word?.spellings),
 					createPluralForm: segmentPluralForms.pluralForm,
 					createAlternativePluralForms: segmentPluralForms.alternativePluralForms,
@@ -1104,7 +1105,7 @@
 					drafts[tokenUpdate.tokenId]?.createTranslations ??
 					'',
 				createNotes:
-					(tokenUpdate.word?.notes ? stripWordLinks(tokenUpdate.word.notes) : undefined) ??
+					(tokenUpdate.word?.notes ?? undefined) ??
 					drafts[tokenUpdate.tokenId]?.createNotes ??
 					'',
 				createAlternativeSpellings:
@@ -1140,7 +1141,7 @@
 						drafts[segment.id]?.createTranslations ??
 						'',
 					createNotes:
-						(segment.word?.notes ? stripWordLinks(segment.word.notes) : undefined) ??
+						(segment.word?.notes ?? undefined) ??
 						drafts[segment.id]?.createNotes ??
 						'',
 					createAlternativeSpellings: segment.word?.spellings
@@ -1836,20 +1837,16 @@
 					<div class="lemma-notes-image-grid">
 						<div class="field notes-field">
 							<label for="lemma-field-notes">Notes</label>
-							<textarea
+							<WordLinkEditor
 								id="lemma-field-notes"
-								class="input notes-input"
 								name="notes"
-								placeholder="Optional"
-								rows="4"
+								className="input notes-input"
+								multiline
+								rows={4}
+								placeholder="Optional. Type [ to link another lemma."
 								value={drafts[activeDraftKey]?.createNotes ?? ''}
-								oninput={(event) =>
-									updateDraft(
-										activeDraftKey,
-										'createNotes',
-										(event.currentTarget as HTMLTextAreaElement).value
-									)}
-							></textarea>
+								oninput={(next) => updateDraft(activeDraftKey, 'createNotes', next)}
+							/>
 						</div>
 						<ImageUploadField
 							name="image"
@@ -2579,11 +2576,17 @@
 		display: flex;
 		flex-direction: column;
 	}
-	.lemma-notes-image-grid .notes-input {
+	.lemma-notes-image-grid :global(.notes-input) {
 		flex: 1;
 		min-height: 0;
 		resize: none;
 		font-family: inherit;
+	}
+	.lemma-notes-image-grid .notes-field :global(.wle-wrap) {
+		display: flex;
+		flex: 1;
+		flex-direction: column;
+		min-height: 0;
 	}
 	.lemma-notes-image-grid :global(.image-upload) {
 		height: 100%;

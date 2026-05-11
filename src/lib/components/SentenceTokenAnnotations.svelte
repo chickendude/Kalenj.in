@@ -775,7 +775,6 @@
 				const data = (await response.json().catch(() => ({}))) as { error?: string };
 				throw new Error(data.error ?? 'Could not update the ignore list.');
 			}
-			closePicker();
 			await invalidateAll();
 		} catch (ignoreError) {
 			groupActionError =
@@ -1015,8 +1014,6 @@
 					const updatedActiveToken = localTokens.find((token) => token.id === tokenId);
 					if (nextSegment && updatedActiveToken) {
 						activatePickerToken(updatedActiveToken, nextSegment.id);
-					} else {
-						closePicker();
 					}
 					window.setTimeout(() => {
 						if (createState[tokenId] === 'saved') {

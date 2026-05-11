@@ -32,6 +32,7 @@
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
+		normalizedForm: string;
 		wordId: string | null;
 		inContextTranslation?: string | null;
 		word?: {
@@ -58,6 +59,7 @@
 		segmentStart: number;
 		segmentEnd: number;
 		surfaceForm: string;
+		normalizedForm: string;
 		wordId: string | null;
 		word?: {
 			id: string;
@@ -135,6 +137,7 @@
 		sentenceText,
 		tokens,
 		dictionaryWords,
+		ignoredNormalizedForms = [],
 		updateAction,
 		createAction,
 		searchEndpoint,
@@ -151,6 +154,7 @@
 		sentenceText: string;
 		tokens: SentenceToken[];
 		dictionaryWords: DictionaryWord[];
+		ignoredNormalizedForms?: string[];
 		updateAction: string;
 		createAction: string;
 		searchEndpoint: string;
@@ -216,6 +220,13 @@
 	const activeSurface = $derived(activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '');
 	const activeWord = $derived(activeSegment?.word ?? activeToken?.word ?? null);
 	const activeWordId = $derived(activeSegment?.wordId ?? activeToken?.wordId ?? null);
+	const activeNormalizedForm = $derived(
+		activeSegment?.normalizedForm ?? activeToken?.normalizedForm ?? ''
+	);
+	const ignoredFormsSet = $derived(new Set(ignoredNormalizedForms));
+	const activeIsIgnored = $derived(
+		activeNormalizedForm.length > 0 && ignoredFormsSet.has(activeNormalizedForm)
+	);
 	const isFirstSegmentActive = $derived(
 		Boolean(activeToken?.segments?.[0]?.id && activeToken.segments[0].id === activeSegment?.id)
 	);
@@ -747,31 +758,30 @@
 		}
 	}
 
-	async function ignoreActiveWord(): Promise<void> {
+	async function toggleIgnoreActiveWord(): Promise<void> {
 		if (!activeToken) return;
+		const normalizedForm = activeNormalizedForm;
 		const surfaceForm = (activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '').trim();
-		if (!surfaceForm) return;
+		if (!normalizedForm || !surfaceForm) return;
 
-		const message =
-			`Ignore “${surfaceForm}”? It will no longer be flagged as missing a lemma anywhere ` +
-			`(use this for names and other proper nouns).`;
-		if (!window.confirm(message)) return;
-
+		const wasIgnored = activeIsIgnored;
 		try {
 			const response = await fetch('/admin/ignored-word-forms', {
-				method: 'POST',
+				method: wasIgnored ? 'DELETE' : 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ surfaceForm })
+				body: JSON.stringify({ normalizedForm, surfaceForm })
 			});
 			if (!response.ok) {
 				const data = (await response.json().catch(() => ({}))) as { error?: string };
-				throw new Error(data.error ?? 'Could not ignore that word.');
+				throw new Error(data.error ?? 'Could not update the ignore list.');
 			}
 			closePicker();
 			await invalidateAll();
 		} catch (ignoreError) {
 			groupActionError =
-				ignoreError instanceof Error ? ignoreError.message : 'Could not ignore that word.';
+				ignoreError instanceof Error
+					? ignoreError.message
+					: 'Could not update the ignore list.';
 		}
 	}
 
@@ -1300,9 +1310,15 @@
 							<button
 								type="button"
 								class="icon-btn"
-								aria-label="Ignore this word (proper noun)"
-								title="Ignore this word — useful for names and other proper nouns"
-								onclick={() => void ignoreActiveWord()}
+								class:icon-btn--active={activeIsIgnored}
+								aria-label={activeIsIgnored
+									? 'Stop ignoring this word'
+									: 'Ignore this word (proper noun)'}
+								aria-pressed={activeIsIgnored}
+								title={activeIsIgnored
+									? 'Currently ignored — click to start flagging it again'
+									: 'Ignore this word (useful for names and other proper nouns)'}
+								onclick={() => void toggleIgnoreActiveWord()}
 							>
 								⊘
 							</button>
@@ -2026,6 +2042,14 @@
 	.icon-btn:disabled {
 		cursor: not-allowed;
 		opacity: 0.35;
+	}
+	.icon-btn--active {
+		background: color-mix(in oklch, var(--accent) 15%, transparent);
+		color: var(--accent);
+	}
+	.icon-btn--active:hover:not(:disabled) {
+		background: color-mix(in oklch, var(--accent) 25%, transparent);
+		color: var(--accent);
 	}
 	.lemma-modal-head-actions {
 		align-items: flex-end;

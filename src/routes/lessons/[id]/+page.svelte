@@ -1216,6 +1216,7 @@
 								sentenceText={sentence.kalenjin}
 								tokens={sentence.tokens}
 								dictionaryWords={data.words}
+								ignoredNormalizedForms={data.ignoredNormalizedForms}
 								updateAction="?/updateStorySentenceToken"
 								createAction="?/createStorySentenceWord"
 								searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
@@ -1599,6 +1600,7 @@
 											sentenceText={lessonWord.sentence.kalenjin}
 											tokens={lessonWord.sentence.tokens}
 											dictionaryWords={data.words}
+											ignoredNormalizedForms={data.ignoredNormalizedForms}
 											updateAction="?/updateExampleSentenceToken"
 											createAction="?/createExampleSentenceWord"
 											searchEndpoint={`/lessons/${data.lesson.id}/word-search`}

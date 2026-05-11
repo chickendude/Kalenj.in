@@ -65,7 +65,7 @@ async function ensureSentenceTokenSegment(
 }
 
 export const load: PageServerLoad = async ({ params }) => {
-	const [sentence, words] = await Promise.all([
+	const [sentence, words, ignoredForms] = await Promise.all([
 		prisma.exampleSentence.findUnique({
 			where: { id: params.id },
 			include: {
@@ -90,7 +90,8 @@ export const load: PageServerLoad = async ({ params }) => {
 		prisma.word.findMany({
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
 			take: 500
-		})
+		}),
+		prisma.ignoredWordForm.findMany({ select: { normalizedForm: true } })
 	]);
 
 	if (!sentence) {
@@ -99,7 +100,8 @@ export const load: PageServerLoad = async ({ params }) => {
 
 	return {
 		sentence,
-		words
+		words,
+		ignoredNormalizedForms: ignoredForms.map((entry) => entry.normalizedForm)
 	};
 };
 

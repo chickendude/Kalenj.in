@@ -533,7 +533,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 	requireEditor(locals);
 	await backfillMissingStoryTokens(params.id);
 
-	const [lesson, words, cefrTargets] = await Promise.all([
+	const [lesson, words, cefrTargets, ignoredForms] = await Promise.all([
 		getLessonDetail(params.id),
 		prisma.word.findMany({
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
@@ -541,7 +541,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		}),
 		prisma.cefrEnglishTarget.findMany({
 			orderBy: [{ level: 'asc' }, { english: 'asc' }]
-		})
+		}),
+		prisma.ignoredWordForm.findMany({ select: { normalizedForm: true } })
 	]);
 
 	if (!lesson) {
@@ -577,7 +578,8 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 		nextLesson,
 		levelLessons,
 		lessonTypes: LESSON_TYPES,
-		vocabularyTypes: VOCABULARY_LESSON_TYPES
+		vocabularyTypes: VOCABULARY_LESSON_TYPES,
+		ignoredNormalizedForms: ignoredForms.map((entry) => entry.normalizedForm)
 	};
 };
 

@@ -418,6 +418,7 @@
 				sentenceText={sentenceKalenjin}
 				tokens={displayedSentenceTokens}
 				dictionaryWords={data.words}
+				ignoredNormalizedForms={data.ignoredNormalizedForms}
 				updateAction="?/updateCorpusSentenceToken"
 				createAction="?/createCorpusSentenceWord"
 				searchEndpoint={`/corpus/${data.sentence.id}/word-search`}

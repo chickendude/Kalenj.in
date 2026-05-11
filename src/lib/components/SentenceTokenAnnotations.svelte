@@ -1313,11 +1313,9 @@
 								class:icon-btn--active={activeIsIgnored}
 								aria-label={activeIsIgnored
 									? 'Stop ignoring this word'
-									: 'Ignore this word (proper noun)'}
+									: 'Ignore this word'}
 								aria-pressed={activeIsIgnored}
-								title={activeIsIgnored
-									? 'Currently ignored — click to start flagging it again'
-									: 'Ignore this word (useful for names and other proper nouns)'}
+								data-tooltip="Ignore word"
 								onclick={() => void toggleIgnoreActiveWord()}
 							>
 								⊘
@@ -2033,7 +2031,30 @@
 		justify-content: center;
 		line-height: 1;
 		padding: 0;
+		position: relative;
 		width: 32px;
+	}
+	.icon-btn[data-tooltip]::after {
+		background: var(--ink);
+		border-radius: 3px;
+		bottom: calc(100% + 0.35rem);
+		color: var(--bg-raised);
+		content: attr(data-tooltip);
+		font-size: 0.78rem;
+		left: 50%;
+		line-height: 1.2;
+		opacity: 0;
+		padding: 0.3rem 0.4rem;
+		pointer-events: none;
+		position: absolute;
+		transform: translateX(-50%);
+		transition: opacity 0.04s ease;
+		white-space: nowrap;
+		z-index: 20;
+	}
+	.icon-btn[data-tooltip]:hover::after,
+	.icon-btn[data-tooltip]:focus-visible::after {
+		opacity: 1;
 	}
 	.icon-btn:hover:not(:disabled) {
 		background: var(--surface);

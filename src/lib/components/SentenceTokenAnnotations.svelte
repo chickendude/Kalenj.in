@@ -180,6 +180,7 @@
 	let localTokens = $state<SentenceToken[]>([]);
 	let lastIncomingSignature = $state('');
 	let searchInput = $state<HTMLInputElement | null>(null);
+	let modalElement = $state<HTMLDivElement | null>(null);
 	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
@@ -1014,6 +1015,11 @@
 					const updatedActiveToken = localTokens.find((token) => token.id === tokenId);
 					if (nextSegment && updatedActiveToken) {
 						activatePickerToken(updatedActiveToken, nextSegment.id);
+					} else {
+						// The submit button keeps focus by default, so Alt+←/→ keydowns
+						// don't bubble to the modal. Restore focus to the dialog so the
+						// nav shortcuts work right away.
+						queueMicrotask(() => modalElement?.focus());
 					}
 					window.setTimeout(() => {
 						if (createState[tokenId] === 'saved') {
@@ -1268,6 +1274,7 @@
 			onkeydown={handleBackdropKeydown}
 		>
 			<div
+				bind:this={modalElement}
 				class="lemma-modal"
 				role="dialog"
 				aria-modal="true"

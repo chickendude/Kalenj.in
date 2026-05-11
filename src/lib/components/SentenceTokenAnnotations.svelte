@@ -1130,17 +1130,34 @@
 			{@const lexicalSegments = primaryToken.segments ?? []}
 			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
 			{@const timeAnnotation = getSentenceTimeAnnotation(group.fullSurface)}
+			{@const tokenIsIgnored =
+				!sharedWord &&
+				lexicalSegments.length === 0 &&
+				ignoredFormsSet.has(primaryToken.normalizedForm)}
+			{@const tokenIsUnlinked =
+				!sharedWord && lexicalSegments.length === 0 && !tokenIsIgnored}
 			<div class="token-group">
 				<div class="token-card">
-					<div class:unlinked-lemma={!sharedWord && lexicalSegments.length === 0} class="lemma-label">
+					<div
+						class:unlinked-lemma={tokenIsUnlinked}
+						class:ignored-lemma={tokenIsIgnored}
+						class="lemma-label"
+					>
 						{#if lexicalSegments.length > 0}
 							{#each lexicalSegments as segment, segmentIndex}
 								{#if segmentIndex > 0}<span class="segment-divider">+</span>{/if}
-								<span class:unlinked-segment={!segment.word}>{segment.word?.kalenjin ?? segment.surfaceForm}</span>
+								{@const segmentIgnored =
+									!segment.word && ignoredFormsSet.has(segment.normalizedForm)}
+								<span
+									class:unlinked-segment={!segment.word && !segmentIgnored}
+									class:ignored-segment={segmentIgnored}
+								>
+									{segment.word?.kalenjin ?? segment.surfaceForm}
+								</span>
 							{/each}
 						{:else if sharedWord}
 							{sharedWord.kalenjin}
-						{:else}
+						{:else if tokenIsUnlinked}
 							<span class="unlinked-marker" aria-hidden="true"></span>
 						{/if}
 					</div>
@@ -1863,6 +1880,14 @@
 
 	.unlinked-segment {
 		color: var(--danger-strong);
+	}
+
+	.ignored-lemma {
+		background: var(--surface);
+	}
+
+	.ignored-segment {
+		color: var(--ink-mute);
 	}
 
 	.token-button {

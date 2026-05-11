@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { invalidateAll } from '$app/navigation';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
@@ -746,6 +747,34 @@
 		}
 	}
 
+	async function ignoreActiveWord(): Promise<void> {
+		if (!activeToken) return;
+		const surfaceForm = (activeSegment?.surfaceForm ?? activeGroup?.fullSurface ?? '').trim();
+		if (!surfaceForm) return;
+
+		const message =
+			`Ignore “${surfaceForm}”? It will no longer be flagged as missing a lemma anywhere ` +
+			`(use this for names and other proper nouns).`;
+		if (!window.confirm(message)) return;
+
+		try {
+			const response = await fetch('/admin/ignored-word-forms', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ surfaceForm })
+			});
+			if (!response.ok) {
+				const data = (await response.json().catch(() => ({}))) as { error?: string };
+				throw new Error(data.error ?? 'Could not ignore that word.');
+			}
+			closePicker();
+			await invalidateAll();
+		} catch (ignoreError) {
+			groupActionError =
+				ignoreError instanceof Error ? ignoreError.message : 'Could not ignore that word.';
+		}
+	}
+
 	async function unsplitActiveGroup(): Promise<void> {
 		if (!activeToken) {
 			return;
@@ -1237,34 +1266,47 @@
 						</h3>
 					</div>
 					<div class="lemma-modal-head-actions">
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Previous word"
-							title="Previous word (Alt+←)"
-							disabled={!hasPrevWord}
-							onclick={() => gotoAdjacentWord(-1)}
-						>
-							‹
-						</button>
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Next word"
-							title="Next word (Alt+→)"
-							disabled={!hasNextWord}
-							onclick={() => gotoAdjacentWord(1)}
-						>
-							›
-						</button>
-						<button
-							type="button"
-							class="icon-btn"
-							aria-label="Close"
-							onclick={() => closePicker()}
-						>
-							×
-						</button>
+						<div class="lemma-modal-head-actions-row">
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Previous word"
+								title="Previous word (Alt+←)"
+								disabled={!hasPrevWord}
+								onclick={() => gotoAdjacentWord(-1)}
+							>
+								‹
+							</button>
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Next word"
+								title="Next word (Alt+→)"
+								disabled={!hasNextWord}
+								onclick={() => gotoAdjacentWord(1)}
+							>
+								›
+							</button>
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Close"
+								onclick={() => closePicker()}
+							>
+								×
+							</button>
+						</div>
+						<div class="lemma-modal-head-actions-row lemma-modal-head-actions-row--secondary">
+							<button
+								type="button"
+								class="icon-btn"
+								aria-label="Ignore this word (proper noun)"
+								title="Ignore this word — useful for names and other proper nouns"
+								onclick={() => void ignoreActiveWord()}
+							>
+								⊘
+							</button>
+						</div>
 					</div>
 				</div>
 
@@ -1986,11 +2028,20 @@
 		opacity: 0.35;
 	}
 	.lemma-modal-head-actions {
+		align-items: flex-end;
+		display: flex;
+		flex-direction: column;
+		flex-shrink: 0;
+		gap: 4px;
+		margin: -4px -6px 0 0;
+	}
+	.lemma-modal-head-actions-row {
 		align-items: center;
 		display: flex;
-		flex-shrink: 0;
 		gap: 2px;
-		margin: -4px -6px 0 0;
+	}
+	.lemma-modal-head-actions-row--secondary {
+		justify-content: flex-end;
 	}
 
 	/* Splitter */

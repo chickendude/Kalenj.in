@@ -10,6 +10,7 @@
 		"lint": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"test": "vitest",
 		"test:run": "vitest run",
+		"test:ct": "playwright test -c playwright-ct.config.ts",
 		"test:coverage": "vitest run --coverage",
 		"prepare": "svelte-kit sync || echo ''",
 		"db:generate": "prisma generate",
@@ -23,6 +24,7 @@
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
 	},
 	"devDependencies": {
+		"@playwright/experimental-ct-svelte": "^1.58.2",
 		"@sveltejs/adapter-node": "^5.3.3",
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",

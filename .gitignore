@@ -8,11 +8,16 @@ DEPLOYMENT.md
 .wrangler
 /.claude
 /.codex-worktrees
-/docs
 /.svelte-kit
 /build
 /coverage
+/playwright-report
+/test-results
 /.uploads
+
+# Keep generated/in-progress docs out of git, but track durable repo practices.
+/docs/*
+!/docs/testing-practices.md
 
 # OS
 .DS_Store
@@ -28,6 +33,7 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+/playwright/.cache
 
 /../generated/prisma
 

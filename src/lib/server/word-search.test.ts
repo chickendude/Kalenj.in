@@ -28,6 +28,7 @@ function makeWord(overrides: Partial<{
 		presentIchek: null,
 		imageUrl: null,
 		audioUrl: null,
+		pluralAudioUrl: null,
 		createdAt: new Date('2026-01-01T00:00:00.000Z'),
 		updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		spellings: overrides.spellings ?? []

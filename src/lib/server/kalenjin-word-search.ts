@@ -24,6 +24,7 @@ export type KalenjinSearchWord = {
 	presentIchek: string | null;
 	imageUrl: string | null;
 	audioUrl: string | null;
+	pluralAudioUrl: string | null;
 	createdAt: Date;
 	updatedAt: Date;
 	spellings?: Array<{

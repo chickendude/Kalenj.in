@@ -4,11 +4,15 @@
 	import { toast } from '$lib/stores/toast.svelte';
 
 	type TargetType = 'word' | 'sentence';
+	type ItemTargetType = 'word' | 'word-plural' | 'sentence';
 
 	type RecorderItem = {
 		id: string;
 		primary: string;
 		secondary: string;
+		targetId?: string;
+		targetType?: ItemTargetType;
+		badge?: string;
 	};
 
 	type Props = {
@@ -48,12 +52,16 @@
 
 	type ResultRow = {
 		targetId: string;
+		serverTargetId: string;
+		serverTargetType: ItemTargetType;
 		audioUrl: string;
 		durationSec: number | null;
 	};
 
 	type SkippedRow = {
 		targetId: string;
+		serverTargetId: string;
+		serverTargetType: ItemTargetType;
 		reason: string;
 	};
 
@@ -500,7 +508,15 @@
 		formData.append(
 			'segments',
 			JSON.stringify(
-				segments.map((s) => ({ targetId: s.targetId, startMs: s.startMs, endMs: s.endMs }))
+				segments.map((s) => {
+					const it = itemById.get(s.targetId);
+					return {
+						targetId: it?.targetId ?? s.targetId,
+						targetType: (it?.targetType ?? targetType) as ItemTargetType,
+						startMs: s.startMs,
+						endMs: s.endMs
+					};
+				})
 			)
 		);
 
@@ -510,11 +526,45 @@
 				const text = await res.text().catch(() => '');
 				throw new Error(text || `Processing failed: ${res.status}`);
 			}
-			const payload = (await res.json()) as { results: ResultRow[]; skipped: SkippedRow[] };
-			resultRows = payload.results;
-			processingSkipped = payload.skipped;
+			type ServerResult = {
+				targetId: string;
+				targetType: ItemTargetType;
+				audioUrl: string;
+				durationSec: number | null;
+			};
+			type ServerSkipped = {
+				targetId: string;
+				targetType: ItemTargetType;
+				reason: string;
+			};
+			const payload = (await res.json()) as {
+				results: ServerResult[];
+				skipped: ServerSkipped[];
+			};
+			const serverKeyToItemId = new Map<string, string>();
+			for (const it of currentItems) {
+				const tt = (it.targetType ?? targetType) as ItemTargetType;
+				const tid = it.targetId ?? it.id;
+				serverKeyToItemId.set(`${tt}:${tid}`, it.id);
+			}
+			function findItemId(targetType: ItemTargetType, targetId: string): string {
+				return serverKeyToItemId.get(`${targetType}:${targetId}`) ?? targetId;
+			}
+			resultRows = payload.results.map((r) => ({
+				targetId: findItemId(r.targetType, r.targetId),
+				serverTargetId: r.targetId,
+				serverTargetType: r.targetType,
+				audioUrl: r.audioUrl,
+				durationSec: r.durationSec
+			}));
+			processingSkipped = payload.skipped.map((s) => ({
+				targetId: findItemId(s.targetType, s.targetId),
+				serverTargetId: s.targetId,
+				serverTargetType: s.targetType,
+				reason: s.reason
+			}));
 			const initialStates = new Map<string, ReviewState>();
-			for (const r of payload.results) initialStates.set(r.targetId, 'keep');
+			for (const r of resultRows) initialStates.set(r.targetId, 'keep');
 			reviewStates = initialStates;
 			session = { kind: 'reviewing' };
 		} catch (err) {
@@ -555,7 +605,7 @@
 	const totalAudioSec = $derived(keepRows.reduce((sum, r) => sum + (r.durationSec ?? 0), 0));
 
 	async function postCommit(
-		keep: { targetId: string; audioUrl: string }[],
+		keep: { targetId: string; targetType: ItemTargetType; audioUrl: string }[],
 		discard: string[]
 	): Promise<Set<string>> {
 		const res = await fetch('/api/audio/bulk/commit', {
@@ -568,9 +618,9 @@
 			throw new Error(text || `Save failed: ${res.status}`);
 		}
 		const payload = (await res.json()) as {
-			committed: { targetId: string; audioUrl: string }[];
+			committed: { targetId: string; targetType: ItemTargetType; audioUrl: string }[];
 		};
-		return new Set(payload.committed.map((c) => c.targetId));
+		return new Set(payload.committed.map((c) => `${c.targetType}:${c.targetId}`));
 	}
 
 	async function saveSelected() {
@@ -592,11 +642,17 @@
 		// If no redos, we save keeps + discard skips and dismiss back to the missing-audio list.
 		session = { kind: 'saving' };
 		try {
-			const committedIds = await postCommit(
-				keep.map((r) => ({ targetId: r.targetId, audioUrl: r.audioUrl })),
+			const committedKeys = await postCommit(
+				keep.map((r) => ({
+					targetId: r.serverTargetId,
+					targetType: r.serverTargetType,
+					audioUrl: r.audioUrl
+				})),
 				skip.map((r) => r.audioUrl)
 			);
-			const newlySaved = keep.filter((r) => committedIds.has(r.targetId));
+			const newlySaved = keep.filter((r) =>
+				committedKeys.has(`${r.serverTargetType}:${r.serverTargetId}`)
+			);
 			await invalidateAll();
 			if (newlySaved.length > 0) {
 				const noun = newlySaved.length === 1 ? labels.singular : labels.plural;
@@ -645,11 +701,17 @@
 		session = { kind: 'saving' };
 		try {
 			// Save keeps; discard skips + the existing redo files (about to be re-recorded).
-			const committedIds = await postCommit(
-				keep.map((r) => ({ targetId: r.targetId, audioUrl: r.audioUrl })),
+			const committedKeys = await postCommit(
+				keep.map((r) => ({
+					targetId: r.serverTargetId,
+					targetType: r.serverTargetType,
+					audioUrl: r.audioUrl
+				})),
 				[...skip.map((r) => r.audioUrl), ...redo.map((r) => r.audioUrl)]
 			);
-			const newlySaved = keep.filter((r) => committedIds.has(r.targetId));
+			const newlySaved = keep.filter((r) =>
+				committedKeys.has(`${r.serverTargetType}:${r.serverTargetId}`)
+			);
 			await invalidateAll();
 			if (newlySaved.length > 0) {
 				const noun = newlySaved.length === 1 ? labels.singular : labels.plural;
@@ -898,7 +960,12 @@
 				{#each currentItems as item, i (item.id)}
 					<li class="bulk-list-row bulk-preview-row">
 						<span class="bulk-preview-index">{i + 1}.</span>
-						<span class="bulk-list-word">{item.primary}</span>
+						<span class="bulk-list-word">
+							{#if item.badge}
+								<span class="bulk-list-badge">{item.badge}</span>
+							{/if}
+							{item.primary}
+						</span>
 						<span class="bulk-list-trans muted">{item.secondary}</span>
 					</li>
 				{/each}
@@ -961,7 +1028,12 @@
 						{/if}
 					</button>
 					<div class="bulk-word" class:bulk-word-sentence={targetType === 'sentence'}>
-						<div class="bulk-word-current">{currentItem.primary}</div>
+						<div class="bulk-word-current">
+							{#if currentItem.badge}
+								<span class="bulk-word-badge">{currentItem.badge}</span>
+							{/if}
+							{currentItem.primary}
+						</div>
 						<div class="bulk-word-translation">{currentItem.secondary}</div>
 					</div>
 				</div>
@@ -1000,7 +1072,12 @@
 						<span class="bulk-list-status status-{status}" aria-label={status}>
 							{#if status === 'captured'}✓{:else if status === 'skipped'}✕{:else if status === 'current'}●{:else}·{/if}
 						</span>
-						<span class="bulk-list-word">{item.primary}</span>
+						<span class="bulk-list-word">
+							{#if item.badge}
+								<span class="bulk-list-badge">{item.badge}</span>
+							{/if}
+							{item.primary}
+						</span>
 						<span class="bulk-list-trans muted">{item.secondary}</span>
 						<span class="bulk-list-actions">
 							{#if status === 'captured'}
@@ -1190,6 +1267,9 @@
 						>
 							<td class="col-idx">{String(i + 1).padStart(2, '0')}</td>
 							<td class="col-word">
+								{#if it?.badge}
+									<span class="bulk-list-badge">{it.badge}</span>
+								{/if}
 								<span class="word">{it?.primary ?? row.targetId}</span>
 							</td>
 							<td class="col-trans">
@@ -1688,6 +1768,35 @@
 	.bulk-list-actions {
 		display: flex;
 		gap: 4px;
+	}
+	.bulk-list-badge {
+		background: color-mix(in oklch, var(--accent) 18%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--line));
+		border-radius: 4px;
+		color: var(--ink-soft);
+		display: inline-block;
+		font-size: 9px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		margin-right: 6px;
+		padding: 1px 5px;
+		text-transform: uppercase;
+		vertical-align: middle;
+	}
+	.bulk-word-badge {
+		background: color-mix(in oklch, var(--accent) 18%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 30%, var(--line));
+		border-radius: 6px;
+		color: var(--ink-soft);
+		display: inline-block;
+		font-family: var(--font-sans, inherit);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.12em;
+		margin-right: 10px;
+		padding: 2px 8px;
+		text-transform: uppercase;
+		vertical-align: middle;
 	}
 
 	.btn-mini {

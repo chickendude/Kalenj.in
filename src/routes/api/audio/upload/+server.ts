@@ -19,10 +19,10 @@ const ALLOWED_MIME = new Set([
 	'audio/x-wav'
 ]);
 
-type TargetType = 'word' | 'sentence';
+type TargetType = 'word' | 'word-plural' | 'sentence';
 
 function isTargetType(value: unknown): value is TargetType {
-	return value === 'word' || value === 'sentence';
+	return value === 'word' || value === 'word-plural' || value === 'sentence';
 }
 
 export const POST: RequestHandler = async ({ request, locals }) => {
@@ -54,13 +54,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	let existing: { audioUrl: string | null } | null;
 	try {
-		existing =
-			targetType === 'word'
-				? await prisma.word.findUnique({ where: { id: targetId }, select: { audioUrl: true } })
-				: await prisma.exampleSentence.findUnique({
-						where: { id: targetId },
-						select: { audioUrl: true }
-					});
+		if (targetType === 'word') {
+			existing = await prisma.word.findUnique({
+				where: { id: targetId },
+				select: { audioUrl: true }
+			});
+		} else if (targetType === 'word-plural') {
+			const row = await prisma.word.findUnique({
+				where: { id: targetId },
+				select: { pluralAudioUrl: true }
+			});
+			existing = row ? { audioUrl: row.pluralAudioUrl } : null;
+		} else {
+			existing = await prisma.exampleSentence.findUnique({
+				where: { id: targetId },
+				select: { audioUrl: true }
+			});
+		}
 	} catch (err) {
 		console.error('Audio target lookup failed', { targetType, targetId, err });
 		error(500, 'Could not read audio data. Please try again.');
@@ -94,6 +104,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 					audioUrl: publicUrl,
 					audioRecordedById: user.id,
 					audioRecordedAt: recordedAt
+				}
+			});
+		} else if (targetType === 'word-plural') {
+			await prisma.word.update({
+				where: { id: targetId },
+				data: {
+					pluralAudioUrl: publicUrl,
+					pluralAudioRecordedById: user.id,
+					pluralAudioRecordedAt: recordedAt
 				}
 			});
 		} else {

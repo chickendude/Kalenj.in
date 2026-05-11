@@ -65,6 +65,7 @@ model User {
   updatedAt          DateTime          @updatedAt
   sessions           Session[]
   recordedWordAudio  Word[]            @relation("WordAudioRecorder")
+  recordedWordPluralAudio Word[]       @relation("WordPluralAudioRecorder")
   recordedSentenceAudio ExampleSentence[] @relation("ExampleSentenceAudioRecorder")
 }
 
@@ -100,6 +101,10 @@ model Word {
   audioRecordedById    String?
   audioRecordedAt      DateTime?
   audioRecordedBy      User?                         @relation("WordAudioRecorder", fields: [audioRecordedById], references: [id], onDelete: SetNull)
+  pluralAudioUrl          String?
+  pluralAudioRecordedById String?
+  pluralAudioRecordedAt   DateTime?
+  pluralAudioRecordedBy   User?                      @relation("WordPluralAudioRecorder", fields: [pluralAudioRecordedById], references: [id], onDelete: SetNull)
   createdAt            DateTime                      @default(now())
   updatedAt            DateTime                      @updatedAt
   sentences            WordSentence[]

@@ -118,4 +118,25 @@ describe('POST /api/audio/upload', () => {
 		expect(mocks.processAudio).not.toHaveBeenCalled();
 		expect(mocks.saveAudio).not.toHaveBeenCalled();
 	});
+
+	it('writes the plural audio fields for the word-plural target', async () => {
+		mocks.prisma.word.findUnique.mockResolvedValue({ pluralAudioUrl: null });
+
+		const response = await post(audioRequest({ targetType: 'word-plural' }));
+
+		expect(response.status).toBe(200);
+		await expect(response.json()).resolves.toEqual({ audioUrl: '/audio/audio.mp3' });
+		expect(mocks.prisma.word.findUnique).toHaveBeenCalledWith({
+			where: { id: 'word-1' },
+			select: { pluralAudioUrl: true }
+		});
+		expect(mocks.prisma.word.update).toHaveBeenCalledWith({
+			where: { id: 'word-1' },
+			data: {
+				pluralAudioUrl: '/audio/audio.mp3',
+				pluralAudioRecordedById: 'u1',
+				pluralAudioRecordedAt: expect.any(Date)
+			}
+		});
+	});
 });

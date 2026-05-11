@@ -29,6 +29,7 @@ const WORDS: KalenjinSearchWord[] = [
 		presentIchek: null,
 		imageUrl: null,
 		audioUrl: null,
+		pluralAudioUrl: null,
 		createdAt: new Date('2026-01-01T00:00:00.000Z'),
 		updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		spellings: []
@@ -51,6 +52,7 @@ const WORDS: KalenjinSearchWord[] = [
 		presentIchek: null,
 		imageUrl: null,
 		audioUrl: null,
+		pluralAudioUrl: null,
 		createdAt: new Date('2026-01-01T00:00:00.000Z'),
 		updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		spellings: [{ spelling: 'misseng', spellingNormalized: 'misseng' }]
@@ -73,6 +75,7 @@ const WORDS: KalenjinSearchWord[] = [
 		presentIchek: null,
 		imageUrl: null,
 		audioUrl: null,
+		pluralAudioUrl: null,
 		createdAt: new Date('2026-01-01T00:00:00.000Z'),
 		updatedAt: new Date('2026-01-01T00:00:00.000Z'),
 		spellings: [{ spelling: 'koot', spellingNormalized: 'koot' }]

@@ -4,7 +4,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 
 	type Props = {
-		targetType: 'word' | 'sentence';
+		targetType: 'word' | 'word-plural' | 'sentence';
 		targetId: string;
 		currentAudioUrl: string | null | undefined;
 	};

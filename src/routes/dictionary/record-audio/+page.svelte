@@ -30,7 +30,14 @@
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 	let batchSize = $state(10);
-	type RecorderItem = { id: string; primary: string; secondary: string };
+	type RecorderItem = {
+		id: string;
+		targetId: string;
+		targetType: 'word' | 'word-plural';
+		primary: string;
+		secondary: string;
+		badge?: string;
+	};
 	let sessionItems = $state<RecorderItem[] | null>(null);
 
 	let posOtherOpen = $state(false);
@@ -39,7 +46,7 @@
 		Boolean(data.pos) && (POS_OTHER as readonly string[]).includes(data.pos)
 	);
 
-	const visibleWords = $derived(data.words.slice(0, batchSize));
+	const visibleTargets = $derived(data.targets.slice(0, batchSize));
 
 	$effect(() => {
 		const nextQuery = data.q;
@@ -110,11 +117,14 @@
 	}
 
 	function startRecording() {
-		if (visibleWords.length === 0) return;
-		sessionItems = visibleWords.map((word) => ({
-			id: word.id,
-			primary: word.kalenjin,
-			secondary: word.translations
+		if (visibleTargets.length === 0) return;
+		sessionItems = visibleTargets.map((target) => ({
+			id: target.id,
+			targetId: target.targetId,
+			targetType: target.targetType,
+			primary: target.primary,
+			secondary: target.secondary,
+			badge: target.kind === 'plural' ? 'Plural' : undefined
 		}));
 	}
 
@@ -141,7 +151,7 @@
 			<header class="record-section-head">
 				<div>
 					<h2>Recording session</h2>
-					<p>{sessionItems.length} word{sessionItems.length === 1 ? '' : 's'} selected.</p>
+					<p>{sessionItems.length} recording{sessionItems.length === 1 ? '' : 's'} selected.</p>
 				</div>
 				<button type="button" class="btn-sm ghost" onclick={closeSession}>Close</button>
 			</header>
@@ -249,7 +259,7 @@
 
 		<div class="result-meta">
 			<div class="result-count">
-				{data.total.toLocaleString()} word{data.total === 1 ? '' : 's'} without audio
+				{data.totalTargets.toLocaleString()} recording{data.totalTargets === 1 ? '' : 's'} needed
 			</div>
 		</div>
 
@@ -275,14 +285,14 @@
 				type="button"
 				class="btn primary"
 				onclick={startRecording}
-				disabled={visibleWords.length === 0}
+				disabled={visibleTargets.length === 0}
 			>
-				Record {visibleWords.length} word{visibleWords.length === 1 ? '' : 's'}
+				Record {visibleTargets.length} {visibleTargets.length === 1 ? 'recording' : 'recordings'}
 			</button>
 		</div>
 
-		{#if visibleWords.length === 0}
-			<div class="empty-state">No matching words without audio.</div>
+		{#if visibleTargets.length === 0}
+			<div class="empty-state">No matching recordings to make.</div>
 		{:else}
 			<table class="dict-table record-table">
 				<thead>
@@ -292,12 +302,15 @@
 					</tr>
 				</thead>
 				<tbody>
-					{#each visibleWords as word (word.id)}
+					{#each visibleTargets as target (target.id)}
 						<tr>
 							<td class="col-word">
-								<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+								{#if target.kind === 'plural'}
+									<span class="form-badge">Plural</span>
+								{/if}
+								<a href={`/dictionary/${target.targetId}`}>{target.primary}</a>
 							</td>
-							<td class="col-trans">{word.translations}</td>
+							<td class="col-trans">{target.secondary}</td>
 						</tr>
 					{/each}
 				</tbody>
@@ -485,6 +498,20 @@
 	}
 	.batch-size-pill {
 		min-width: 48px;
+	}
+	.form-badge {
+		background: color-mix(in oklch, var(--accent) 14%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--line));
+		border-radius: 4px;
+		color: var(--ink-mute);
+		display: inline-block;
+		font-size: 10px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		margin-right: 6px;
+		padding: 1px 6px;
+		text-transform: uppercase;
+		vertical-align: middle;
 	}
 
 	@media (max-width: 720px) {

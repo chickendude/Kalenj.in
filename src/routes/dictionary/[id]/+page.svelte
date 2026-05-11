@@ -219,9 +219,22 @@
 						<PartOfSpeechInline value={partOfSpeechValue} />
 					{/if}
 					{#if showPlural}
+						{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
+						{@const primaryPlural = pluralVariants.pluralForm}
+						{@const altPlurals = pluralVariants.alternativePluralForms}
 						<span class="plural-chip">
 							<span class="plural-label">Plural</span>
-							<span class="plural-value">{data.word.pluralForm}</span>
+							<span class="plural-value">{primaryPlural}</span>
+							{#if data.word.pluralAudioUrl}
+								<AudioPlayButton
+									audioUrl={data.word.pluralAudioUrl}
+									size="sm"
+									label={`Play plural pronunciation of ${primaryPlural}`}
+								/>
+							{/if}
+							{#if altPlurals}
+								<span class="plural-value plural-value-alt">, {altPlurals}</span>
+							{/if}
 						</span>
 					{:else if showPluralOnly}
 						<span class="plural-chip">
@@ -355,6 +368,20 @@
 						currentAudioUrl={data.word.audioUrl}
 					/>
 				</div>
+
+				{#if showPlural}
+					<div class="side-card">
+						<h3>Plural pronunciation</h3>
+						<p class="plural-recorder-hint">
+							For <em>{data.word.pluralForm}</em>.
+						</p>
+						<AudioRecorder
+							targetType="word-plural"
+							targetId={data.word.id}
+							currentAudioUrl={data.word.pluralAudioUrl}
+						/>
+					</div>
+				{/if}
 
 				<div class="side-card">
 					<h3>Edit entry</h3>
@@ -842,13 +869,23 @@
 	}
 
 	.plural-chip {
-		align-items: baseline;
+		align-items: center;
 		background: color-mix(in oklch, var(--accent) 14%, transparent);
 		border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--line));
 		border-radius: 999px;
 		display: inline-flex;
 		gap: 6px;
-		padding: 2px 10px;
+		padding: 2px 4px 2px 10px;
+	}
+	.plural-recorder-hint {
+		color: var(--ink-mute);
+		font-size: 13px;
+		margin: 0 0 8px;
+	}
+	.plural-recorder-hint em {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-style: normal;
 	}
 	.plural-label {
 		color: var(--ink-mute);
@@ -862,6 +899,9 @@
 		font-family: var(--font-display);
 		font-size: 14px;
 		font-weight: 500;
+	}
+	.plural-value-alt {
+		margin-left: -4px;
 	}
 	.conjugation-grid {
 		display: grid;

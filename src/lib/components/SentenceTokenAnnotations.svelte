@@ -188,12 +188,12 @@
 	const isMac =
 		typeof navigator !== 'undefined' &&
 		/mac|iphone|ipad|ipod/i.test(navigator.platform ?? navigator.userAgent ?? '');
-	const navShortcutModifier = isMac ? '⌃⌥' : 'Ctrl+Alt+';
+	const navShortcutModifier = isMac ? '⌃⌥' : 'Alt+';
 	const prevShortcutTitle = `Previous word (${navShortcutModifier}←)`;
 	const nextShortcutTitle = `Next word (${navShortcutModifier}→)`;
 	const shortcutEntries = [
-		{ label: 'Previous word', keys: isMac ? ['⌃', '⌥', '←'] : ['Ctrl', 'Alt', '←'] },
-		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Ctrl', 'Alt', '→'] },
+		{ label: 'Previous word', keys: isMac ? ['⌃', '⌥', '←'] : ['Alt', '←'] },
+		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Alt', '→'] },
 		{ label: 'Close picker', keys: ['Esc'] }
 	];
 	let focusedTokenId = $state<string | null>(null);
@@ -593,13 +593,13 @@
 			return;
 		}
 
-		// Ctrl+Option (Mac) / Ctrl+Alt (Win/Linux) + arrow.
-		// Plain Option+arrow is reserved for native text-input word jump on Mac.
+		// Ctrl+Option+arrow on Mac (plain Option+arrow is reserved for native
+		// text-input word jump there) / plain Alt+arrow on Win/Linux.
+		const navModifiersPressed = isMac
+			? event.ctrlKey && event.altKey && !event.metaKey && !event.shiftKey
+			: event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
 		if (
-			event.ctrlKey &&
-			event.altKey &&
-			!event.metaKey &&
-			!event.shiftKey &&
+			navModifiersPressed &&
 			(event.key === 'ArrowLeft' || event.key === 'ArrowRight')
 		) {
 			event.preventDefault();

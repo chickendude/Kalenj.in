@@ -3,6 +3,7 @@
 	import favicon from '$lib/assets/favicon.svg';
 	import { theme, toggleTheme } from '$lib/stores/theme';
 	import Toast from '$lib/components/Toast.svelte';
+	import NavSearch from '$lib/components/NavSearch.svelte';
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
@@ -21,6 +22,10 @@
 		}
 		return items;
 	});
+
+	const canAddWord = $derived(
+		data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER'
+	);
 
 	function isActive(href: string): boolean {
 		if (href === '/') {
@@ -144,6 +149,7 @@
 				<span class="brand-sub">Dictionary &amp; Corpus</span>
 			</span>
 		</a>
+		<NavSearch {canAddWord} />
 		<div class="topbar-nav-wrap" bind:this={navRoot}>
 			<button
 				type="button"

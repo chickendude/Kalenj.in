@@ -202,6 +202,24 @@
 		const timeout = window.setTimeout(() => addWordKalenjinInput?.focus(), 0);
 		return () => window.clearTimeout(timeout);
 	});
+
+	let addParamHandled = false;
+	$effect(() => {
+		if (!page.url.searchParams.get('add') || addParamHandled) return;
+		const role = page.data.user?.role;
+		if (role !== 'ADMIN' && role !== 'MANAGER') return;
+		addParamHandled = true;
+		openAddWord();
+		addWordKalenjin = data.query;
+		const params = new URLSearchParams(page.url.searchParams);
+		params.delete('add');
+		const search = params.toString();
+		goto(`/dictionary${search ? `?${search}` : ''}`, {
+			replaceState: true,
+			keepFocus: true,
+			noScroll: true
+		});
+	});
 </script>
 
 <svelte:head>

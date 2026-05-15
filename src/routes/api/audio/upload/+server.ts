@@ -5,7 +5,7 @@ import { prisma } from '$lib/server/prisma';
 import { deleteAudio, saveAudio } from '$lib/server/audio-storage';
 import { processAudio } from '$lib/server/audio-processing';
 
-const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_MIME = new Set([
 	'audio/webm',
 	'audio/ogg',

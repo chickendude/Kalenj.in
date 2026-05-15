@@ -6,6 +6,8 @@
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import { parseTranslationList } from '$lib/translations';
+	import { toast } from '$lib/stores/toast.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
@@ -153,15 +155,103 @@
 	let addWordPresentOkwek = $state('');
 	let addWordPresentIchek = $state('');
 	let addWordKalenjinInput = $state<HTMLInputElement | null>(null);
+	let addWordFormEl = $state<HTMLFormElement | null>(null);
+	let addWordStayBtn = $state<HTMLButtonElement | null>(null);
+
+	type DictionarySearchResult = {
+		id: string;
+		kalenjin: string;
+		translations: string;
+		partOfSpeech: PartOfSpeech | null;
+	};
+
+	let addWordRelated = $state<DictionarySearchResult[]>([]);
+
+	let relatedQuery = $state('');
+	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
+	let relatedSearchQuery = $state('');
+	let relatedSearchLoading = $state(false);
+	let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let relatedSearchSeq = 0;
+
+	const addWordRelatedIds = $derived(new Set(addWordRelated.map((w) => w.id)));
+	const attachableRelatedResults = $derived(
+		(relatedSearchResults ?? []).filter((r) => !addWordRelatedIds.has(r.id))
+	);
+	const addWordRelatedIdsValue = $derived(addWordRelated.map((w) => w.id).join(','));
+
+	function relatedGloss(value: string): string {
+		return stripWordLinks(parseTranslationList(value)[0] ?? value);
+	}
+
+	function clearRelatedSearch() {
+		relatedQuery = '';
+		relatedSearchResults = null;
+		relatedSearchQuery = '';
+		relatedSearchLoading = false;
+		if (relatedSearchTimer) clearTimeout(relatedSearchTimer);
+	}
+
+	async function runRelatedSearch(query: string) {
+		const seq = ++relatedSearchSeq;
+		const trimmed = query.trim();
+		if (!trimmed) {
+			relatedSearchResults = null;
+			relatedSearchQuery = '';
+			relatedSearchLoading = false;
+			return;
+		}
+		relatedSearchLoading = true;
+		try {
+			const res = await fetch(`/dictionary/search?q=${encodeURIComponent(trimmed)}`);
+			if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+			const json = (await res.json()) as { results: DictionarySearchResult[] };
+			if (seq !== relatedSearchSeq) return;
+			relatedSearchResults = json.results;
+			relatedSearchQuery = trimmed;
+		} catch {
+			if (seq !== relatedSearchSeq) return;
+			relatedSearchResults = [];
+			relatedSearchQuery = trimmed;
+		} finally {
+			if (seq === relatedSearchSeq) relatedSearchLoading = false;
+		}
+	}
+
+	function handleRelatedSearchInput(event: Event) {
+		const value = (event.currentTarget as HTMLInputElement).value;
+		relatedQuery = value;
+		if (relatedSearchTimer) clearTimeout(relatedSearchTimer);
+		relatedSearchTimer = setTimeout(() => runRelatedSearch(value), 180);
+	}
+
+	function handleRelatedSearchKeydown(event: KeyboardEvent) {
+		// This input lives inside the create form; Enter must not submit it.
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			if (relatedSearchTimer) clearTimeout(relatedSearchTimer);
+			runRelatedSearch(relatedQuery);
+		}
+	}
+
+	function addRelated(result: DictionarySearchResult) {
+		if (addWordRelatedIds.has(result.id)) return;
+		addWordRelated = [...addWordRelated, result];
+		clearRelatedSearch();
+	}
+
+	function removeRelated(id: string) {
+		addWordRelated = addWordRelated.filter((w) => w.id !== id);
+	}
 
 	const addWordDuplicateQuery = $derived(addWordKalenjin.trim());
 
-	function resetAddWordForm() {
+	function resetAddWordFields({ keepPartOfSpeech = false } = {}) {
 		addWordKalenjin = '';
 		addWordTranslations = '';
 		addWordAlternativeSpellings = '';
 		addWordNotes = '';
-		addWordPartOfSpeech = '';
+		if (!keepPartOfSpeech) addWordPartOfSpeech = '';
 		addWordPluralForm = '';
 		addWordIsPluralOnly = false;
 		addWordAlternativePluralForms = '';
@@ -172,6 +262,17 @@
 		addWordPresentOkwek = '';
 		addWordPresentIchek = '';
 		addWordError = null;
+		addWordRelated = [];
+		clearRelatedSearch();
+	}
+
+	function resetAddWordForm() {
+		resetAddWordFields();
+	}
+
+	function resetAddWordFormForAnother() {
+		// Keep part of speech sticky so a run of same-type words isn't re-picked each time.
+		resetAddWordFields({ keepPartOfSpeech: true });
 	}
 
 	function openAddWord() {
@@ -188,6 +289,13 @@
 		if (event.key === 'Escape') {
 			event.preventDefault();
 			closeAddWord();
+			return;
+		}
+		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+			event.preventDefault();
+			if (!addWordSubmitting) {
+				addWordFormEl?.requestSubmit(addWordStayBtn ?? undefined);
+			}
 		}
 	}
 
@@ -448,6 +556,7 @@
 			</div>
 
 			<form
+				bind:this={addWordFormEl}
 				method="POST"
 				action="?/createWord"
 				class="add-word-form"
@@ -468,8 +577,14 @@
 							return;
 						}
 						if (result.type === 'success') {
-							addWordOpen = false;
+							const created = result.data as
+								| { word?: { kalenjin?: string } }
+								| undefined;
+							const name = created?.word?.kalenjin;
+							toast.success(name ? `Added ${name} ✓` : 'Word added ✓');
+							resetAddWordFormForAnother();
 							await invalidateAll();
+							addWordKalenjinInput?.focus();
 						}
 					};
 				}}
@@ -495,6 +610,7 @@
 					idPrefix="dict-add-word"
 					kalenjinLabel="Kalenjin"
 					alternativeSpellingsHint="comma, separated"
+					linkable
 				/>
 				<ImageUploadField name="image" idPrefix="dict-add-word-image" />
 				<DuplicateSuggestions
@@ -506,14 +622,84 @@
 					label="Possible matching words"
 					minQueryLength={2}
 				/>
+				<div class="add-word-related">
+					<span class="add-word-related-label">Related words</span>
+					{#if addWordRelated.length > 0}
+						<ul class="add-word-related-chips">
+							{#each addWordRelated as rel (rel.id)}
+								<li class="add-word-related-chip">
+									<span>{rel.kalenjin}</span>
+									<button
+										type="button"
+										aria-label={`Remove ${rel.kalenjin}`}
+										onclick={() => removeRelated(rel.id)}>×</button>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+					<input
+						id="dict-add-related-search"
+						type="search"
+						class="input"
+						placeholder="Search Kalenjin or English to link"
+						autocomplete="off"
+						value={relatedQuery}
+						oninput={handleRelatedSearchInput}
+						onkeydown={handleRelatedSearchKeydown}
+					/>
+					{#if relatedSearchLoading}
+						<p class="add-word-related-hint">Searching…</p>
+					{:else if relatedSearchResults !== null}
+						{#if attachableRelatedResults.length === 0}
+							<p class="add-word-related-hint">
+								No matches for “{relatedSearchQuery}”.
+							</p>
+						{:else}
+							<ul class="add-word-related-results">
+								{#each attachableRelatedResults as result (result.id)}
+									<li>
+										<button
+											type="button"
+											class="add-word-related-result"
+											onclick={() => addRelated(result)}
+										>
+											<span>
+												<strong>{result.kalenjin}</strong>
+												<small>{relatedGloss(result.translations)}</small>
+											</span>
+											<span class="add-word-related-add">Add</span>
+										</button>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+					<input type="hidden" name="relatedWordIds" value={addWordRelatedIdsValue} />
+				</div>
 				<div class="add-word-actions">
 					<button
 						type="button"
 						class="btn ghost"
 						onclick={closeAddWord}
 						disabled={addWordSubmitting}>Cancel</button>
-					<button type="submit" class="btn" disabled={addWordSubmitting}>
-						{addWordSubmitting ? 'Creating…' : 'Create word'}
+					<button
+						type="submit"
+						name="intent"
+						value="stay"
+						class="btn"
+						bind:this={addWordStayBtn}
+						disabled={addWordSubmitting}
+					>
+						{addWordSubmitting ? 'Creating…' : 'Create & add another'}
+					</button>
+					<button
+						type="submit"
+						name="intent"
+						value="open"
+						class="btn ghost"
+						disabled={addWordSubmitting}
+					>
+						Create & open
 					</button>
 				</div>
 			</form>
@@ -608,6 +794,100 @@
 		gap: 0.5rem;
 		justify-content: flex-end;
 		margin-top: 0.5rem;
+	}
+
+	.add-word-related {
+		display: grid;
+		gap: 8px;
+	}
+
+	.add-word-related-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+
+	.add-word-related-chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px;
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	.add-word-related-chip {
+		align-items: center;
+		background: color-mix(in oklch, var(--accent) 14%, var(--paper));
+		border: 1px solid color-mix(in oklch, var(--accent) 34%, var(--line));
+		border-radius: 999px;
+		display: inline-flex;
+		font-size: 13px;
+		gap: 6px;
+		padding: 4px 6px 4px 10px;
+	}
+
+	.add-word-related-chip button {
+		background: transparent;
+		border: 0;
+		color: var(--ink-soft, #334155);
+		cursor: pointer;
+		font-size: 15px;
+		line-height: 1;
+		padding: 0 4px;
+	}
+	.add-word-related-chip button:hover {
+		color: var(--danger);
+	}
+
+	.add-word-related-hint {
+		color: var(--ink-mute);
+		font-size: 13px;
+		margin: 0;
+	}
+
+	.add-word-related-results {
+		border: 1px solid var(--line);
+		border-radius: 8px;
+		display: grid;
+		list-style: none;
+		margin: 0;
+		max-height: 200px;
+		overflow-y: auto;
+		padding: 0;
+	}
+
+	.add-word-related-result {
+		align-items: center;
+		background: transparent;
+		border: 0;
+		border-bottom: 1px solid color-mix(in oklch, var(--line) 60%, transparent);
+		cursor: pointer;
+		display: flex;
+		font: inherit;
+		gap: 10px;
+		justify-content: space-between;
+		padding: 8px 10px;
+		text-align: left;
+		width: 100%;
+	}
+	.add-word-related-results li:last-child .add-word-related-result {
+		border-bottom: 0;
+	}
+	.add-word-related-result:hover {
+		background: color-mix(in oklch, var(--brand) 8%, transparent);
+	}
+	.add-word-related-result small {
+		color: var(--ink-mute);
+		margin-left: 6px;
+	}
+	.add-word-related-add {
+		color: var(--brand);
+		font-size: 12px;
+		font-weight: 600;
+		text-transform: uppercase;
 	}
 
 	.controls {

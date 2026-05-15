@@ -11,6 +11,7 @@ import { searchWordsByKalenjin } from '$lib/server/kalenjin-word-search';
 import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/server/lemma-words';
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
+import { relatedWordPair } from '$lib/server/related-words';
 import {
 	filterByPartOfSpeech,
 	matchesMissing,
@@ -138,6 +139,15 @@ export const actions: Actions = {
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
+		const stayOpen = readText(formData, 'intent') === 'stay';
+		const relatedWordIds = [
+			...new Set(
+				readText(formData, 'relatedWordIds')
+					.split(',')
+					.map((id) => id.trim())
+					.filter(Boolean)
+			)
+		];
 
 		const values = {
 			kalenjin,
@@ -179,6 +189,19 @@ export const actions: Actions = {
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
+		if (relatedWordIds.length > 0) {
+			const found = await prisma.word.findMany({
+				where: { id: { in: relatedWordIds } },
+				select: { id: true }
+			});
+			if (found.length !== relatedWordIds.length) {
+				return fail(400, {
+					error: 'One or more related words could not be found.',
+					values
+				});
+			}
+		}
+
 		const imageFile = formData.get('image');
 		let imageUrl: string | null = null;
 		if (imageFile instanceof File && imageFile.size > 0) {
@@ -194,8 +217,8 @@ export const actions: Actions = {
 
 		let word;
 		try {
-			word = await prisma.$transaction((tx) =>
-				createOrUpdateLinkedWord(tx, {
+			word = await prisma.$transaction(async (tx) => {
+				const created = await createOrUpdateLinkedWord(tx, {
 					kalenjin,
 					translations,
 					notes: notes || null,
@@ -205,13 +228,24 @@ export const actions: Actions = {
 					isPluralOnly,
 					presentTense,
 					imageUrl
-				})
-			);
+				});
+				if (relatedWordIds.length > 0) {
+					await tx.relatedWord.createMany({
+						data: relatedWordIds.map((rid) => relatedWordPair(created.id, rid)),
+						skipDuplicates: true
+					});
+				}
+				return created;
+			});
 		} catch (err) {
 			if (imageUrl) {
 				await deleteUploadedImage(imageUrl);
 			}
 			throw err;
+		}
+
+		if (stayOpen) {
+			return { created: true, word: { id: word.id, kalenjin: word.kalenjin } };
 		}
 
 		redirect(303, `/dictionary/${word.id}`);

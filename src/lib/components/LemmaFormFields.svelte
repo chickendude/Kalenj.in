@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	const CORE_POS = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
@@ -31,7 +32,8 @@
 		idPrefix = 'lemma',
 		autofocusLemma = false,
 		kalenjinLabel = 'Lemma',
-		alternativeSpellingsHint = 'comma, separated'
+		alternativeSpellingsHint = 'comma, separated',
+		linkable = false
 	}: {
 		kalenjin?: string;
 		translations?: string;
@@ -51,6 +53,7 @@
 		autofocusLemma?: boolean;
 		kalenjinLabel?: string;
 		alternativeSpellingsHint?: string;
+		linkable?: boolean;
 	} = $props();
 
 	let posOtherOpen = $state(false);
@@ -327,27 +330,48 @@
 
 	<div class="field lemma-full-field">
 		<label for="{idPrefix}-translations">Translations</label>
-		<input
-			id="{idPrefix}-translations"
-			class="input"
-			name="translations"
-			required
-			placeholder="translation one; translation two"
-			autocomplete="off"
-			bind:value={translations}
-		/>
+		{#if linkable}
+			<WordLinkEditor
+				id="{idPrefix}-translations"
+				name="translations"
+				className="input"
+				required
+				placeholder="translation one; translation two"
+				bind:value={translations}
+			/>
+		{:else}
+			<input
+				id="{idPrefix}-translations"
+				class="input"
+				name="translations"
+				required
+				placeholder="translation one; translation two"
+				autocomplete="off"
+				bind:value={translations}
+			/>
+		{/if}
 	</div>
 
 	<div class="field lemma-full-field">
 		<label for="{idPrefix}-notes">Notes</label>
-		<input
-			id="{idPrefix}-notes"
-			class="input"
-			name="notes"
-			placeholder="Optional"
-			autocomplete="off"
-			bind:value={notes}
-		/>
+		{#if linkable}
+			<WordLinkEditor
+				id="{idPrefix}-notes"
+				name="notes"
+				className="input"
+				placeholder="Optional"
+				bind:value={notes}
+			/>
+		{:else}
+			<input
+				id="{idPrefix}-notes"
+				class="input"
+				name="notes"
+				placeholder="Optional"
+				autocomplete="off"
+				bind:value={notes}
+			/>
+		{/if}
 	</div>
 </div>
 

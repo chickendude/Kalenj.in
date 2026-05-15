@@ -36,7 +36,7 @@
 	const TOOLTIP_VIEWPORT_GUTTER = 12;
 	const OPEN_TOOLTIP_EVENT = 'kalenjin-token-preview-open';
 
-	let { sentenceId = 'sentence', tokens, onTokenClick } = $props<{
+	let { sentenceId = 'sentence', sentenceText, tokens, onTokenClick } = $props<{
 		sentenceId?: string;
 		sentenceText: string;
 		tokens: PreviewToken[];
@@ -47,7 +47,7 @@
 	let activeTooltipKey = $state<string | null>(null);
 	let tapPreviewMode = $state(false);
 	let tooltipOffsets = $state(new Map<string, number>());
-	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, tokens }));
+	const groups = $derived(groupSentenceTokens<PreviewToken>({ sentenceId, sentenceText, tokens }));
 
 	onMount(() => {
 		const media = window.matchMedia('(max-width: 720px), (hover: none), (pointer: coarse)');
@@ -249,6 +249,12 @@
 
 <div class="sentence-preview" aria-label="Token preview">
 	{#each groups as group (group.key)}
+		{#if group.breakBefore}
+			<span class="speaker-break" aria-hidden="true"></span>
+		{/if}
+		{#if group.speakerTurn}
+			<span class="speaker-marker" aria-hidden="true">—</span>
+		{/if}
 		<span class="word-group" aria-label={group.fullSurface}>
 			{#each group.tokens as token (token.id)}
 				{#if token.segments?.length}
@@ -350,6 +356,17 @@
 	.word-group {
 		display: flex;
 		gap: 0;
+	}
+
+	.speaker-break {
+		flex-basis: 100%;
+		width: 100%;
+		height: 0;
+	}
+
+	.speaker-marker {
+		color: color-mix(in oklab, currentColor 55%, transparent);
+		user-select: none;
 	}
 
 	.token-split {

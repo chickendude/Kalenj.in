@@ -4,7 +4,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import { parseTranslationList } from '$lib/translations';
-	import { stripWordLinks } from '$lib/word-links';
+	import { renderWordLinks } from '$lib/word-links';
 	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';
 	import type { PartOfSpeech } from '@prisma/client';
 
@@ -47,7 +47,7 @@
 		day: 'numeric'
 	});
 
-	const translationList = $derived(parseTranslationList(stripWordLinks(word.translations)));
+	const translationList = $derived(parseTranslationList(word.translations));
 
 	const altSpellings = $derived(
 		word.spellings
@@ -86,7 +86,10 @@
 			{#if translationList.length > 0}
 				<ol class="wod-trans">
 					{#each translationList as translation, i (i)}
-						<li><span class="num mono">{i + 1}.</span>{translation}</li>
+						<li>
+							<span class="num mono">{i + 1}.</span>
+							<span class="trans-text">{@html renderWordLinks(translation)}</span>
+						</li>
 					{/each}
 				</ol>
 			{/if}

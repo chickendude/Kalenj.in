@@ -1867,6 +1867,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   color: var(--ink-mute);
   min-width: 20px;
 }
+.wod-trans .trans-text {
+  flex: 1;
+  min-width: 0;
+}
 .wod-aside {
   background: var(--bg-raised);
   border: 1px solid var(--line);

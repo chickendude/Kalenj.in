@@ -10,6 +10,7 @@ export const PARTS_OF_SPEECH = [
 	'CONJUNCTION',
 	'INTERJECTION',
 	'PHRASE',
+	'NAME',
 	'OTHER'
 ] as const satisfies readonly PartOfSpeech[];
 
@@ -23,6 +24,7 @@ export const PART_OF_SPEECH_LABELS: Record<PartOfSpeech, string> = {
 	CONJUNCTION: 'Conjunction',
 	INTERJECTION: 'Interjection',
 	PHRASE: 'Phrase',
+	NAME: 'Name',
 	OTHER: 'Other'
 };
 
@@ -36,6 +38,7 @@ export const PART_OF_SPEECH_ABBREVIATIONS: Record<PartOfSpeech, string> = {
 	CONJUNCTION: 'conj',
 	INTERJECTION: 'interj',
 	PHRASE: 'phr',
+	NAME: 'name',
 	OTHER: 'other'
 };
 

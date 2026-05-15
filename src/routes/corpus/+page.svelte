@@ -14,6 +14,8 @@
 
 	let { data, form } = $props();
 
+	type ReviewRow = BulkSentenceReviewRow & { removed?: boolean };
+
 	const canEdit = $derived(
 		data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER'
 	);
@@ -24,7 +26,8 @@
 	let composeKalenjin = $state(untrack(() => form?.values?.kalenjin ?? ''));
 	let composeEnglish = $state(untrack(() => form?.values?.english ?? ''));
 	let composeNotes = $state(untrack(() => form?.values?.notes ?? ''));
-	let bulkReviewRows = $state<BulkSentenceReviewRow[]>([]);
+	let bulkText = $state(untrack(() => form?.bulkValues?.bulkText ?? ''));
+	let bulkReviewRows = $state<ReviewRow[]>([]);
 
 	$effect(() => {
 		const values = form?.values;
@@ -38,9 +41,11 @@
 	});
 
 	const composeDuplicateQuery = $derived(composeKalenjin.trim());
+	const activeBulkRows = $derived(bulkReviewRows.filter((row) => !row.removed));
+	const removedBulkCount = $derived(bulkReviewRows.length - activeBulkRows.length);
 	const bulkReviewRowsJson = $derived(
 		JSON.stringify(
-			bulkReviewRows.map((row) => ({
+			activeBulkRows.map((row) => ({
 				lineNumber: row.lineNumber,
 				kalenjin: row.kalenjin,
 				english: row.english
@@ -126,7 +131,14 @@
 		});
 	}
 
+	function toggleRemoveBulkRow(index: number) {
+		bulkReviewRows = bulkReviewRows.map((row, i) =>
+			i === index ? { ...row, removed: !row.removed } : row
+		);
+	}
+
 	function resetBulkReview() {
+		bulkText = activeBulkRows.map((row) => `${row.kalenjin}\t${row.english}`).join('\n');
 		bulkReviewRows = [];
 	}
 
@@ -342,7 +354,8 @@
 											class="textarea"
 											rows="10"
 											placeholder={'Labat kaa.\tRun home.\nLabat boisyet. – Run to work.'}
-										>{form?.bulkValues?.bulkText ?? ''}</textarea>
+											bind:value={bulkText}
+										></textarea>
 									</div>
 
 									{#if form?.bulkError}
@@ -365,8 +378,12 @@
 									<input type="hidden" name="reviewRows" value={bulkReviewRowsJson} />
 									<div class="bulk-review-head">
 										<div>
-											<div class="review-title">Review {bulkReviewRows.length} sentence{bulkReviewRows.length === 1 ? '' : 's'}</div>
-											<div class="review-meta">Edit rows here, then save once.</div>
+											<div class="review-title">Review {activeBulkRows.length} sentence{activeBulkRows.length === 1 ? '' : 's'}</div>
+											<div class="review-meta">
+												Edit rows here, then save once.{removedBulkCount
+													? ` ${removedBulkCount} removed.`
+													: ''}
+											</div>
 										</div>
 										<button type="button" class="btn ghost sm" onclick={resetBulkReview}>Start over</button>
 									</div>
@@ -379,25 +396,51 @@
 										<table class="bulk-review-table">
 											<thead>
 												<tr>
+													<th class="row-action-col"><span class="sr-only">Actions</span></th>
 													<th>Kalenjin</th>
 													<th>English</th>
 												</tr>
 											</thead>
 											<tbody>
 												{#each bulkReviewRows as row, i (row.lineNumber)}
-													<tr class:needs-review={row.warnings.length > 0}>
+													<tr
+														class:needs-review={!row.removed && row.warnings.length > 0}
+														class:removed={row.removed}
+													>
+														<td class="row-action">
+															<button
+																type="button"
+																class="row-remove-btn"
+																class:is-removed={row.removed}
+																onclick={() => toggleRemoveBulkRow(i)}
+																title={row.removed ? 'Restore sentence' : 'Remove sentence'}
+																aria-label={row.removed ? 'Restore sentence' : 'Remove sentence'}
+															>
+																{#if row.removed}
+																	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+																		<path d="M3 7v6h6" />
+																		<path d="M21 17a9 9 0 0 0-15-6.7L3 13" />
+																	</svg>
+																{:else}
+																	<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">
+																		<line x1="6" y1="12" x2="18" y2="12" />
+																	</svg>
+																{/if}
+															</button>
+														</td>
 														<td>
 															<input
 																aria-label="Kalenjin sentence"
 																class="review-input"
-																class:has-warning={warningsFor(row, 'kalenjin').length > 0}
+																class:has-warning={!row.removed && warningsFor(row, 'kalenjin').length > 0}
 																type="text"
 																value={row.kalenjin}
+																disabled={row.removed}
 																oninput={(event) =>
 																	updateBulkRow(i, 'kalenjin', (event.currentTarget as HTMLInputElement).value)}
 																onblur={() => normalizeBulkRow(i)}
 															/>
-															{#if warningsFor(row, 'kalenjin').length > 0}
+															{#if !row.removed && warningsFor(row, 'kalenjin').length > 0}
 																<div class="field-warnings">
 																	{#each warningsFor(row, 'kalenjin') as warning}
 																		<span class="field-warning">
@@ -419,14 +462,15 @@
 															<input
 																aria-label="English translation"
 																class="review-input"
-																class:has-warning={warningsFor(row, 'english').length > 0}
+																class:has-warning={!row.removed && warningsFor(row, 'english').length > 0}
 																type="text"
 																value={row.english}
+																disabled={row.removed}
 																oninput={(event) =>
 																	updateBulkRow(i, 'english', (event.currentTarget as HTMLInputElement).value)}
 																onblur={() => normalizeBulkRow(i)}
 															/>
-															{#if warningsFor(row, 'english').length > 0}
+															{#if !row.removed && warningsFor(row, 'english').length > 0}
 																<div class="field-warnings">
 																	{#each warningsFor(row, 'english') as warning}
 																		<span class="field-warning">{warning.message}</span>
@@ -441,7 +485,7 @@
 									</div>
 
 									<div class="form-actions">
-										<button type="submit" class="btn">Save reviewed sentences</button>
+										<button type="submit" class="btn" disabled={activeBulkRows.length === 0}>Save reviewed sentences</button>
 									</div>
 								</form>
 							{/if}
@@ -730,6 +774,59 @@
 	.trouble-word:focus-visible {
 		background: color-mix(in oklch, var(--danger) 26%, transparent);
 		outline: none;
+	}
+	.sr-only {
+		height: 1px;
+		margin: -1px;
+		overflow: hidden;
+		padding: 0;
+		position: absolute;
+		width: 1px;
+	}
+	.bulk-review-table th.row-action-col,
+	.bulk-review-table td.row-action {
+		width: 40px;
+	}
+	.bulk-review-table td.row-action {
+		padding-right: 0;
+		text-align: left;
+	}
+	.row-remove-btn {
+		align-items: center;
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		height: 30px;
+		justify-content: center;
+		margin-top: 6px;
+		padding: 0;
+		transition: border-color 0.15s, color 0.15s, background 0.15s;
+		width: 30px;
+	}
+	.row-remove-btn:hover,
+	.row-remove-btn:focus-visible {
+		background: color-mix(in oklch, var(--danger) 10%, transparent);
+		border-color: var(--danger);
+		color: var(--danger);
+		outline: none;
+	}
+	.row-remove-btn.is-removed {
+		border-color: color-mix(in oklch, var(--brand) 45%, var(--line));
+		color: var(--brand);
+	}
+	.row-remove-btn.is-removed:hover,
+	.row-remove-btn.is-removed:focus-visible {
+		background: color-mix(in oklch, var(--brand) 12%, transparent);
+		border-color: var(--brand);
+		color: var(--brand);
+	}
+	.bulk-review-table tr.removed .review-input {
+		color: var(--ink-mute);
+		opacity: 0.6;
+		text-decoration: line-through;
 	}
 	.compose-collapse {
 		align-items: center;

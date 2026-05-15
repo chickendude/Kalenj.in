@@ -5,7 +5,7 @@ import { prisma } from '$lib/server/prisma';
 import { saveAudio } from '$lib/server/audio-storage';
 import { processAudioSegments } from '$lib/server/audio-processing';
 
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_SEGMENTS = 100;
 
 type TargetType = 'word' | 'word-plural' | 'sentence';

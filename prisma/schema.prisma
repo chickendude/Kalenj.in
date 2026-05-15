@@ -24,6 +24,7 @@ enum PartOfSpeech {
   INTERJECTION
   PHRASE
   OTHER
+  NAME
 }
 
 enum CefrLevel {

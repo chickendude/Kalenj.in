@@ -267,7 +267,7 @@
 					{#each translations as translation, index}
 						<li>
 							<span class="num">{index + 1}.</span>
-							{@html renderWordLinks(translation)}
+							<span class="trans-text">{@html renderWordLinks(translation)}</span>
 						</li>
 					{/each}
 				</ol>
@@ -720,6 +720,10 @@
 		align-items: start;
 	}
 	.translations-list {
+		min-width: 0;
+	}
+	.translations-list .trans-text {
+		flex: 1;
 		min-width: 0;
 	}
 	.entry-image-btn {

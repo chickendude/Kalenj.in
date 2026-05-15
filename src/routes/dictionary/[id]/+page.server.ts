@@ -7,6 +7,7 @@ import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/ser
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
+import { relatedWordPair } from '$lib/server/related-words';
 import type { Actions, PageServerLoad } from './$types';
 
 type RelatedPair = {
@@ -23,12 +24,6 @@ type RelatedWordSummary = {
 
 function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
-}
-
-function relatedWordPair(wordId: string, relatedWordId: string): { wordId: string; relatedWordId: string } {
-	return wordId < relatedWordId
-		? { wordId, relatedWordId }
-		: { wordId: relatedWordId, relatedWordId: wordId };
 }
 
 function sortRelatedWords(relatedWords: RelatedPair[]): RelatedPair[] {

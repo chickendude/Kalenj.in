@@ -235,6 +235,11 @@
 		position: relative;
 		display: block;
 	}
+	.wle-wrap input,
+	.wle-wrap textarea {
+		width: 100%;
+		box-sizing: border-box;
+	}
 	.wle-menu {
 		position: absolute;
 		top: calc(100% + 4px);

@@ -12,6 +12,12 @@
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
+	import {
+		ADD_WORD_INTENT_LABELS,
+		readAddWordIntent,
+		saveAddWordIntent,
+		type AddWordIntent
+	} from '$lib/stores/addWordAction';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	const POS_CORE = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
@@ -156,7 +162,10 @@
 	let addWordPresentIchek = $state('');
 	let addWordKalenjinInput = $state<HTMLInputElement | null>(null);
 	let addWordFormEl = $state<HTMLFormElement | null>(null);
-	let addWordStayBtn = $state<HTMLButtonElement | null>(null);
+	const ADD_WORD_INTENTS = ['stay', 'open'] as const satisfies readonly AddWordIntent[];
+	let addWordIntent = $state<AddWordIntent>('stay');
+	let addWordActionMenuOpen = $state(false);
+	let addWordActionWrap = $state<HTMLDivElement | null>(null);
 
 	type DictionarySearchResult = {
 		id: string;
@@ -277,13 +286,39 @@
 
 	function openAddWord() {
 		resetAddWordForm();
+		addWordIntent = readAddWordIntent();
+		addWordActionMenuOpen = false;
 		addWordOpen = true;
 	}
 
 	function closeAddWord() {
 		if (addWordSubmitting) return;
+		addWordActionMenuOpen = false;
 		addWordOpen = false;
 	}
+
+	function toggleAddWordActionMenu() {
+		addWordActionMenuOpen = !addWordActionMenuOpen;
+	}
+
+	function selectAddWordIntent(intent: AddWordIntent) {
+		addWordIntent = intent;
+		saveAddWordIntent(intent);
+		addWordActionMenuOpen = false;
+		if (!addWordSubmitting) addWordFormEl?.requestSubmit();
+	}
+
+	$effect(() => {
+		if (!addWordActionMenuOpen) return;
+		function onPointerDown(event: MouseEvent) {
+			const wrap = addWordActionWrap;
+			if (!wrap) return;
+			if (event.target instanceof Node && wrap.contains(event.target)) return;
+			addWordActionMenuOpen = false;
+		}
+		window.addEventListener('pointerdown', onPointerDown, true);
+		return () => window.removeEventListener('pointerdown', onPointerDown, true);
+	});
 
 	function handleAddWordKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
@@ -294,7 +329,7 @@
 		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
 			if (!addWordSubmitting) {
-				addWordFormEl?.requestSubmit(addWordStayBtn ?? undefined);
+				addWordFormEl?.requestSubmit();
 			}
 		}
 	}
@@ -694,31 +729,50 @@
 					{/if}
 					<input type="hidden" name="relatedWordIds" value={addWordRelatedIdsValue} />
 				</div>
+				<input type="hidden" name="intent" value={addWordIntent} />
 				<div class="add-word-actions">
 					<button
 						type="button"
 						class="btn ghost"
 						onclick={closeAddWord}
 						disabled={addWordSubmitting}>Cancel</button>
-					<button
-						type="submit"
-						name="intent"
-						value="stay"
-						class="btn"
-						bind:this={addWordStayBtn}
-						disabled={addWordSubmitting}
-					>
-						{addWordSubmitting ? 'Creating…' : 'Create & add another'}
-					</button>
-					<button
-						type="submit"
-						name="intent"
-						value="open"
-						class="btn ghost"
-						disabled={addWordSubmitting}
-					>
-						Create & open
-					</button>
+					<div class="add-word-split" bind:this={addWordActionWrap}>
+						<button
+							type="submit"
+							class="btn add-word-split-main"
+							disabled={addWordSubmitting}
+						>
+							{addWordSubmitting ? 'Creating…' : ADD_WORD_INTENT_LABELS[addWordIntent]}
+						</button>
+						<button
+							type="button"
+							class="btn add-word-split-toggle"
+							aria-haspopup="menu"
+							aria-expanded={addWordActionMenuOpen}
+							aria-label="Choose create action"
+							onclick={toggleAddWordActionMenu}
+							disabled={addWordSubmitting}
+						>
+							<span aria-hidden="true">▾</span>
+						</button>
+						{#if addWordActionMenuOpen}
+							<div class="add-word-split-menu" role="menu">
+								{#each ADD_WORD_INTENTS as intent}
+									{@const itemSelected = addWordIntent === intent}
+									<button
+										type="button"
+										role="menuitemradio"
+										aria-checked={itemSelected}
+										class="add-word-split-item"
+										class:selected={itemSelected}
+										onclick={() => selectAddWordIntent(intent)}
+									>
+										{ADD_WORD_INTENT_LABELS[intent]}
+									</button>
+								{/each}
+							</div>
+						{/if}
+					</div>
 				</div>
 			</form>
 		</div>
@@ -812,6 +866,59 @@
 		gap: 0.5rem;
 		justify-content: flex-end;
 		margin-top: 0.5rem;
+	}
+
+	.add-word-split {
+		display: inline-flex;
+		position: relative;
+	}
+	.add-word-split-main {
+		border-bottom-right-radius: 0;
+		border-top-right-radius: 0;
+	}
+	.add-word-split-toggle {
+		align-items: center;
+		border-bottom-left-radius: 0;
+		border-left: 1px solid color-mix(in oklch, var(--on-brand) 35%, transparent);
+		border-top-left-radius: 0;
+		display: inline-flex;
+		font-size: 11px;
+		justify-content: center;
+		padding: 11px 10px;
+	}
+	.add-word-split-menu {
+		background: var(--bg-raised, var(--surface));
+		border: 1px solid var(--line);
+		border-radius: 10px;
+		bottom: calc(100% + 6px);
+		box-shadow: 0 8px 24px oklch(0 0 0 / 0.12);
+		display: flex;
+		flex-direction: column;
+		min-width: 100%;
+		overflow: hidden;
+		position: absolute;
+		right: 0;
+		width: max-content;
+		z-index: 5;
+	}
+	.add-word-split-item {
+		background: transparent;
+		border: 0;
+		color: var(--ink);
+		cursor: pointer;
+		font: inherit;
+		font-size: 13px;
+		padding: 9px 14px;
+		text-align: left;
+		white-space: nowrap;
+	}
+	.add-word-split-item:hover {
+		background: color-mix(in oklch, var(--brand) 10%, transparent);
+	}
+	.add-word-split-item.selected {
+		background: color-mix(in oklch, var(--brand) 16%, transparent);
+		color: var(--brand-ink, var(--brand));
+		font-weight: 600;
 	}
 
 	.add-word-related {

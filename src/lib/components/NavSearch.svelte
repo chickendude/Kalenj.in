@@ -7,6 +7,7 @@
 	type SearchResult = {
 		id: string;
 		kalenjin: string;
+		pluralForm: string | null;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 	};
@@ -144,7 +145,11 @@
 						onmousedown={(event) => event.preventDefault()}
 						onclick={dismiss}
 					>
-						<span class="ns-word">{word.kalenjin}</span>
+						<span class="ns-word"
+							>{word.kalenjin}{#if word.pluralForm}<span class="ns-plural"
+									>{' '}({word.pluralForm})</span
+								>{/if}</span
+						>
 						<span class="ns-pos">
 							{word.partOfSpeech ? PART_OF_SPEECH_LABELS[word.partOfSpeech] : ''}
 						</span>
@@ -251,6 +256,11 @@
 		font-family: var(--font-display);
 		font-size: 15px;
 		font-weight: 500;
+	}
+	.ns-plural {
+		color: var(--ink-mute);
+		font-weight: 400;
+		font-size: 13px;
 	}
 	.ns-pos {
 		font-size: 10px;

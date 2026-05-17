@@ -8,6 +8,7 @@ import {
 	isNumericTranslationSearchQuery,
 	sortTranslationSearchResults
 } from '$lib/translations';
+import { splitPluralFormVariants } from '$lib/plural-form-variants';
 import type { RequestHandler } from './$types';
 
 const MAX_RESULTS = 7;
@@ -19,6 +20,7 @@ const PREFIX_OR_EXACT_SCORE_LIMIT = 8;
 type SearchResult = {
 	id: string;
 	kalenjin: string;
+	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
 };
@@ -26,12 +28,14 @@ type SearchResult = {
 function toResult(word: {
 	id: string;
 	kalenjin: string;
+	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
 }): SearchResult {
 	return {
 		id: word.id,
 		kalenjin: word.kalenjin,
+		pluralForm: splitPluralFormVariants(word.pluralForm).pluralForm || null,
 		translations: word.translations,
 		partOfSpeech: word.partOfSpeech
 	};
@@ -60,7 +64,13 @@ export const GET: RequestHandler = async ({ url }) => {
 			where: { translations: { contains: query, mode: 'insensitive' } },
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
 			take: TRANSLATION_CANDIDATE_LIMIT,
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+			select: {
+				id: true,
+				kalenjin: true,
+				pluralForm: true,
+				translations: true,
+				partOfSpeech: true
+			}
 		})
 	]);
 

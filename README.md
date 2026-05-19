@@ -16,6 +16,26 @@ Start the local dev server with:
 npm run dev
 ```
 
+## Importing production data
+
+To pull a fresh copy of the production database and uploaded media into your
+local dev setup:
+
+```sh
+npm run db:import-prod
+```
+
+This SSHes into the production VPS, runs `pg_dump` there, then **drops and
+recreates** your local database (named in `.env` `DATABASE_URL`) and restores
+the dump — no prompt, since the local DB is a disposable mirror of production.
+It also `rsync`s the production audio/image uploads down so local playback
+works. Pass `--skip-media` to import only the database. Requires local
+`psql`/`pg_restore`/`rsync` and SSH access to the server.
+
+Set `PROD_SSH_TARGET` (e.g. `user@your-host`) in your gitignored `.env` — the
+production host is intentionally not committed. `PROD_APP_DIR` is optional
+(defaults to `/var/www/kalenjin`). See `scripts/import-prod-db.sh --help`.
+
 ## Testing
 
 Unit tests are part of the normal development process in this repo. When we add new logic or fix a bug, we should add or update unit tests whenever the behavior can be tested reasonably.

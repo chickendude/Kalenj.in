@@ -18,6 +18,7 @@
 		"db:deploy": "prisma migrate deploy",
 		"postdb:deploy": "npm run backfill:observed-forms",
 		"db:studio": "prisma studio",
+		"db:import-prod": "bash scripts/import-prod-db.sh",
 		"backfill:observed-forms": "tsx scripts/backfill-observed-word-forms.ts",
 		"create-admin": "tsx scripts/create-admin.ts",
 		"check": "npm run lint",

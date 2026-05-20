@@ -200,6 +200,7 @@ model ExampleSentence {
   kalenjin          String
   english           String
   notes             String?
+  isUnique          Boolean                @default(false)
   imageUrl          String?
   audioUrl          String?
   audioRecordedById String?

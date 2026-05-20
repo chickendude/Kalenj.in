@@ -10,7 +10,12 @@ export default defineConfig({
 		ctViteConfig: {
 			resolve: {
 				alias: {
-					$lib: resolve(import.meta.dirname, 'src/lib')
+					$lib: resolve(import.meta.dirname, 'src/lib'),
+					'$app/forms': resolve(import.meta.dirname, 'tests/ct/stubs/app-forms.ts'),
+					'$app/navigation': resolve(
+						import.meta.dirname,
+						'tests/ct/stubs/app-navigation.ts'
+					)
 				}
 			}
 		}

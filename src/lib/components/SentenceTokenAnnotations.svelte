@@ -991,9 +991,21 @@
 
 	function enhanceUpdateForm(
 		tokenId: string,
-		options: { closeOnSuccess?: boolean; invalidateOnSuccess?: boolean } = {}
+		options: {
+			closeOnSuccess?: boolean;
+			invalidateOnSuccess?: boolean;
+			// Skip writing the server response back into local state. Set on the
+			// translation autosave form: the draft is the source of truth for
+			// what the user typed, and the server only echoes it back — applying
+			// it would overwrite newer keystrokes whenever a save was slow.
+			skipApply?: boolean;
+		} = {}
 	) {
-		const { closeOnSuccess = false, invalidateOnSuccess = false } = options;
+		const {
+			closeOnSuccess = false,
+			invalidateOnSuccess = false,
+			skipApply = false
+		} = options;
 
 		return () => {
 			saveState[tokenId] = 'saving';
@@ -1006,9 +1018,11 @@
 				update: EnhancedUpdate;
 			}) => {
 				if (result.type === 'success') {
-					const tokenUpdates = (result.data as { tokenUpdates?: TokenUpdatePayload[] } | undefined)?.tokenUpdates;
-					if (tokenUpdates?.length) {
-						applyTokenUpdates(tokenUpdates);
+					if (!skipApply) {
+						const tokenUpdates = (result.data as { tokenUpdates?: TokenUpdatePayload[] } | undefined)?.tokenUpdates;
+						if (tokenUpdates?.length) {
+							applyTokenUpdates(tokenUpdates);
+						}
 					}
 
 					if (invalidateOnSuccess) {
@@ -1253,7 +1267,7 @@
 						action={updateAction}
 						class="translation-form"
 						bind:this={updateForms[primaryToken.id]}
-						use:enhance={enhanceUpdateForm(primaryToken.id)}
+						use:enhance={enhanceUpdateForm(primaryToken.id, { skipApply: true })}
 					>
 						<input type="hidden" name={entityIdField} value={entityId} />
 						<input type="hidden" name="tokenId" value={primaryToken.id} />

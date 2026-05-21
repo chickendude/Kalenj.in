@@ -1,4 +1,4 @@
-import { stripEdgePunctuation } from '$lib/server/punctuation';
+import { stripEdgePunctuation } from '$lib/punctuation';
 
 export type TokenizedWord = {
 	// Ordered editable word unit in the sentence. Phrases can be stored as one value with spaces.

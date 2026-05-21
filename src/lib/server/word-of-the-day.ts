@@ -10,7 +10,7 @@ import {
 
 export const WORD_OF_DAY_WINDOW_DAYS = 30;
 
-export const wordOfDayInclude = {
+const wordOfDayInclude = {
 	word: {
 		include: {
 			spellings: { orderBy: { spelling: 'asc' } },

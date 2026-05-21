@@ -1,15 +1,5 @@
-import {
-	isCefrLevel,
-	isLessonType,
-	isPublishStatus,
-	isVocabularyLessonType
-} from '$lib/course';
-import type {
-	CefrLevel,
-	CourseLessonType,
-	PublishStatus,
-	VocabularyLessonType
-} from '@prisma/client';
+import { isCefrLevel, isLessonType, isVocabularyLessonType } from '$lib/course';
+import type { CefrLevel, CourseLessonType, VocabularyLessonType } from '@prisma/client';
 
 export function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
@@ -72,8 +62,4 @@ export function parseVocabularyLessonTypeValue(value: string): VocabularyLessonT
 	}
 
 	return isVocabularyLessonType(value) ? (value as VocabularyLessonType) : null;
-}
-
-export function parsePublishStatusValue(value: string): PublishStatus | null {
-	return isPublishStatus(value) ? (value as PublishStatus) : null;
 }

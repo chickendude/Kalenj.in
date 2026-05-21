@@ -11,7 +11,7 @@ function rawDir(): string {
 	return env.AUDIO_UPLOAD_DIR?.trim() || './.uploads/audio';
 }
 
-export function getAudioDir(): string {
+function getAudioDir(): string {
 	return resolve(rawDir());
 }
 

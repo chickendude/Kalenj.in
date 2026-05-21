@@ -35,7 +35,7 @@ export type SeriesPoint = { bucket: string; count: number };
 
 // Each cumulative metric is derived from a creation metric. This mapping is the
 // "source of change" used to detect whether a bucket had real activity.
-export const CUMULATIVE_SOURCE: Partial<Record<MetricId, MetricId>> = {
+const CUMULATIVE_SOURCE: Partial<Record<MetricId, MetricId>> = {
 	cumulativeWords: 'wordsCreated',
 	cumulativeSentences: 'sentencesCreated'
 };

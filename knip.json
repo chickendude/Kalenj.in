@@ -1,0 +1,19 @@
+{
+	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"entry": [
+		"src/routes/**/+{page,layout,server,error}.{ts,svelte}",
+		"src/routes/**/+server.ts",
+		"scripts/*.ts",
+		"src/**/*.{test,spec}.{ts,svelte}",
+		"tests/**/*.{spec,svelte}.{ts,svelte}",
+		"tests/**/*Harness.svelte"
+	],
+	"project": ["src/**/*.{ts,svelte}", "tests/**/*.{ts,svelte}"],
+	"ignore": [
+		"tests/ct/stubs/**",
+		"src/lib/index.ts"
+	],
+	"ignoreDependencies": [
+		"playwright"
+	]
+}

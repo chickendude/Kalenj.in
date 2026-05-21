@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
@@ -132,9 +133,7 @@
 		<span class="cleanup-count">{data.ignoredForms.length.toLocaleString()}</span>
 	</header>
 
-	{#if form && 'ignoreError' in form && form.ignoreError}
-		<div class="form-feedback error">{form.ignoreError}</div>
-	{/if}
+	<FormErrorFeedback error={form && 'ignoreError' in form ? form.ignoreError : null} />
 
 	<form method="POST" action="?/addIgnore" use:enhance class="ignore-add-form">
 		<input

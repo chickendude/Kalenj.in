@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
@@ -39,9 +40,7 @@
 <section class="form-card">
 	<h2>New user</h2>
 
-	{#if form && 'createError' in form && form.createError}
-		<div class="form-feedback error">{form.createError}</div>
-	{/if}
+	<FormErrorFeedback error={form && 'createError' in form ? form.createError : null} />
 
 	<form method="POST" action="?/createUser" use:enhance class="form-grid">
 		<div class="field">
@@ -89,12 +88,8 @@
 	</form>
 </section>
 
-{#if form && 'resetError' in form && form.resetError}
-	<div class="form-feedback error">{form.resetError}</div>
-{/if}
-{#if form && 'deleteError' in form && form.deleteError}
-	<div class="form-feedback error">{form.deleteError}</div>
-{/if}
+<FormErrorFeedback error={form && 'resetError' in form ? form.resetError : null} />
+<FormErrorFeedback error={form && 'deleteError' in form ? form.deleteError : null} />
 
 <table class="users-table">
 	<thead>

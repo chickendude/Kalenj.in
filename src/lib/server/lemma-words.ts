@@ -2,7 +2,7 @@ import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { prepareAlternativeSpellings, preparePluralForms } from './kalenjin-word-search';
 import { normalizeLemma } from './normalize-lemma';
 
-export const PRESENT_TENSE_KEYS = [
+const PRESENT_TENSE_KEYS = [
 	'presentAnee',
 	'presentInyee',
 	'presentInee',
@@ -11,7 +11,7 @@ export const PRESENT_TENSE_KEYS = [
 	'presentIchek'
 ] as const;
 
-export type PresentTenseKey = (typeof PRESENT_TENSE_KEYS)[number];
+type PresentTenseKey = (typeof PRESENT_TENSE_KEYS)[number];
 
 export type PresentTenseConjugations = Record<PresentTenseKey, string | null>;
 

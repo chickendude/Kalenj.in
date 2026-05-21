@@ -2,24 +2,24 @@ import { prisma } from '$lib/server/prisma';
 import { parsePositiveInteger } from '$lib/server/course-form';
 import type { CefrLevel } from '@prisma/client';
 
-export const CEFR_PAGE_SIZE = 100;
-export const CEFR_SORT_OPTIONS = ['alpha-asc', 'alpha-desc'] as const;
+const CEFR_PAGE_SIZE = 100;
+const CEFR_SORT_OPTIONS = ['alpha-asc', 'alpha-desc'] as const;
 export type CefrSortOption = (typeof CEFR_SORT_OPTIONS)[number];
 
-export const CEFR_COVERAGE_FILTERS = ['all', 'covered', 'uncovered'] as const;
+const CEFR_COVERAGE_FILTERS = ['all', 'covered', 'uncovered'] as const;
 export type CefrCoverageFilter = (typeof CEFR_COVERAGE_FILTERS)[number];
 
 export function parseCefrSortOption(value: string | null): CefrSortOption {
 	return value === 'alpha-desc' ? 'alpha-desc' : 'alpha-asc';
 }
 
-export function parseCefrCoverageFilter(value: string | null): CefrCoverageFilter {
+function parseCefrCoverageFilter(value: string | null): CefrCoverageFilter {
 	if (value === 'yes' || value === 'covered') return 'covered';
 	if (value === 'no' || value === 'uncovered') return 'uncovered';
 	return 'all';
 }
 
-export function parseCefrPosFilters(value: string | null): string[] {
+function parseCefrPosFilters(value: string | null): string[] {
 	if (!value) return [];
 
 	return [
@@ -32,7 +32,7 @@ export function parseCefrPosFilters(value: string | null): string[] {
 	];
 }
 
-export function extractPosTokens(english: string): string[] {
+function extractPosTokens(english: string): string[] {
 	const match = english.match(/\(([^)]+)\)/);
 
 	if (!match) {

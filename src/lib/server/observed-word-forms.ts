@@ -47,15 +47,6 @@ export async function recordObservedWordForm(
 	});
 }
 
-export async function recordObservedWordForms(
-	prisma: ObservedWordFormClient,
-	forms: ObservedWordFormInput[]
-): Promise<void> {
-	for (const form of forms) {
-		await recordObservedWordForm(prisma, form);
-	}
-}
-
 export async function removeObservedWordForm(
 	prisma: ObservedWordFormClient,
 	input: ObservedWordFormInput

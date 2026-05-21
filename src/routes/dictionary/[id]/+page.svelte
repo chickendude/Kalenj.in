@@ -5,7 +5,7 @@
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import SidePanel from '$lib/components/SidePanel.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';

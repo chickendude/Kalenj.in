@@ -2,7 +2,7 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
 	import type { PartOfSpeech } from '@prisma/client';

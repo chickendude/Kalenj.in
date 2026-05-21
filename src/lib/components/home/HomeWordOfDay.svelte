@@ -2,7 +2,7 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks } from '$lib/word-links';
 	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';

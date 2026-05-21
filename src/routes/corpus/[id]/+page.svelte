@@ -7,7 +7,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
 	import { renderMarkdown } from '$lib/markdown';

@@ -4,11 +4,14 @@ import { requireEditor } from '$lib/server/guards';
 import { prisma } from '$lib/server/prisma';
 import { saveAudio } from '$lib/server/audio-storage';
 import { processAudioSegments } from '$lib/server/audio-processing';
+import {
+	ALLOWED_MIME,
+	MAX_UPLOAD_BYTES,
+	isTargetType,
+	type TargetType
+} from '$lib/server/audio-targets';
 
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const MAX_SEGMENTS = 100;
-
-type TargetType = 'word' | 'word-plural' | 'sentence';
 
 const TARGET_LIMITS: Record<
 	TargetType,
@@ -39,29 +42,12 @@ const TARGET_LIMITS: Record<
 	}
 };
 
-const ALLOWED_MIME = new Set([
-	'audio/webm',
-	'audio/ogg',
-	'audio/mpeg',
-	'audio/mp3',
-	'audio/mp4',
-	'audio/x-m4a',
-	'audio/m4a',
-	'audio/wav',
-	'audio/wave',
-	'audio/x-wav'
-]);
-
 type SegmentInput = {
 	targetId: string;
 	targetType: TargetType;
 	startMs: number;
 	endMs: number;
 };
-
-function isTargetType(value: unknown): value is TargetType {
-	return value === 'word' || value === 'word-plural' || value === 'sentence';
-}
 
 function parseSegments(raw: unknown, defaultType: TargetType): SegmentInput[] {
 	if (!Array.isArray(raw)) error(400, 'Segments must be an array.');

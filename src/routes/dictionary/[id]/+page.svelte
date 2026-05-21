@@ -2,6 +2,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
@@ -386,9 +387,7 @@
 				<div class="side-card">
 					<h3>Edit entry</h3>
 
-					{#if form?.error}
-						<div class="form-feedback error">{form.error}</div>
-					{/if}
+					<FormErrorFeedback error={form?.error} />
 
 					<form
 						method="POST"
@@ -586,9 +585,7 @@
 				<div class="side-card">
 					<h3>Related words</h3>
 
-					{#if form?.relatedWordError}
-						<div class="form-feedback error">{form.relatedWordError}</div>
-					{/if}
+					<FormErrorFeedback error={form?.relatedWordError} />
 
 					{#if data.word.relatedWords.length === 0}
 						<p class="related-editor-empty">No related words linked.</p>

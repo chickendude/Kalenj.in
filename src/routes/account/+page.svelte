@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
@@ -25,9 +26,7 @@
 <section class="form-card" style="max-width: 520px;">
 	<h2>Change password</h2>
 
-	{#if form && 'error' in form && form.error}
-		<div class="form-feedback error">{form.error}</div>
-	{/if}
+	<FormErrorFeedback error={form && 'error' in form ? form.error : null} />
 
 	<form method="POST" action="?/changePassword" use:enhance class="auth-form">
 		<div class="field">

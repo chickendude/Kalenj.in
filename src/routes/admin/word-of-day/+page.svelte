@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import { slide } from 'svelte/transition';
 	import { cubicOut } from 'svelte/easing';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
@@ -202,9 +203,7 @@
 	</div>
 </div>
 
-{#if form && 'assignError' in form && form.assignError}
-	<div class="form-feedback error">{form.assignError}</div>
-{/if}
+<FormErrorFeedback error={form && 'assignError' in form ? form.assignError : null} />
 
 <section class="form-card wod-admin-actions">
 	<div>

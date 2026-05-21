@@ -2,6 +2,7 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
@@ -383,9 +384,7 @@
 		</section>
 	{/if}
 
-	{#if form?.error}
-		<div class="form-feedback error">{form.error}</div>
-	{/if}
+	<FormErrorFeedback error={form?.error} />
 
 	{#if canEdit}
 		<h2 class="section-title">Image</h2>

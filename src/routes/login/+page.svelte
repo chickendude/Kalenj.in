@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -16,9 +17,7 @@
 		<h1>Sign in</h1>
 		<p class="auth-sub">Editors only.</p>
 
-		{#if form?.error}
-			<div class="form-feedback error">{form.error}</div>
-		{/if}
+		<FormErrorFeedback error={form?.error} />
 
 		<form method="POST" use:enhance class="auth-form">
 			<input type="hidden" name="redirectTo" value={data.redirectTo} />

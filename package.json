@@ -21,7 +21,7 @@
 		"db:import-prod": "bash scripts/import-prod-db.sh",
 		"backfill:observed-forms": "tsx scripts/backfill-observed-word-forms.ts",
 		"create-admin": "tsx scripts/create-admin.ts",
-		"check": "npm run lint",
+		"check": "npm run lint && npm run knip",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"knip": "knip"
 	},

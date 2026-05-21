@@ -9,7 +9,7 @@
 	} from '$lib/bulk-sentences';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
 	import FormActions from '$lib/components/FormActions.svelte';
 

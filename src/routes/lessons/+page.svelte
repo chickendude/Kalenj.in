@@ -2,6 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { formatLessonType, formatVocabularyLessonType } from '$lib/course';
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
+	import FormActions from '$lib/components/FormActions.svelte';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
 	import { stripWordLinks } from '$lib/word-links';
 
@@ -249,12 +250,10 @@
 						titlePlaceholder="Lesson title"
 					/>
 
-					<div class="form-actions">
-						<button type="submit" class="btn">Create lesson</button>
-						<button type="button" class="btn ghost" onclick={() => (showAddLessonForm = false)}>
-							Cancel
-						</button>
-					</div>
+					<FormActions
+						submitLabel="Create lesson"
+						onCancel={() => (showAddLessonForm = false)}
+					/>
 				</form>
 			{/if}
 
@@ -275,12 +274,7 @@
 							titlePlaceholder={`Lesson ${adjacentLessonPosition === 'before' ? 'before' : 'after'} ${lesson.title}`}
 						/>
 
-						<div class="form-actions">
-							<button type="submit" class="btn">Create lesson</button>
-							<button type="button" class="btn ghost" onclick={closeAdjacentLessonForm}>
-								Cancel
-							</button>
-						</div>
+						<FormActions submitLabel="Create lesson" onCancel={closeAdjacentLessonForm} />
 					</form>
 				</li>
 			{/snippet}

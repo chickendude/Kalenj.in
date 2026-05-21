@@ -11,6 +11,7 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
+	import FormActions from '$lib/components/FormActions.svelte';
 
 	let { data, form } = $props();
 
@@ -337,9 +338,7 @@
 									minQueryLength={3}
 								/>
 
-								<div class="form-actions">
-									<button type="submit" class="btn">Create &amp; map tokens</button>
-								</div>
+								<FormActions submitLabel="Create & map tokens" />
 							</form>
 						</div>
 					{:else}
@@ -369,9 +368,7 @@
 										</p>
 									{/if}
 
-									<div class="form-actions">
-										<button type="submit" class="btn">Review import</button>
-									</div>
+									<FormActions submitLabel="Review import" />
 								</form>
 							{:else}
 								<form method="POST" action="?/saveBulkSentences" class="bulk-review-form">
@@ -484,9 +481,10 @@
 										</table>
 									</div>
 
-									<div class="form-actions">
-										<button type="submit" class="btn" disabled={activeBulkRows.length === 0}>Save reviewed sentences</button>
-									</div>
+									<FormActions
+										submitLabel="Save reviewed sentences"
+										submitDisabled={activeBulkRows.length === 0}
+									/>
 								</form>
 							{/if}
 						</div>

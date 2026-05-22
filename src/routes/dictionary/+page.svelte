@@ -379,26 +379,6 @@
 </svelte:head>
 
 <section>
-	<div class="page-head">
-		<div>
-			<div class="page-kicker">Kalenjin → English</div>
-			<h1>Dictionary</h1>
-			<p>
-				This is our project to document the vocabulary used by native Kalenjin speakers today,
-				with a focus on the Kipsigis dialect.
-			</p>
-		</div>
-		<div class="page-stat">
-			<b>{data.totalCount}</b>
-			headwords indexed
-			{#if page.data.user?.role === 'ADMIN' || page.data.user?.role === 'MANAGER'}
-				<div class="page-stat-action">
-					<a class="record-missing-link" href="/dictionary/record-audio">Record missing audio →</a>
-				</div>
-			{/if}
-		</div>
-	</div>
-
 	<div class="controls">
 		<div class="search-row">
 			<div class="field search-field">
@@ -589,6 +569,9 @@
 
 	<div class="result-meta">
 		<div class="result-count">{data.words.length} of {data.totalCount} entries</div>
+		{#if page.data.user?.role === 'ADMIN' || page.data.user?.role === 'MANAGER'}
+			<a class="record-missing-link" href="/dictionary/record-audio">Record missing audio →</a>
+		{/if}
 	</div>
 
 	<div class="results-region" class:loading={isSearching} aria-busy={isSearching}>
@@ -825,13 +808,10 @@
 {/if}
 
 <style>
-	.page-stat-action {
-		margin-top: 6px;
-		font-size: 13px;
-	}
 	.record-missing-link {
 		color: var(--accent);
 		text-decoration: none;
+		font-size: 13px;
 	}
 	.record-missing-link:hover {
 		text-decoration: underline;

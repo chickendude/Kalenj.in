@@ -212,27 +212,6 @@
 </svelte:head>
 
 <section>
-	<div class="page-head">
-		<div>
-			<div class="page-kicker">Sentence bank</div>
-			<h1>Corpus</h1>
-			<p>
-				A collection of translated sentences in Kalenjin to see how vocabulary is used in
-				context.
-			</p>
-		</div>
-		<div class="page-stat">
-			<b>{data.totalCount}</b>
-			sentence{data.totalCount === 1 ? '' : 's'} collected
-			{#if canEdit}
-				<div class="page-stat-actions">
-					<a class="btn ghost sm" href="/corpus/record-audio">Record missing audio →</a>
-					<a class="btn ghost sm" href="/corpus/duplicates">Check duplicates</a>
-				</div>
-			{/if}
-		</div>
-	</div>
-
 	{#if form?.error}
 		<p class="error-banner">{form.error}</p>
 	{/if}
@@ -549,6 +528,9 @@
 				<div class="result-count">
 					{data.sentences.length} of {data.totalCount} sentence{data.totalCount === 1 ? '' : 's'}
 				</div>
+				{#if canEdit}
+					<a class="record-missing-link" href="/corpus/record-audio">Record missing audio →</a>
+				{/if}
 			</div>
 
 			<div class="results-region" class:loading={isSearching} aria-busy={isSearching}>
@@ -596,8 +578,13 @@
 </section>
 
 <style>
-	.page-stat-actions {
-		margin-top: 8px;
+	.record-missing-link {
+		color: var(--accent);
+		text-decoration: none;
+		font-size: 13px;
+	}
+	.record-missing-link:hover {
+		text-decoration: underline;
 	}
 
 	.corpus-layout {

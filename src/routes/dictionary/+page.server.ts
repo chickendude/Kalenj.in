@@ -58,12 +58,22 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	let words: DictionarySearchWord[];
 	if (!query) {
-		words = await prisma.word.findMany({
+		const randomCount = 10;
+		const candidates = await prisma.word.findMany({
 			where: baseWhere,
-			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
-			take: limit
+			select: { id: true }
 		});
+		for (let i = candidates.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+		}
+		const pickedIds = candidates.slice(0, randomCount).map((c) => c.id);
+		const picked = await prisma.word.findMany({
+			where: { id: { in: pickedIds } },
+			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true }
+		});
+		const order = new Map(pickedIds.map((id, index) => [id, index]));
+		words = picked.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 	} else if (language === 'translations') {
 		const translationWords = await prisma.word.findMany({
 			where: {

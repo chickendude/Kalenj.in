@@ -145,7 +145,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .brand {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 4px;
   font-family: var(--font-display);
   font-weight: 500;

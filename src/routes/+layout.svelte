@@ -13,7 +13,6 @@
 
 	const navItems = $derived.by(() => {
 		const items = [
-			{ href: '/', label: 'Home' },
 			{ href: '/dictionary', label: 'Dictionary' },
 			{ href: '/corpus', label: 'Corpus' }
 		];

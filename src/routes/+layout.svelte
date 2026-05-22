@@ -303,6 +303,14 @@
 								>
 									Record sentence audio
 								</a>
+								<a
+									href="/corpus/duplicates"
+									role="menuitem"
+									class:active={isActive('/corpus/duplicates')}
+									onclick={closeMenu}
+								>
+									Check duplicates
+								</a>
 							{/if}
 							{#if data.user.role === 'ADMIN'}
 								<a

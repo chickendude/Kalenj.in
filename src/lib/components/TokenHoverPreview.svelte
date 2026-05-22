@@ -36,11 +36,14 @@
 	const TOOLTIP_VIEWPORT_GUTTER = 12;
 	const OPEN_TOOLTIP_EVENT = 'kalenjin-token-preview-open';
 
-	let { sentenceId = 'sentence', sentenceText, tokens, onTokenClick } = $props<{
+	let { sentenceId = 'sentence', sentenceText, tokens, onTokenClick, leading } = $props<{
 		sentenceId?: string;
 		sentenceText: string;
 		tokens: PreviewToken[];
 		onTokenClick?: (token: PreviewToken) => void;
+		// Optional content (e.g. a play button) rendered as the first item in the
+		// wrapping flow, so wrapped lines stay flush-left instead of indenting.
+		leading?: import('svelte').Snippet;
 	}>();
 
 	let pinnedTooltipKey = $state<string | null>(null);
@@ -248,6 +251,7 @@
 {/snippet}
 
 <div class="sentence-preview" aria-label="Token preview">
+	{#if leading}{@render leading()}{/if}
 	{#each groups as group (group.key)}
 		{#if group.breakBefore}
 			<span class="speaker-break" aria-hidden="true"></span>

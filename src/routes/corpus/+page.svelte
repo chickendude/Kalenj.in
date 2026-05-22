@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import {
 		normalizeBulkSentenceForReview,
 		type BulkSentenceReviewRow,
@@ -148,6 +148,15 @@
 	}
 
 	const initialQuery = untrack(() => data.query);
+	// While a navigation is in flight, reflect the language the user is heading to
+	// so the toggle highlights instantly instead of waiting for the server load.
+	const pendingLang = $derived(
+		navigating?.to?.url.pathname === '/corpus'
+			? navigating.to.url.searchParams.get('lang')
+			: null
+	);
+	const activeLang = $derived(pendingLang ?? data.language);
+	const isSearching = $derived(navigating?.to?.url.pathname === '/corpus');
 	let searchQuery = $state(initialQuery);
 	let lastNavTarget = initialQuery;
 	let debounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -518,17 +527,17 @@
 						<button
 							id="corpus-lang-kalenjin"
 							type="button"
-							class:active={data.language === 'kalenjin'}
+							class:active={activeLang === 'kalenjin'}
 							onclick={() => selectLanguage('kalenjin')}
 						>Kalenjin</button>
 						<button
 							type="button"
-							class:active={data.language === 'english'}
+							class:active={activeLang === 'english'}
 							onclick={() => selectLanguage('english')}
 						>English</button>
 						<button
 							type="button"
-							class:active={data.language === 'both'}
+							class:active={activeLang === 'both'}
 							onclick={() => selectLanguage('both')}
 						>Both</button>
 					</div>
@@ -541,6 +550,7 @@
 				</div>
 			</div>
 
+			<div class="results-region" class:loading={isSearching} aria-busy={isSearching}>
 			{#if data.sentences.length === 0}
 				<div class="empty">
 					{data.query ? 'No sentences match your search.' : 'No sentences yet.'}
@@ -551,16 +561,19 @@
 						<li>
 							<div class="sentence-row sentence-card">
 								<div class="kal">
-									<AudioPlayButton
-										audioUrl={sentence.audioUrl}
-										size="sm"
-										label="Play sentence"
-									/>
 									<TokenHoverPreview
 										sentenceId={sentence.id}
 										sentenceText={sentence.kalenjin}
 										tokens={sentence.tokens}
-									/>
+									>
+										{#snippet leading()}
+											<AudioPlayButton
+												audioUrl={sentence.audioUrl}
+												size="sm"
+												label="Play sentence"
+											/>
+										{/snippet}
+									</TokenHoverPreview>
 								</div>
 								<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
 									<SentenceTimeText text={sentence.english} />
@@ -570,6 +583,7 @@
 					{/each}
 				</ul>
 			{/if}
+			</div>
 		</section>
 		{/if}
 	</div>
@@ -895,6 +909,13 @@
 		margin-bottom: 10px;
 	}
 
+	.results-region {
+		transition: opacity 0.15s ease;
+	}
+	.results-region.loading {
+		opacity: 0.55;
+	}
+
 	.sentence-list {
 		list-style: none;
 		margin: 0;
@@ -910,14 +931,15 @@
 		padding: 22px 0;
 	}
 	.sentence-row .kal {
-		align-items: baseline;
-		display: flex;
-		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 22px;
-		gap: 10px;
 		line-height: 1.3;
 		margin-bottom: 6px;
+	}
+	/* The play button is rendered as the first item inside the token preview's
+	   wrapping flow, so wrapped lines stay flush-left (no hanging indent). */
+	.sentence-row .kal :global(.sentence-preview) {
+		align-items: center;
 	}
 	.sentence-row .en {
 		color: var(--ink-soft);

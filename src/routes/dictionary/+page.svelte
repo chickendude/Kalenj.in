@@ -2,7 +2,7 @@
 	import { untrack } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import { applyAction, enhance } from '$app/forms';
-	import { page } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
@@ -34,6 +34,15 @@
 	let { data, form } = $props();
 
 	const initialQuery = untrack(() => data.query);
+	// While a navigation is in flight, reflect the language the user is heading to
+	// so the toggle highlights instantly instead of waiting for the server load.
+	const pendingLang = $derived(
+		navigating?.to?.url.pathname === '/dictionary'
+			? navigating.to.url.searchParams.get('lang')
+			: null
+	);
+	const activeLang = $derived(pendingLang ?? data.language);
+	const isSearching = $derived(navigating?.to?.url.pathname === '/dictionary');
 	const hasActiveFilters = $derived(
 		data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)
 	);
@@ -431,17 +440,17 @@
 					<button
 						id="language-kalenjin"
 						type="button"
-						class:active={data.language === 'kalenjin'}
+						class:active={activeLang === 'kalenjin'}
 						onclick={() => selectLanguage('kalenjin')}
 					>Kalenjin</button>
 					<button
 						type="button"
-						class:active={data.language === 'translations'}
+						class:active={activeLang === 'translations'}
 						onclick={() => selectLanguage('translations')}
 					>Translations</button>
 					<button
 						type="button"
-						class:active={data.language === 'both'}
+						class:active={activeLang === 'both'}
 						onclick={() => selectLanguage('both')}
 					>Both</button>
 				</div>
@@ -548,6 +557,7 @@
 		{/if}
 	</div>
 
+	<div class="results-region" class:loading={isSearching} aria-busy={isSearching}>
 	{#if data.words.length === 0}
 		<div class="empty-state">No entries match — try a different search or clear filters.</div>
 	{:else}
@@ -582,6 +592,7 @@
 			</tbody>
 		</table>
 	{/if}
+	</div>
 </section>
 
 {#if addWordOpen}
@@ -1176,6 +1187,13 @@
 		align-items: center;
 		display: flex;
 		gap: 10px;
+	}
+
+	.results-region {
+		transition: opacity 0.15s ease;
+	}
+	.results-region.loading {
+		opacity: 0.55;
 	}
 
 	@media (max-width: 720px) {

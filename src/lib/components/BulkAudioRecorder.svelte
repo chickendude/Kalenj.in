@@ -3,6 +3,7 @@
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { fmtSecMs, hashId, seededWaveform } from '$lib/bulk-audio';
+	import BulkAudioWaveform from './BulkAudioWaveform.svelte';
 
 	type TargetType = 'word' | 'sentence';
 	type ItemTargetType = 'word' | 'word-plural' | 'sentence';
@@ -1269,35 +1270,12 @@
 											</svg>
 										{/if}
 									</button>
-									<div
-										class="waveform"
-										role="slider"
-										tabindex="0"
-										aria-label="Seek"
-										aria-valuemin="0"
-										aria-valuemax="100"
-										aria-valuenow={Math.round((playingItemId === row.targetId ? playProgress : 0) * 100)}
-										onclick={(e) => {
-											const target = e.currentTarget as HTMLElement;
-											const r = target.getBoundingClientRect();
-											const p = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-											seekTo(row.targetId, p);
-										}}
-										onkeydown={(e) => {
-											if (e.key === 'ArrowLeft') seekTo(row.targetId, Math.max(0, playProgress - 0.05));
-											else if (e.key === 'ArrowRight') seekTo(row.targetId, Math.min(1, playProgress + 0.05));
-										}}
-									>
-										{#each bars as h, bi (bi)}
-											{@const played =
-												playingItemId === row.targetId && bi / bars.length <= playProgress}
-											<div
-												class="bar"
-												class:played
-												style:height="{Math.round(h * 100)}%"
-											></div>
-										{/each}
-									</div>
+									<BulkAudioWaveform
+										{bars}
+										playing={playingItemId === row.targetId}
+										progress={playProgress}
+										onSeek={(p) => seekTo(row.targetId, p)}
+									/>
 									<span class="timestamp">{fmtSecMs(dur)}</span>
 								</div>
 								<audio
@@ -2056,30 +2034,6 @@
 		background: var(--accent);
 		border-color: var(--accent);
 		color: oklch(0.99 0.005 80);
-	}
-	.waveform {
-		align-items: center;
-		cursor: pointer;
-		display: flex;
-		flex: 1;
-		gap: 1.5px;
-		height: 28px;
-		padding: 4px 0;
-	}
-	.waveform .bar {
-		background: var(--ink-mute);
-		border-radius: 1px;
-		flex: 1;
-		min-width: 2px;
-		opacity: 0.4;
-		transition: background 0.1s, opacity 0.1s;
-	}
-	.waveform .bar.played {
-		background: var(--brand);
-		opacity: 0.9;
-	}
-	.playing .waveform .bar.played {
-		background: var(--accent);
 	}
 	.timestamp {
 		color: var(--ink-mute);

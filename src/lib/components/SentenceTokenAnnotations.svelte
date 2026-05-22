@@ -9,6 +9,14 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
+	import {
+		activeSegmentIndex,
+		computeSplitParts,
+		normalizeSearchQuery,
+		partIndexForChar,
+		serializeSpellings,
+		stripSurroundingPunctuation
+	} from '$lib/token-annotations';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
 
@@ -246,24 +254,6 @@
 	const isFirstSegmentActive = $derived(
 		Boolean(activeToken?.segments?.[0]?.id && activeToken.segments[0].id === activeSegment?.id)
 	);
-
-	function normalizeSearchQuery(value: string): string {
-		return value.replace(/[.,!?]/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
-	}
-
-	function stripSurroundingPunctuation(value: string): string {
-		return value
-			.replace(/^[^\p{L}\p{M}\p{N}]+/u, '')
-			.replace(/[^\p{L}\p{M}\p{N}]+$/u, '');
-	}
-
-	function serializeSpellings(
-		spellings: Array<{
-			spelling: string;
-		}> | null | undefined
-	): string {
-		return spellings?.map((spelling) => spelling.spelling).join(', ') ?? '';
-	}
 
 	$effect(() => {
 		const incomingSignature = JSON.stringify(
@@ -847,39 +837,6 @@
 				unsplitError instanceof Error ? unsplitError.message : 'Could not unsplit this word.';
 			throw unsplitError;
 		}
-	}
-
-	type SplitPart = { text: string; start: number; end: number };
-
-	function computeSplitParts(text: string, splits: number[]): SplitPart[] {
-		const bounds = [0, ...splits, text.length];
-		const parts: SplitPart[] = [];
-		for (let i = 0; i < bounds.length - 1; i += 1) {
-			const start = bounds[i];
-			const end = bounds[i + 1];
-			if (end > start) {
-				parts.push({ text: text.slice(start, end), start, end });
-			}
-		}
-		return parts;
-	}
-
-	function partIndexForChar(charIndex: number, splits: number[]): number {
-		let idx = 0;
-		for (const sp of splits) {
-			if (sp <= charIndex) {
-				idx += 1;
-			}
-		}
-		return idx;
-	}
-
-	function activeSegmentIndex(
-		token: SentenceToken | null,
-		segment: TokenSegment | null
-	): number {
-		if (!token || !segment) return -1;
-		return token.segments?.findIndex((entry) => entry.id === segment.id) ?? -1;
 	}
 
 	function splitPreview(surface: string, tokenId: string): string {

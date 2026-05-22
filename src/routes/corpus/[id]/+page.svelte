@@ -159,7 +159,7 @@
 				body: JSON.stringify({ field, value: trimmedValue })
 			});
 			const result = (await response.json()) as {
-				error?: string;
+				message?: string;
 				sentence?: {
 					id: string;
 					kalenjin: string;
@@ -170,7 +170,7 @@
 			};
 
 			if (!response.ok || !result.sentence) {
-				throw new Error(result.error ?? 'Could not save sentence.');
+				throw new Error(result.message ?? 'Could not save sentence.');
 			}
 
 			sentenceKalenjin = result.sentence.kalenjin;

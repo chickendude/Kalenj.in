@@ -41,29 +41,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		: [];
 
 	if (!tokenId) {
-		return json({ error: 'Token is required.' }, { status: 400 });
+		error(400, 'Token is required.');
 	}
 
 	const token = await ensureSentenceToken(params.id, tokenId);
 	const surface = token.surfaceForm;
 
 	if (splitPoints.length === 0) {
-		return json(
-			{
-				error: `Choose at least one split point in "${surface}".`
-			},
-			{ status: 400 }
-		);
+		error(400, `Choose at least one split point in "${surface}".`);
 	}
 	const uniquePoints = [...new Set(splitPoints)].sort((a, b) => a - b);
 	const invalidPoint = uniquePoints.find((point) => point <= 0 || point >= surface.length);
 	if (invalidPoint !== undefined) {
-		return json(
-			{
-				error: `Split points must be between 1 and ${Math.max(surface.length - 1, 1)}.`
-			},
-			{ status: 400 }
-		);
+		error(400, `Split points must be between 1 and ${Math.max(surface.length - 1, 1)}.`);
 	}
 
 	const boundaries = [0, ...uniquePoints, surface.length];

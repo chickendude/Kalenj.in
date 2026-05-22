@@ -65,14 +65,14 @@ describe('POST /corpus/[id]/split-token', () => {
 			surfaceForm: 'Missingkot'
 		});
 
-		const response = await post('sentence-1', {
-			tokenId: 'token-2',
-			splitPoints: []
-		});
-
-		expect(response.status).toBe(400);
-		await expect(response.json()).resolves.toEqual({
-			error: 'Choose at least one split point in "Missingkot".'
+		await expect(
+			post('sentence-1', {
+				tokenId: 'token-2',
+				splitPoints: []
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			body: { message: 'Choose at least one split point in "Missingkot".' }
 		});
 		expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
 		expect(mocks.prisma.exampleSentence.update).not.toHaveBeenCalled();

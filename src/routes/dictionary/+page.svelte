@@ -413,18 +413,55 @@
 				/>
 			</div>
 
-			<div class="filter-toggle-wrap">
-				<label class="filter-toggle-label" for="dictionary-filters">Options</label>
+			<div class="search-actions">
 				<button
 					id="dictionary-filters"
 					type="button"
-					class="btn-sm ghost filter-toggle"
+					class="btn-sm ghost icon-btn filter-toggle"
+					class:active={filtersOpen}
+					aria-label="Filter"
+					title="Filter"
 					aria-expanded={filtersOpen}
 					aria-controls="dictionary-filter-panel"
 					onclick={() => (filtersOpen = !filtersOpen)}
 				>
-					Filter
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+					</svg>
 				</button>
+				{#if data.user}
+					<button
+						type="button"
+						class="btn-sm ghost icon-btn"
+						aria-label="Add new word"
+						title="Add new word"
+						onclick={openAddWord}
+					>
+						<svg
+							width="18"
+							height="18"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<path d="M12 5v14M5 12h14" />
+						</svg>
+					</button>
+				{/if}
 			</div>
 		</div>
 
@@ -552,9 +589,6 @@
 
 	<div class="result-meta">
 		<div class="result-count">{data.words.length} of {data.totalCount} entries</div>
-		{#if data.user}
-			<button type="button" class="btn ghost" onclick={openAddWord}>+ Add new word</button>
-		{/if}
 	</div>
 
 	<div class="results-region" class:loading={isSearching} aria-busy={isSearching}>
@@ -1042,25 +1076,26 @@
 		min-width: 0;
 	}
 
-	.filter-toggle-wrap {
+	.search-actions {
 		display: flex;
-		flex-direction: column;
-		gap: 6px;
-		align-items: flex-start;
+		gap: 8px;
+		align-items: end;
 	}
 
-	.filter-toggle-label {
-		font-size: 11px;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-		color: var(--ink-mute);
-		font-weight: 600;
-	}
-
-	.filter-toggle {
+	.icon-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 45px;
 		min-height: 45px;
-		padding-inline: 14px;
-		white-space: nowrap;
+		padding: 0;
+		flex: 0 0 auto;
+	}
+
+	.filter-toggle.active {
+		background: var(--surface);
+		color: var(--ink);
+		border-color: var(--brand);
 	}
 
 	.filters-panel {
@@ -1197,16 +1232,8 @@
 	}
 
 	@media (max-width: 720px) {
-		.search-row,
 		.filters-panel.open {
 			grid-template-columns: 1fr;
-		}
-
-		.filter-toggle-wrap {
-			width: 100%;
-		}
-
-		.filters-panel.open {
 			display: grid;
 		}
 
@@ -1214,11 +1241,6 @@
 		.filter-field-missing,
 		.filter-field-pos {
 			flex: initial;
-		}
-
-		.filter-toggle {
-			width: 100%;
-			justify-content: center;
 		}
 
 		.toggle-lang {

@@ -10,6 +10,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
+	import NotesIndicator from '$lib/components/NotesIndicator.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
 	import FormActions from '$lib/components/FormActions.svelte';
 
@@ -575,9 +576,14 @@
 										{/snippet}
 									</TokenHoverPreview>
 								</div>
-								<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
-									<SentenceTimeText text={sentence.english} />
-								</a>
+								<div class="en-row">
+									<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
+										<SentenceTimeText text={sentence.english} />
+									</a>
+									{#if sentence.notes?.trim()}
+										<NotesIndicator notes={sentence.notes} />
+									{/if}
+								</div>
 							</div>
 						</li>
 					{/each}
@@ -944,6 +950,11 @@
 	.sentence-row .en {
 		color: var(--ink-soft);
 		font-size: 15px;
+	}
+	.sentence-row .en-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
 	}
 
 	@media (max-width: 900px) {

@@ -2,8 +2,10 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import SidePanel from '$lib/components/SidePanel.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
@@ -360,18 +362,16 @@
 
 		<aside>
 			{#if data.user}
-				<div class="side-card">
-					<h3>Pronunciation</h3>
+				<SidePanel title="Pronunciation">
 					<AudioRecorder
 						targetType="word"
 						targetId={data.word.id}
 						currentAudioUrl={data.word.audioUrl}
 					/>
-				</div>
+				</SidePanel>
 
 				{#if showPlural}
-					<div class="side-card">
-						<h3>Plural pronunciation</h3>
+					<SidePanel title="Plural pronunciation">
 						<p class="plural-recorder-hint">
 							For <em>{data.word.pluralForm}</em>.
 						</p>
@@ -380,15 +380,11 @@
 							targetId={data.word.id}
 							currentAudioUrl={data.word.pluralAudioUrl}
 						/>
-					</div>
+					</SidePanel>
 				{/if}
 
-				<div class="side-card">
-					<h3>Edit entry</h3>
-
-					{#if form?.error}
-						<div class="form-feedback error">{form.error}</div>
-					{/if}
+				<SidePanel title="Edit entry">
+					<FormErrorFeedback error={form?.error} />
 
 					<form
 						method="POST"
@@ -581,14 +577,10 @@
 							<button type="submit" class="btn-sm">Save</button>
 						</div>
 					</form>
-				</div>
+				</SidePanel>
 
-				<div class="side-card">
-					<h3>Related words</h3>
-
-					{#if form?.relatedWordError}
-						<div class="form-feedback error">{form.relatedWordError}</div>
-					{/if}
+				<SidePanel title="Related words">
+					<FormErrorFeedback error={form?.relatedWordError} />
 
 					{#if data.word.relatedWords.length === 0}
 						<p class="related-editor-empty">No related words linked.</p>
@@ -662,14 +654,13 @@
 							</ul>
 						{/if}
 					{/if}
-				</div>
+				</SidePanel>
 
-				<div class="side-card">
-					<h3>Danger zone</h3>
+				<SidePanel title="Danger zone">
 					<form method="POST" action="?/delete" onsubmit={requestDeleteEntry}>
 						<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
 					</form>
-				</div>
+				</SidePanel>
 			{/if}
 		</aside>
 	</div>

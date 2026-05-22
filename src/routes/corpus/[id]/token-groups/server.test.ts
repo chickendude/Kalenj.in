@@ -174,15 +174,15 @@ describe('POST /corpus/[id]/token-groups', () => {
 			}
 		]);
 
-		const response = await post('sentence-1', {
-			action: 'split',
-			sentenceId: 'sentence-1',
-			tokenId: 'token-a'
-		});
-
-		expect(response.status).toBe(400);
-		await expect(response.json()).resolves.toEqual({
-			error: 'Remove lexical segments before splitting this word.'
+		await expect(
+			post('sentence-1', {
+				action: 'split',
+				sentenceId: 'sentence-1',
+				tokenId: 'token-a'
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			body: { message: 'Remove lexical segments before splitting this word.' }
 		});
 		expect(mocks.tx.exampleSentenceToken.update).not.toHaveBeenCalled();
 		expect(mocks.tx.exampleSentenceToken.create).not.toHaveBeenCalled();

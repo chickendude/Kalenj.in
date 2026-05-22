@@ -1,29 +1,15 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
-import { prisma } from '$lib/server/prisma';
 import { deleteAudio, saveAudio } from '$lib/server/audio-storage';
 import { processAudio } from '$lib/server/audio-processing';
-
-const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
-const ALLOWED_MIME = new Set([
-	'audio/webm',
-	'audio/ogg',
-	'audio/mpeg',
-	'audio/mp3',
-	'audio/mp4',
-	'audio/x-m4a',
-	'audio/m4a',
-	'audio/wav',
-	'audio/wave',
-	'audio/x-wav'
-]);
-
-type TargetType = 'word' | 'word-plural' | 'sentence';
-
-function isTargetType(value: unknown): value is TargetType {
-	return value === 'word' || value === 'word-plural' || value === 'sentence';
-}
+import {
+	ALLOWED_MIME,
+	MAX_UPLOAD_BYTES,
+	isTargetType,
+	readPreviousAudioUrl,
+	writeAudioUrl
+} from '$lib/server/audio-targets';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	const user = requireEditor(locals);
@@ -52,30 +38,14 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(415, `Unsupported audio type: ${file.type}`);
 	}
 
-	let existing: { audioUrl: string | null } | null;
+	let existing: { found: true; previousUrl: string | null } | { found: false };
 	try {
-		if (targetType === 'word') {
-			existing = await prisma.word.findUnique({
-				where: { id: targetId },
-				select: { audioUrl: true }
-			});
-		} else if (targetType === 'word-plural') {
-			const row = await prisma.word.findUnique({
-				where: { id: targetId },
-				select: { pluralAudioUrl: true }
-			});
-			existing = row ? { audioUrl: row.pluralAudioUrl } : null;
-		} else {
-			existing = await prisma.exampleSentence.findUnique({
-				where: { id: targetId },
-				select: { audioUrl: true }
-			});
-		}
+		existing = await readPreviousAudioUrl(targetType, targetId);
 	} catch (err) {
 		console.error('Audio target lookup failed', { targetType, targetId, err });
 		error(500, 'Could not read audio data. Please try again.');
 	}
-	if (!existing) error(404, 'Target not found.');
+	if (!existing.found) error(404, 'Target not found.');
 
 	const inputBuffer = Buffer.from(await file.arrayBuffer());
 
@@ -97,34 +67,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 	const recordedAt = new Date();
 
 	try {
-		if (targetType === 'word') {
-			await prisma.word.update({
-				where: { id: targetId },
-				data: {
-					audioUrl: publicUrl,
-					audioRecordedById: user.id,
-					audioRecordedAt: recordedAt
-				}
-			});
-		} else if (targetType === 'word-plural') {
-			await prisma.word.update({
-				where: { id: targetId },
-				data: {
-					pluralAudioUrl: publicUrl,
-					pluralAudioRecordedById: user.id,
-					pluralAudioRecordedAt: recordedAt
-				}
-			});
-		} else {
-			await prisma.exampleSentence.update({
-				where: { id: targetId },
-				data: {
-					audioUrl: publicUrl,
-					audioRecordedById: user.id,
-					audioRecordedAt: recordedAt
-				}
-			});
-		}
+		await writeAudioUrl(targetType, targetId, publicUrl, user.id, recordedAt);
 	} catch (err) {
 		await deleteAudio(publicUrl).catch((deleteErr) => {
 			console.warn('Failed to delete orphaned audio after database update failure', publicUrl, deleteErr);
@@ -133,9 +76,10 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 		error(500, 'Could not attach audio to the entry. Please try again.');
 	}
 
-	if (existing.audioUrl && existing.audioUrl !== publicUrl) {
-		await deleteAudio(existing.audioUrl).catch((err) => {
-			console.warn('Failed to delete old audio', existing.audioUrl, err);
+	if (existing.previousUrl && existing.previousUrl !== publicUrl) {
+		const prev = existing.previousUrl;
+		await deleteAudio(prev).catch((err) => {
+			console.warn('Failed to delete old audio', prev, err);
 		});
 	}
 

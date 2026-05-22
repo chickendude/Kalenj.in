@@ -25,9 +25,9 @@ export type MergeChoices = {
 	imageSourceId: string | null;
 };
 
-export type MergeSkipReason = 'story' | 'lesson-conflict';
+type MergeSkipReason = 'story' | 'lesson-conflict';
 
-export type MergeSkip = { id: string; reason: MergeSkipReason };
+type MergeSkip = { id: string; reason: MergeSkipReason };
 
 export type SentenceMergePlan = {
 	targetId: string;

@@ -38,14 +38,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const value = clean(payload.value);
 
 	if (field !== 'kalenjin' && field !== 'english' && field !== 'notes') {
-		return json({ error: 'A valid field is required.' }, { status: 400 });
+		error(400, 'A valid field is required.');
 	}
 
 	if (field !== 'notes' && !value) {
-		return json(
-			{ error: field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.' },
-			{ status: 400 }
-		);
+		error(400, field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.');
 	}
 
 	const sentence = await prisma.exampleSentence.findUnique({

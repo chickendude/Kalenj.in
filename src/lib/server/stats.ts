@@ -4,7 +4,6 @@ import { METRIC_IDS, type Bucket, type MetricId, type RangeId, type SeriesPoint 
 // Re-export client-safe types and helpers so server-side callers can keep importing
 // everything from one place. Pure helpers live in `$lib/stats`.
 export {
-	CUMULATIVE_SOURCE,
 	cumulativeCellValue,
 	filterEmptyBucketIndices,
 	getEffectiveChangeMetrics,

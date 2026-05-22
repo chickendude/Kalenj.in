@@ -14,7 +14,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const sentenceId = String(payload.sentenceId ?? '').trim();
 
 	if (!sentenceId) {
-		return json({ error: 'Sentence is required.' }, { status: 400 });
+		error(400, 'Sentence is required.');
 	}
 
 	const lesson = await prisma.lesson.findUnique({

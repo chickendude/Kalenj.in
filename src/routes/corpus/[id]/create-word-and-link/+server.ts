@@ -39,10 +39,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const notes = clean(payload.notes);
 
 	if (!tokenId || !kalenjin || !translations) {
-		return json(
-			{ error: 'Token, Kalenjin lemma, and translations are required.' },
-			{ status: 400 }
-		);
+		error(400, 'Token, Kalenjin lemma, and translations are required.');
 	}
 
 	const token = await ensureSentenceToken(params.id, tokenId);

@@ -1,17 +1,17 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
-import { prisma } from '$lib/server/prisma';
 import { deleteAudio } from '$lib/server/audio-storage';
+import {
+	isTargetType,
+	readPreviousAudioUrl,
+	writeAudioUrl,
+	type TargetType
+} from '$lib/server/audio-targets';
 
 const MAX_ENTRIES = 100;
 
-type TargetType = 'word' | 'word-plural' | 'sentence';
 type KeepEntry = { targetId: string; targetType: TargetType; audioUrl: string };
-
-function isTargetType(value: unknown): value is TargetType {
-	return value === 'word' || value === 'word-plural' || value === 'sentence';
-}
 
 function parseKeep(raw: unknown, defaultType: TargetType): KeepEntry[] {
 	if (raw === undefined || raw === null) return [];
@@ -50,63 +50,6 @@ function parseDiscard(raw: unknown): string[] {
 	return urls;
 }
 
-async function readPreviousAudioUrl(
-	entry: KeepEntry
-): Promise<{ found: true; previousUrl: string | null } | { found: false }> {
-	if (entry.targetType === 'word') {
-		const row = await prisma.word.findUnique({
-			where: { id: entry.targetId },
-			select: { audioUrl: true }
-		});
-		return row ? { found: true, previousUrl: row.audioUrl } : { found: false };
-	}
-	if (entry.targetType === 'word-plural') {
-		const row = await prisma.word.findUnique({
-			where: { id: entry.targetId },
-			select: { pluralAudioUrl: true }
-		});
-		return row ? { found: true, previousUrl: row.pluralAudioUrl } : { found: false };
-	}
-	const row = await prisma.exampleSentence.findUnique({
-		where: { id: entry.targetId },
-		select: { audioUrl: true }
-	});
-	return row ? { found: true, previousUrl: row.audioUrl } : { found: false };
-}
-
-async function writeAudioUrl(entry: KeepEntry, userId: string, now: Date) {
-	if (entry.targetType === 'word') {
-		await prisma.word.update({
-			where: { id: entry.targetId },
-			data: {
-				audioUrl: entry.audioUrl,
-				audioRecordedById: userId,
-				audioRecordedAt: now
-			}
-		});
-		return;
-	}
-	if (entry.targetType === 'word-plural') {
-		await prisma.word.update({
-			where: { id: entry.targetId },
-			data: {
-				pluralAudioUrl: entry.audioUrl,
-				pluralAudioRecordedById: userId,
-				pluralAudioRecordedAt: now
-			}
-		});
-		return;
-	}
-	await prisma.exampleSentence.update({
-		where: { id: entry.targetId },
-		data: {
-			audioUrl: entry.audioUrl,
-			audioRecordedById: userId,
-			audioRecordedAt: now
-		}
-	});
-}
-
 function notFoundReason(targetType: TargetType): string {
 	if (targetType === 'sentence') return 'Sentence not found.';
 	return 'Word not found.';
@@ -133,7 +76,7 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const now = new Date();
 	for (const entry of keep) {
-		const existing = await readPreviousAudioUrl(entry);
+		const existing = await readPreviousAudioUrl(entry.targetType, entry.targetId);
 		if (!existing.found) {
 			failed.push({
 				targetId: entry.targetId,
@@ -142,10 +85,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			});
 			continue;
 		}
-		await writeAudioUrl(entry, user.id, now);
+		await writeAudioUrl(entry.targetType, entry.targetId, entry.audioUrl, user.id, now);
 		if (existing.previousUrl && existing.previousUrl !== entry.audioUrl) {
-			await deleteAudio(existing.previousUrl).catch((err) => {
-				console.warn('Failed to delete previous audio', existing.previousUrl, err);
+			const prev = existing.previousUrl;
+			await deleteAudio(prev).catch((err) => {
+				console.warn('Failed to delete previous audio', prev, err);
 			});
 		}
 		committed.push({

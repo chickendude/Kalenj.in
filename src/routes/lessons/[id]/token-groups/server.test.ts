@@ -110,10 +110,9 @@ beforeEach(() => {
 
 describe('POST /lessons/[id]/token-groups', () => {
 	it('rejects payloads without a sentence kind and id before touching the database', async () => {
-		const response = await post({ action: 'merge', sentenceId: 'story-sentence-1' });
-
-		expect(response.status).toBe(400);
-		await expect(response.json()).resolves.toEqual({ error: 'Sentence is required.' });
+		await expect(
+			post({ action: 'merge', sentenceId: 'story-sentence-1' })
+		).rejects.toMatchObject({ status: 400, body: { message: 'Sentence is required.' } });
 		expect(mocks.prisma.lesson.findUnique).not.toHaveBeenCalled();
 		expect(mocks.prisma.$transaction).not.toHaveBeenCalled();
 	});
@@ -261,17 +260,17 @@ describe('POST /lessons/[id]/token-groups', () => {
 			}
 		]);
 
-		const response = await post({
-			kind: 'story',
-			action: 'merge',
-			sentenceId: 'story-sentence-1',
-			sourceTokenId: 'token-a',
-			targetTokenId: 'token-b'
-		});
-
-		expect(response.status).toBe(400);
-		await expect(response.json()).resolves.toEqual({
-			error: 'Remove lexical segments before merging these words.'
+		await expect(
+			post({
+				kind: 'story',
+				action: 'merge',
+				sentenceId: 'story-sentence-1',
+				sourceTokenId: 'token-a',
+				targetTokenId: 'token-b'
+			})
+		).rejects.toMatchObject({
+			status: 400,
+			body: { message: 'Remove lexical segments before merging these words.' }
 		});
 		expect(mocks.tx.storySentenceToken.delete).not.toHaveBeenCalled();
 		expect(mocks.tx.storySentenceToken.update).not.toHaveBeenCalled();

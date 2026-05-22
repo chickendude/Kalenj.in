@@ -17,13 +17,10 @@ export type SentenceTimePart =
 			annotation: SentenceTimeAnnotation;
 	  };
 
+import { stripEdgePunctuation } from '$lib/punctuation';
+
 const TIME_PATTERN =
 	/\b(1[0-2]|0?[1-9])(?:(?::([0-5]\d))|(?:\s+o['’]clock))?(?:\s*([AaPp])\.?\s*[Mm]\.?)?\b/g;
-const EDGE_PUNCTUATION = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
-
-function stripEdgePunctuation(value: string): string {
-	return value.replace(EDGE_PUNCTUATION, '');
-}
 
 function normalizeMeridiem(value: string | undefined): Meridiem | null {
 	if (!value) return null;

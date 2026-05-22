@@ -1,5 +1,5 @@
 <script lang="ts">
-	import TokenHoverPreview from '../../src/lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '../../src/lib/components/TokenHoverPreview.svelte';
 
 	type TokenWord = {
 		id: string;

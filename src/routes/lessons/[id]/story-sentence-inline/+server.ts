@@ -22,7 +22,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const value = clean(payload.value);
 
 	if (!sentenceId || (field !== 'speaker' && field !== 'english' && field !== 'grammarNotes')) {
-		return json({ error: 'Sentence and field are required.' }, { status: 400 });
+		error(400, 'Sentence and field are required.');
 	}
 
 	const lesson = await prisma.lesson.findUnique({
@@ -44,7 +44,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	if (field === 'english' && !value) {
-		return json({ error: 'Translation is required.' }, { status: 400 });
+		error(400, 'Translation is required.');
 	}
 
 	const updatedSentence = await prisma.$transaction(async (tx) => {

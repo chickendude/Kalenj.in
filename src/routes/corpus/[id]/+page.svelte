@@ -2,11 +2,12 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
-	import TokenHoverPreview from '$lib/components/token-hover-preview.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
 	import { renderMarkdown } from '$lib/markdown';
@@ -158,7 +159,7 @@
 				body: JSON.stringify({ field, value: trimmedValue })
 			});
 			const result = (await response.json()) as {
-				error?: string;
+				message?: string;
 				sentence?: {
 					id: string;
 					kalenjin: string;
@@ -169,7 +170,7 @@
 			};
 
 			if (!response.ok || !result.sentence) {
-				throw new Error(result.error ?? 'Could not save sentence.');
+				throw new Error(result.message ?? 'Could not save sentence.');
 			}
 
 			sentenceKalenjin = result.sentence.kalenjin;
@@ -383,9 +384,7 @@
 		</section>
 	{/if}
 
-	{#if form?.error}
-		<div class="form-feedback error">{form.error}</div>
-	{/if}
+	<FormErrorFeedback error={form?.error} />
 
 	{#if canEdit}
 		<h2 class="section-title">Image</h2>

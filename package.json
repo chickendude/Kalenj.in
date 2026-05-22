@@ -21,8 +21,9 @@
 		"db:import-prod": "bash scripts/import-prod-db.sh",
 		"backfill:observed-forms": "tsx scripts/backfill-observed-word-forms.ts",
 		"create-admin": "tsx scripts/create-admin.ts",
-		"check": "npm run lint",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check": "npm run lint && npm run knip",
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"knip": "knip"
 	},
 	"devDependencies": {
 		"@playwright/experimental-ct-svelte": "^1.58.2",
@@ -32,6 +33,7 @@
 		"@types/pg": "^8.16.0",
 		"@vitest/coverage-v8": "^4.1.4",
 		"dotenv": "^17.3.1",
+		"knip": "^6.14.1",
 		"prisma": "^7.4.0",
 		"svelte": "^5.49.2",
 		"svelte-check": "^4.3.6",

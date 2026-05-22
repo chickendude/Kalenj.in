@@ -376,11 +376,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const action = payload.action;
 
 	if (!sentenceId) {
-		return json({ error: 'Sentence is required.' }, { status: 400 });
+		error(400, 'Sentence is required.');
 	}
 
 	if (sentenceId !== params.id) {
-		return json({ error: 'Sentence not found.' }, { status: 404 });
+		error(404, 'Sentence not found.');
 	}
 
 	await ensureSentence(sentenceId);
@@ -416,15 +416,10 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 			await prisma.$transaction((tx) => applySurface(tx, tokens, tokenId, surfaceForm));
 		} else {
-			return json({ error: 'Action is required.' }, { status: 400 });
+			error(400, 'Action is required.');
 		}
 	} catch (editError) {
-		return json(
-			{
-				error: editError instanceof Error ? editError.message : 'Could not update sentence words.'
-			},
-			{ status: 400 }
-		);
+		error(400, editError instanceof Error ? editError.message : 'Could not update sentence words.');
 	}
 
 	const nextTokens = await loadTokensWithWords(sentenceId);

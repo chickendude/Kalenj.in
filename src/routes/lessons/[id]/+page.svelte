@@ -312,9 +312,9 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ field, value })
 		});
-		const payload = (await response.json()) as { error?: string };
+		const payload = (await response.json()) as { message?: string };
 		if (!response.ok) {
-			throw new Error(payload.error ?? 'Could not save.');
+			throw new Error(payload.message ?? 'Could not save.');
 		}
 	}
 
@@ -468,7 +468,7 @@
 			});
 
 			const result = (await response.json()) as {
-				error?: string;
+				message?: string;
 				sentence?: {
 					id: string;
 					speaker: string | null;
@@ -478,7 +478,7 @@
 			};
 
 			if (!response.ok || !result.sentence) {
-				throw new Error(result.error ?? 'Could not save story field.');
+				throw new Error(result.message ?? 'Could not save story field.');
 			}
 
 			storySentences = storySentences.map((sentence) =>
@@ -520,9 +520,9 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ sentenceId })
 			});
-			const result = (await response.json()) as { error?: string };
+			const result = (await response.json()) as { message?: string };
 			if (!response.ok) {
-				throw new Error(result.error ?? 'Could not split sentence.');
+				throw new Error(result.message ?? 'Could not split sentence.');
 			}
 			await invalidateAll();
 		} catch (err) {
@@ -542,9 +542,9 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ sentenceId })
 			});
-			const result = (await response.json()) as { error?: string };
+			const result = (await response.json()) as { message?: string };
 			if (!response.ok) {
-				throw new Error(result.error ?? 'Could not merge sentence.');
+				throw new Error(result.message ?? 'Could not merge sentence.');
 			}
 			await invalidateAll();
 		} catch (err) {
@@ -632,8 +632,8 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ lessonWordId, field, value: inlineWordValue })
 			});
-			const result = (await response.json()) as { error?: string };
-			if (!response.ok) throw new Error(result.error ?? 'Could not save.');
+			const result = (await response.json()) as { message?: string };
+			if (!response.ok) throw new Error(result.message ?? 'Could not save.');
 			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
 			if (lw) {
 				wordLocalState = new Map(wordLocalState).set(lessonWordId, {
@@ -685,8 +685,8 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ lessonWordId, field, value: inlineLessonWordValue })
 			});
-			const result = (await response.json()) as { error?: string };
-			if (!response.ok) throw new Error(result.error ?? 'Could not save.');
+			const result = (await response.json()) as { message?: string };
+			if (!response.ok) throw new Error(result.message ?? 'Could not save.');
 			const lw = flattenedLessonWords.find((w) => w.id === lessonWordId);
 			if (lw) {
 				lessonWordLocalState = new Map(lessonWordLocalState).set(lessonWordId, {
@@ -779,8 +779,8 @@
 
 	async function readCefrError(response: Response) {
 		try {
-			const payload = (await response.json()) as { message?: string; error?: string };
-			return payload.message ?? payload.error ?? 'Could not update CEFR targets.';
+			const payload = (await response.json()) as { message?: string };
+			return payload.message ?? 'Could not update CEFR targets.';
 		} catch {
 			return 'Could not update CEFR targets.';
 		}

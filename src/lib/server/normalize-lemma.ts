@@ -1,4 +1,4 @@
-import { stripEdgePunctuation } from '$lib/server/punctuation';
+import { stripEdgePunctuation } from '$lib/punctuation';
 
 const COLLAPSE_WHITESPACE = /\s+/g;
 

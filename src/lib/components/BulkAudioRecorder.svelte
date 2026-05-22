@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { fmtSecMs, hashId, seededWaveform } from '$lib/bulk-audio';
 
 	type TargetType = 'word' | 'sentence';
 	type ItemTargetType = 'word' | 'word-plural' | 'sentence';
@@ -860,35 +861,6 @@
 		playProgress = 0;
 		playSequence = [];
 		playSequenceIndex = 0;
-	}
-
-	function seededWaveform(seed: number, len: number, lengthSec: number): number[] {
-		const bars: number[] = [];
-		let s = seed * 9301 + 49297;
-		for (let i = 0; i < len; i += 1) {
-			s = (s * 9301 + 49297) % 233280;
-			const r = s / 233280;
-			const t = i / Math.max(1, len - 1);
-			const env = Math.pow(Math.sin(t * Math.PI), 0.5);
-			const noise = 0.35 + r * 0.65;
-			bars.push(Math.max(0.18, env * noise));
-		}
-		const lenScale = Math.min(1, 0.55 + lengthSec * 0.4);
-		return bars.map((b) => b * lenScale);
-	}
-
-	function hashId(id: string): number {
-		let h = 0;
-		for (let i = 0; i < id.length; i += 1) {
-			h = (h * 31 + id.charCodeAt(i)) | 0;
-		}
-		return Math.abs(h) || 1;
-	}
-
-	function fmtSecMs(s: number): string {
-		const sec = Math.floor(s);
-		const cs = Math.round((s - sec) * 100);
-		return `0:${String(sec).padStart(2, '0')}.${String(cs).padStart(2, '0')}`;
 	}
 
 	$effect(() => {

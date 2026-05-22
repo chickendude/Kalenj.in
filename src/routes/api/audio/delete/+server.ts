@@ -1,14 +1,8 @@
 import { error, json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
-import { prisma } from '$lib/server/prisma';
 import { deleteAudio } from '$lib/server/audio-storage';
-
-type TargetType = 'word' | 'word-plural' | 'sentence';
-
-function isTargetType(value: unknown): value is TargetType {
-	return value === 'word' || value === 'word-plural' || value === 'sentence';
-}
+import { clearAudioUrl, isTargetType, readPreviousAudioUrl } from '$lib/server/audio-targets';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	requireEditor(locals);
@@ -24,46 +18,15 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const { targetType, targetId } = body;
 
-	let existing: { audioUrl: string | null } | null;
-	if (targetType === 'word') {
-		existing = await prisma.word.findUnique({
-			where: { id: targetId },
-			select: { audioUrl: true }
-		});
-	} else if (targetType === 'word-plural') {
-		const row = await prisma.word.findUnique({
-			where: { id: targetId },
-			select: { pluralAudioUrl: true }
-		});
-		existing = row ? { audioUrl: row.pluralAudioUrl } : null;
-	} else {
-		existing = await prisma.exampleSentence.findUnique({
-			where: { id: targetId },
-			select: { audioUrl: true }
-		});
-	}
-	if (!existing) error(404, 'Target not found.');
+	const existing = await readPreviousAudioUrl(targetType, targetId);
+	if (!existing.found) error(404, 'Target not found.');
 
-	if (targetType === 'word') {
-		await prisma.word.update({
-			where: { id: targetId },
-			data: { audioUrl: null, audioRecordedById: null, audioRecordedAt: null }
-		});
-	} else if (targetType === 'word-plural') {
-		await prisma.word.update({
-			where: { id: targetId },
-			data: { pluralAudioUrl: null, pluralAudioRecordedById: null, pluralAudioRecordedAt: null }
-		});
-	} else {
-		await prisma.exampleSentence.update({
-			where: { id: targetId },
-			data: { audioUrl: null, audioRecordedById: null, audioRecordedAt: null }
-		});
-	}
+	await clearAudioUrl(targetType, targetId);
 
-	if (existing.audioUrl) {
-		await deleteAudio(existing.audioUrl).catch((err) => {
-			console.warn('Failed to delete audio file', existing.audioUrl, err);
+	if (existing.previousUrl) {
+		const prev = existing.previousUrl;
+		await deleteAudio(prev).catch((err) => {
+			console.warn('Failed to delete audio file', prev, err);
 		});
 	}
 

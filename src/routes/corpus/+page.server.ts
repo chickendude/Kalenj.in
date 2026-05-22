@@ -49,15 +49,49 @@ function parseReviewRows(formData: FormData): BulkSentenceReviewRow[] {
 	});
 }
 
-export const load: PageServerLoad = async ({ url }) => {
-	await backfillMissingStoryCorpusEntries();
+// Token data drives the hover popups, so it must travel with the list (not be
+// lazy-fetched on hover, which would make the popups laggy).
+const sentenceInclude = {
+	tokens: {
+		orderBy: { tokenOrder: 'asc' },
+		include: {
+			word: true,
+			segments: {
+				orderBy: { segmentOrder: 'asc' },
+				include: { word: true }
+			}
+		}
+	},
+	_count: { select: { tokens: true } }
+} satisfies Prisma.ExampleSentenceInclude;
 
+export const load: PageServerLoad = async ({ url }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
 	const language = parseCorpusSearchLanguage(url.searchParams.get('lang'));
-	const kalenjinSentenceIds =
-		query && language !== 'english' ? await findKalenjinCorpusSentenceIds(prisma, query) : [];
-	const searchWhere = buildCorpusSentenceSearchWhere(query, language, kalenjinSentenceIds);
 	const nonEmpty: Prisma.ExampleSentenceWhereInput = { NOT: { kalenjin: '' } };
+
+	// Empty search = landing/browse view: show a small random sample, and keep the
+	// story->corpus maintenance backfill on this path rather than every search/toggle.
+	if (!query) {
+		await backfillMissingStoryCorpusEntries();
+
+		const randomIds = await prisma.$queryRaw<Array<{ id: string }>>(
+			Prisma.sql`SELECT "id" FROM "ExampleSentence" WHERE "kalenjin" <> '' ORDER BY random() LIMIT 10`
+		);
+		const [sentences, totalCount] = await Promise.all([
+			prisma.exampleSentence.findMany({
+				where: { id: { in: randomIds.map((row) => row.id) } },
+				include: sentenceInclude
+			}),
+			prisma.exampleSentence.count({ where: nonEmpty })
+		]);
+
+		return { query, language, sentences, totalCount };
+	}
+
+	const kalenjinSentenceIds =
+		language !== 'english' ? await findKalenjinCorpusSentenceIds(prisma, query) : [];
+	const searchWhere = buildCorpusSentenceSearchWhere(query, language, kalenjinSentenceIds);
 	const where: Prisma.ExampleSentenceWhereInput = searchWhere
 		? { AND: [searchWhere, nonEmpty] }
 		: nonEmpty;
@@ -66,30 +100,13 @@ export const load: PageServerLoad = async ({ url }) => {
 		prisma.exampleSentence.findMany({
 			where,
 			orderBy: { createdAt: 'desc' },
-			include: {
-				tokens: {
-					orderBy: { tokenOrder: 'asc' },
-					include: {
-						word: true,
-						segments: {
-							orderBy: { segmentOrder: 'asc' },
-							include: { word: true }
-						}
-					}
-				},
-				_count: { select: { tokens: true } }
-			},
+			include: sentenceInclude,
 			take: 100
 		}),
 		prisma.exampleSentence.count({ where: nonEmpty })
 	]);
 
-	return {
-		query,
-		language,
-		sentences,
-		totalCount
-	};
+	return { query, language, sentences, totalCount };
 };
 
 export const actions: Actions = {

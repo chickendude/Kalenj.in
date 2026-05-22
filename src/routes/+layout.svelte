@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { page } from '$app/state';
+	import { page, navigating } from '$app/state';
 	import favicon from '$lib/assets/favicon.svg';
 	import { theme, toggleTheme } from '$lib/stores/theme';
 	import Toast from '$lib/components/Toast.svelte';
@@ -100,6 +100,10 @@
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
+
+{#if navigating?.to}
+	<div class="nav-progress" role="presentation" aria-hidden="true"></div>
+{/if}
 
 
 <header class="topbar">
@@ -351,3 +355,39 @@
 {/if}
 
 <Toast />
+
+<style>
+	.nav-progress {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		height: 2px;
+		z-index: 100;
+		background: color-mix(in oklch, var(--brand) 25%, transparent);
+		overflow: hidden;
+	}
+	.nav-progress::after {
+		content: '';
+		position: absolute;
+		inset: 0;
+		width: 40%;
+		background: var(--brand);
+		animation: nav-progress-slide 1s ease-in-out infinite;
+	}
+	@keyframes nav-progress-slide {
+		0% {
+			transform: translateX(-100%);
+		}
+		100% {
+			transform: translateX(350%);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.nav-progress::after {
+			animation: none;
+			width: 100%;
+			opacity: 0.6;
+		}
+	}
+</style>

@@ -126,6 +126,7 @@ model Word {
   @@index([translations])
   @@index([kalenjinNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_kalenjinNormalized_trgm_idx")
   @@index([pluralFormNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_pluralFormNormalized_trgm_idx")
+  @@index([translations(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_translations_trgm_idx")
 }
 
 model WordOfTheDay {

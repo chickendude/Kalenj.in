@@ -4,6 +4,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import { fmtSecMs, hashId, seededWaveform } from '$lib/bulk-audio';
 	import BulkAudioWaveform from './BulkAudioWaveform.svelte';
+	import BulkConfirmDialog from './BulkConfirmDialog.svelte';
 
 	type TargetType = 'word' | 'sentence';
 	type ItemTargetType = 'word' | 'word-plural' | 'sentence';
@@ -1378,77 +1379,61 @@
 	{/if}
 </section>
 
-{#if skipPromptId}
-	{@const skipItem = itemById.get(skipPromptId)}
-	{@const detailHref = targetType === 'word' ? `/dictionary/${skipPromptId}` : `/corpus/${skipPromptId}`}
-	{@const detailLabel = targetType === 'word' ? 'Open in dictionary →' : 'Open in corpus →'}
-	<div
-		class="confirm-backdrop"
-		role="presentation"
-		onclick={(event) => {
-			if (event.target === event.currentTarget) skipPromptId = null;
-		}}
-		onkeydown={(event) => {
-			if (event.key === 'Escape') skipPromptId = null;
-		}}
-	>
-		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="skip-title">
-			<h3 id="skip-title">Double-check this entry</h3>
+<BulkConfirmDialog
+	open={skipPromptId !== null}
+	labelledby="skip-title"
+	onclose={() => (skipPromptId = null)}
+>
+	{#if skipPromptId}
+		{@const skipItem = itemById.get(skipPromptId)}
+		{@const detailHref = targetType === 'word' ? `/dictionary/${skipPromptId}` : `/corpus/${skipPromptId}`}
+		{@const detailLabel = targetType === 'word' ? 'Open in dictionary →' : 'Open in corpus →'}
+		<h3 id="skip-title">Double-check this entry</h3>
+		{#if skipItem}
+			<div class="skip-preview">
+				<div class="skip-preview-word">{skipItem.primary}</div>
+				<div class="skip-preview-trans">{skipItem.secondary}</div>
+			</div>
+		{/if}
+		<p>
+			Make sure the {labels.primary} and {labels.secondary.toLowerCase()} are correct before
+			skipping. If something looks off, open the entry to fix it; if it's right but you can't
+			record it now, you can skip.
+		</p>
+		<div class="bulk-actions">
+			<button type="button" class="btn" onclick={confirmSkip}>Skip this {labels.singular}</button>
 			{#if skipItem}
-				<div class="skip-preview">
-					<div class="skip-preview-word">{skipItem.primary}</div>
-					<div class="skip-preview-trans">{skipItem.secondary}</div>
-				</div>
+				<a class="btn ghost" href={detailHref} target="_blank" rel="noopener">
+					{detailLabel}
+				</a>
 			{/if}
-			<p>
-				Make sure the {labels.primary} and {labels.secondary.toLowerCase()} are correct before
-				skipping. If something looks off, open the entry to fix it; if it's right but you can't
-				record it now, you can skip.
-			</p>
-			<div class="bulk-actions">
-				<button type="button" class="btn" onclick={confirmSkip}>Skip this {labels.singular}</button>
-				{#if skipItem}
-					<a class="btn ghost" href={detailHref} target="_blank" rel="noopener">
-						{detailLabel}
-					</a>
-				{/if}
-				<button type="button" class="btn ghost" onclick={() => (skipPromptId = null)}>
-					Cancel
-				</button>
-			</div>
+			<button type="button" class="btn ghost" onclick={() => (skipPromptId = null)}>
+				Cancel
+			</button>
 		</div>
-	</div>
-{/if}
+	{/if}
+</BulkConfirmDialog>
 
-{#if confirmRerecord}
-	<div
-		class="confirm-backdrop"
-		role="presentation"
-		onclick={(event) => {
-			if (event.target === event.currentTarget) confirmRerecord = false;
-		}}
-		onkeydown={(event) => {
-			if (event.key === 'Escape') confirmRerecord = false;
-		}}
-	>
-		<div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="rerec-title">
-			<h3 id="rerec-title">Save and re-record?</h3>
-			<p>
-				{keepCount} kept {keepCount === 1 ? labels.singular : labels.plural} will be saved, then
-				you'll start a new recording session for {redoCount}
-				{redoCount === 1 ? labels.singular : labels.plural}. Skipped clips will be discarded.
-			</p>
-			<div class="bulk-actions">
-				<button type="button" class="btn primary" onclick={executeRerecord}>
-					Save and re-record
-				</button>
-				<button type="button" class="btn ghost" onclick={() => (confirmRerecord = false)}>
-					Cancel
-				</button>
-			</div>
-		</div>
+<BulkConfirmDialog
+	open={confirmRerecord}
+	labelledby="rerec-title"
+	onclose={() => (confirmRerecord = false)}
+>
+	<h3 id="rerec-title">Save and re-record?</h3>
+	<p>
+		{keepCount} kept {keepCount === 1 ? labels.singular : labels.plural} will be saved, then
+		you'll start a new recording session for {redoCount}
+		{redoCount === 1 ? labels.singular : labels.plural}. Skipped clips will be discarded.
+	</p>
+	<div class="bulk-actions">
+		<button type="button" class="btn primary" onclick={executeRerecord}>
+			Save and re-record
+		</button>
+		<button type="button" class="btn ghost" onclick={() => (confirmRerecord = false)}>
+			Cancel
+		</button>
 	</div>
-{/if}
+</BulkConfirmDialog>
 
 <style>
 	.bulk-recorder {
@@ -2164,32 +2149,6 @@
 		margin: 16px 0 8px 0;
 	}
 
-	.confirm-backdrop {
-		align-items: center;
-		background: rgba(15, 23, 42, 0.5);
-		display: flex;
-		inset: 0;
-		justify-content: center;
-		padding: 1rem;
-		position: fixed;
-		z-index: 80;
-	}
-	.confirm-dialog {
-		background: var(--bg-raised, var(--paper));
-		border: 1px solid var(--line);
-		border-radius: 12px;
-		box-shadow: 0 20px 45px rgba(15, 23, 42, 0.25);
-		max-width: 420px;
-		padding: 1.25rem 1.5rem 1.5rem;
-		width: 100%;
-	}
-	.confirm-dialog h3 {
-		margin: 0 0 8px 0;
-	}
-	.confirm-dialog p {
-		margin: 0 0 4px 0;
-		color: var(--ink-soft);
-	}
 	.skip-preview {
 		background: var(--bg-raised);
 		border: 1px solid var(--line-soft);

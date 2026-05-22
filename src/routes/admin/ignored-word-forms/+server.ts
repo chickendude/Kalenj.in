@@ -1,4 +1,4 @@
-import { json } from '@sveltejs/kit';
+import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
 import { normalizeToken } from '$lib/server/tokenize';
@@ -28,12 +28,12 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 
 	const normalizedForm = resolveNormalizedForm(payload);
 	if (!normalizedForm) {
-		return json({ error: 'A word is required.' }, { status: 400 });
+		error(400, 'A word is required.');
 	}
 
 	const note = clean(payload.note) || null;
 	if (note && note.length > NOTE_MAX) {
-		return json({ error: `Note must be ${NOTE_MAX} characters or fewer.` }, { status: 400 });
+		error(400, `Note must be ${NOTE_MAX} characters or fewer.`);
 	}
 
 	const entry = await prisma.ignoredWordForm.upsert({
@@ -51,7 +51,7 @@ export const DELETE: RequestHandler = async ({ request, locals }) => {
 	const payload = (await request.json().catch(() => ({}))) as Payload;
 	const normalizedForm = resolveNormalizedForm(payload);
 	if (!normalizedForm) {
-		return json({ error: 'A word is required.' }, { status: 400 });
+		error(400, 'A word is required.');
 	}
 
 	await prisma.ignoredWordForm.deleteMany({ where: { normalizedForm } });

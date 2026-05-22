@@ -677,12 +677,12 @@
 		});
 
 		const result = (await response.json()) as {
-			error?: string;
+			message?: string;
 			tokens?: SentenceToken[];
 		};
 
 		if (!response.ok || !result.tokens) {
-			throw new Error(result.error ?? 'Could not update sentence words.');
+			throw new Error(result.message ?? 'Could not update sentence words.');
 		}
 
 		replaceTokens(result.tokens);
@@ -813,8 +813,8 @@
 				body: JSON.stringify({ normalizedForm, surfaceForm })
 			});
 			if (!response.ok) {
-				const data = (await response.json().catch(() => ({}))) as { error?: string };
-				throw new Error(data.error ?? 'Could not update the ignore list.');
+				const data = (await response.json().catch(() => ({}))) as { message?: string };
+				throw new Error(data.message ?? 'Could not update the ignore list.');
 			}
 			await invalidateAll();
 		} catch (ignoreError) {

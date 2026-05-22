@@ -24,7 +24,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const value = clean(payload.value);
 
 	if (!field || !(ALLOWED_FIELDS as readonly string[]).includes(field)) {
-		return json({ error: 'Field is required.' }, { status: 400 });
+		error(400, 'Field is required.');
 	}
 
 	const lesson = await prisma.lesson.findUnique({
@@ -38,7 +38,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	if (field === 'title') {
 		if (!value) {
-			return json({ error: 'Title is required.' }, { status: 400 });
+			error(400, 'Title is required.');
 		}
 
 		await prisma.$transaction(async (tx) => {
@@ -60,14 +60,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	if (field === 'vocabularyType') {
 		if (lesson.type !== 'VOCABULARY') {
-			return json(
-				{ error: 'Only vocabulary lessons have a vocabulary type.' },
-				{ status: 400 }
-			);
+			error(400, 'Only vocabulary lessons have a vocabulary type.');
 		}
 
 		if (!isVocabularyLessonType(value)) {
-			return json({ error: 'Invalid vocabulary type.' }, { status: 400 });
+			error(400, 'Invalid vocabulary type.');
 		}
 
 		await prisma.lesson.update({
@@ -79,10 +76,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	if (lesson.type !== 'VOCABULARY') {
-		return json(
-			{ error: 'Only vocabulary lessons have grammar notes.' },
-			{ status: 400 }
-		);
+		error(400, 'Only vocabulary lessons have grammar notes.');
 	}
 
 	const nextValue = value || null;

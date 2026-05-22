@@ -573,7 +573,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	const sentenceId = clean(payload.sentenceId);
 
 	if (!sentenceId || (kind !== 'story' && kind !== 'example')) {
-		return json({ error: 'Sentence is required.' }, { status: 400 });
+		error(400, 'Sentence is required.');
 	}
 
 	await ensureSentence(params.id, kind, sentenceId);
@@ -613,14 +613,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 			await prisma.$transaction((tx) => applySurface(tx, kind, tokens, tokenId, surfaceForm));
 		} else {
-			return json({ error: 'Action is required.' }, { status: 400 });
+			error(400, 'Action is required.');
 		}
 	} catch (editError) {
-		return json(
-			{
-				error: editError instanceof Error ? editError.message : 'Could not update sentence words.'
-			},
-			{ status: 400 }
+		error(
+			400,
+			editError instanceof Error ? editError.message : 'Could not update sentence words.'
 		);
 	}
 

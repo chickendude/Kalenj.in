@@ -111,9 +111,7 @@ model Word {
   updatedAt            DateTime                      @updatedAt
   sentences            WordSentence[]
   tokenLinks           ExampleSentenceToken[]
-  storyTokenLinks      StorySentenceToken[]
   tokenSegments        ExampleSentenceTokenSegment[]
-  storyTokenSegments   StorySentenceTokenSegment[]
   lessonWords          LessonWord[]
   spellings            WordSpelling[]
   wordOfDayEntries     WordOfTheDay[]
@@ -198,7 +196,6 @@ model IgnoredWordForm {
 
 model ExampleSentence {
   id                String                 @id @default(cuid())
-  storySentenceId   String?                @unique
   kalenjin          String
   english           String
   notes             String?
@@ -212,10 +209,10 @@ model ExampleSentence {
   audioRecordedBy   User?                  @relation("ExampleSentenceAudioRecorder", fields: [audioRecordedById], references: [id], onDelete: SetNull)
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
-  storySentence     StorySentence?         @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
   words             WordSentence[]
   tokens            ExampleSentenceToken[]
   lessonWords       LessonWord[]
+  storySentence     StorySentence?
 
   @@index([kalenjin])
   @@index([needsLemmaProofread])
@@ -285,62 +282,20 @@ model Story {
 }
 
 model StorySentence {
-  id             String               @id @default(cuid())
-  storyId        String
-  sentenceOrder  Int
-  speaker        String?
-  kalenjin       String
-  english        String
-  grammarNotes   String?
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
-  story          Story                @relation(fields: [storyId], references: [id], onDelete: Cascade)
-  tokens         StorySentenceToken[]
-  corpusSentence ExampleSentence?
+  id                String          @id @default(cuid())
+  storyId           String
+  exampleSentenceId String          @unique
+  sentenceOrder     Int
+  speaker           String?
+  grammarNotes      String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  story             Story           @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  exampleSentence   ExampleSentence @relation(fields: [exampleSentenceId], references: [id], onDelete: Restrict)
 
   @@unique([storyId, sentenceOrder])
   @@index([storyId])
-  @@index([kalenjin])
-}
-
-model StorySentenceToken {
-  id                   String                      @id @default(cuid())
-  storySentenceId      String
-  wordId               String?
-  inContextTranslation String?
-  tokenOrder           Int
-  surfaceForm          String
-  normalizedForm       String
-  createdAt            DateTime                    @default(now())
-  updatedAt            DateTime                    @updatedAt
-  storySentence        StorySentence               @relation(fields: [storySentenceId], references: [id], onDelete: Cascade)
-  word                 Word?                       @relation(fields: [wordId], references: [id], onDelete: SetNull)
-  segments             StorySentenceTokenSegment[]
-
-  @@unique([storySentenceId, tokenOrder])
-  @@index([storySentenceId])
-  @@index([wordId])
-  @@index([normalizedForm])
-}
-
-model StorySentenceTokenSegment {
-  id             String             @id @default(cuid())
-  tokenId        String
-  wordId         String?
-  segmentOrder   Int
-  segmentStart   Int
-  segmentEnd     Int
-  surfaceForm    String
-  normalizedForm String
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  token          StorySentenceToken @relation(fields: [tokenId], references: [id], onDelete: Cascade)
-  word           Word?              @relation(fields: [wordId], references: [id], onDelete: SetNull)
-
-  @@unique([tokenId, segmentOrder])
-  @@index([tokenId])
-  @@index([wordId])
-  @@index([normalizedForm])
+  @@index([exampleSentenceId])
 }
 
 model CefrEnglishTarget {

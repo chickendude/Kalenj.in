@@ -3,6 +3,10 @@ import { POST } from './+server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
+		exampleSentence: {
+			findUnique: vi.fn(),
+			update: vi.fn()
+		},
 		exampleSentenceToken: {
 			update: vi.fn(),
 			create: vi.fn()
@@ -29,6 +33,7 @@ function resetMocks() {
 	for (const model of [
 		mocks.prisma.exampleSentenceToken,
 		mocks.prisma.exampleSentence,
+		mocks.tx.exampleSentence,
 		mocks.tx.exampleSentenceToken
 	]) {
 		for (const mock of Object.values(model)) {
@@ -38,6 +43,7 @@ function resetMocks() {
 
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+	mocks.tx.exampleSentence.findUnique.mockResolvedValue(null);
 }
 
 async function post(sentenceId: string, payload: Record<string, unknown>) {
@@ -129,7 +135,7 @@ describe('POST /corpus/[id]/split-token', () => {
 
 		expect(response.status).toBe(200);
 		expect(mocks.prisma.exampleSentenceToken.findMany).toHaveBeenCalledTimes(1);
-		expect(mocks.prisma.exampleSentence.update).toHaveBeenCalledWith({
+		expect(mocks.tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
 			data: { kalenjin: 'Chamgei Missing kot ak' }
 		});

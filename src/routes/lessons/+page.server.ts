@@ -151,14 +151,16 @@ async function getUninstructedWordsByLessonId(
 	const storyIds = storyLessons.map((l) => l.storyId!);
 
 	const [tokenRows, lessonWordRows] = await Promise.all([
-		prisma.storySentenceToken.findMany({
+		prisma.exampleSentenceToken.findMany({
 			where: {
 				wordId: { not: null },
-				storySentence: { storyId: { in: storyIds } }
+				exampleSentence: {
+					storySentence: { storyId: { in: storyIds } }
+				}
 			},
 			select: {
 				wordId: true,
-				storySentence: { select: { storyId: true } },
+				exampleSentence: { select: { storySentence: { select: { storyId: true } } } },
 				word: { select: { id: true, kalenjin: true, translations: true } }
 			}
 		}),
@@ -173,8 +175,8 @@ async function getUninstructedWordsByLessonId(
 	// storyId -> Map<wordId, word>
 	const wordsByStoryId = new Map<string, Map<string, { id: string; kalenjin: string; translations: string }>>();
 	for (const token of tokenRows) {
-		if (!token.wordId || !token.word) continue;
-		const storyId = token.storySentence.storyId;
+		const storyId = token.exampleSentence.storySentence?.storyId;
+		if (!token.wordId || !token.word || !storyId) continue;
 		if (!wordsByStoryId.has(storyId)) wordsByStoryId.set(storyId, new Map());
 		wordsByStoryId.get(storyId)!.set(token.wordId, token.word);
 	}

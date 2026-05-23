@@ -5,7 +5,7 @@
 export type MergeSentence = {
 	id: string;
 	normalizedKey: string;
-	/** Sourced from a story (storySentenceId set) — owned by the story, can't be deleted here. */
+	/** Placed in a story, so deleting it would break the story placement. */
 	storySourced: boolean;
 	/** Referenced by a LessonWord (LessonWord.sentenceId is unique + onDelete: Restrict). */
 	hasLessonWord: boolean;

@@ -22,15 +22,7 @@ async function main() {
 				WHERE "wordId" IS NOT NULL AND "normalizedForm" <> ''
 				UNION ALL
 				SELECT "normalizedForm", "wordId", "createdAt", "updatedAt"
-				FROM "StorySentenceToken"
-				WHERE "wordId" IS NOT NULL AND "normalizedForm" <> ''
-				UNION ALL
-				SELECT "normalizedForm", "wordId", "createdAt", "updatedAt"
 				FROM "ExampleSentenceTokenSegment"
-				WHERE "wordId" IS NOT NULL AND "normalizedForm" <> ''
-				UNION ALL
-				SELECT "normalizedForm", "wordId", "createdAt", "updatedAt"
-				FROM "StorySentenceTokenSegment"
 				WHERE "wordId" IS NOT NULL AND "normalizedForm" <> ''
 			),
 			grouped AS (

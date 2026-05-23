@@ -1,169 +1,130 @@
 import type { Prisma } from '@prisma/client';
 import { parseStoryImportText } from '$lib/story-import';
 import { prisma } from '$lib/server/prisma';
-import { syncStorySentenceTokens } from '$lib/server/sentence-annotations';
+import {
+	collectLinkedWordIds,
+	createExampleSentenceTokensFromPlans,
+	createExampleSentenceWithAutoLemma,
+	createWordSentenceLinks,
+	recordAutoLemmaObservedForms,
+	resolveAutoLemmaTokenPlans,
+	type AutoLemmaTokenPlan
+} from '$lib/server/auto-lemma';
 import { splitIntoSentences, splitSentenceText } from '$lib/story-split';
-import { tokenizeSentence } from '$lib/server/tokenize';
+import { tokenizeSentence, type TokenizedWord } from '$lib/server/tokenize';
 
-type TokenWithSegments = {
+type ExampleTokenSnapshot = {
+	tokenOrder: number;
+	surfaceForm: string;
+	normalizedForm: string;
 	wordId: string | null;
-	segments: Array<{ wordId: string | null }>;
+	inContextTranslation: string | null;
+	segments: Array<{
+		segmentOrder: number;
+		segmentStart: number;
+		segmentEnd: number;
+		surfaceForm: string;
+		normalizedForm: string;
+		wordId: string | null;
+	}>;
 };
 
-function collectLinkedWordIds(tokens: TokenWithSegments[]): string[] {
-	const wordIds = new Set<string>();
-
-	for (const token of tokens) {
-		if (token.wordId) {
-			wordIds.add(token.wordId);
-		}
-
-		for (const segment of token.segments) {
-			if (segment.wordId) {
-				wordIds.add(segment.wordId);
-			}
-		}
-	}
-
-	return [...wordIds];
+function tokenPlanFromSnapshot(
+	tokenData: TokenizedWord,
+	snapshot: ExampleTokenSnapshot | undefined
+): AutoLemmaTokenPlan {
+	return {
+		tokenOrder: tokenData.tokenOrder,
+		surfaceForm: tokenData.surfaceForm,
+		normalizedForm: tokenData.normalizedForm,
+		wordId: snapshot?.wordId ?? null,
+		inContextTranslation: snapshot?.inContextTranslation ?? null,
+		segments:
+			snapshot?.segments.map((segment) => ({
+				...segment,
+				autoLinked: false
+			})) ?? [],
+		autoLinked: false
+	};
 }
 
-async function loadStorySentenceForCorpus(
+async function replaceExampleSentenceTokens(
 	tx: Prisma.TransactionClient,
-	storySentenceId: string
-) {
-	return tx.storySentence.findUnique({
-		where: { id: storySentenceId },
-		select: {
-			id: true,
-			kalenjin: true,
-			english: true,
-			tokens: {
-				orderBy: { tokenOrder: 'asc' },
-				select: {
-					tokenOrder: true,
-					surfaceForm: true,
-					normalizedForm: true,
-					wordId: true,
-					inContextTranslation: true,
-					segments: {
-						orderBy: { segmentOrder: 'asc' },
-						select: {
-							segmentOrder: true,
-							segmentStart: true,
-							segmentEnd: true,
-							surfaceForm: true,
-							normalizedForm: true,
-							wordId: true
-						}
-					}
-				}
-			}
-		}
-	});
-}
-
-export async function syncStorySentenceToCorpus(
-	tx: Prisma.TransactionClient,
-	storySentenceId: string
+	exampleSentenceId: string,
+	tokenData: TokenizedWord[],
+	preservedTokens: ExampleTokenSnapshot[] = []
 ): Promise<void> {
-	let storySentence = await loadStorySentenceForCorpus(tx, storySentenceId);
+	await tx.exampleSentenceToken.deleteMany({ where: { exampleSentenceId } });
 
-	if (!storySentence) {
+	if (tokenData.length === 0) {
+		await tx.wordSentence.deleteMany({ where: { exampleSentenceId } });
 		return;
 	}
 
-	if (storySentence.kalenjin.trim().length > 0 && storySentence.tokens.length === 0) {
-		await syncStorySentenceTokens(tx, storySentence.id, storySentence.kalenjin);
-		storySentence = await loadStorySentenceForCorpus(tx, storySentenceId);
-	}
-
-	if (!storySentence) {
-		return;
-	}
-
-	const corpusSentence = await tx.exampleSentence.upsert({
-		where: { storySentenceId: storySentence.id },
-		update: {
-			kalenjin: storySentence.kalenjin,
-			english: storySentence.english
-		},
-		create: {
-			storySentenceId: storySentence.id,
-			kalenjin: storySentence.kalenjin,
-			english: storySentence.english
-		},
-		select: { id: true }
-	});
-
-	await tx.wordSentence.deleteMany({
-		where: { exampleSentenceId: corpusSentence.id }
-	});
-
-	await tx.exampleSentenceToken.deleteMany({
-		where: { exampleSentenceId: corpusSentence.id }
-	});
-
-	for (const token of storySentence.tokens) {
-		await tx.exampleSentenceToken.create({
-			data: {
-				exampleSentenceId: corpusSentence.id,
-				tokenOrder: token.tokenOrder,
-				surfaceForm: token.surfaceForm,
-				normalizedForm: token.normalizedForm,
-				wordId: token.wordId,
-				inContextTranslation: token.inContextTranslation,
-				...(token.segments.length > 0
-					? {
-							segments: {
-								createMany: {
-									data: token.segments.map((segment) => ({
-										segmentOrder: segment.segmentOrder,
-										segmentStart: segment.segmentStart,
-										segmentEnd: segment.segmentEnd,
-										surfaceForm: segment.surfaceForm,
-										normalizedForm: segment.normalizedForm,
-										wordId: segment.wordId
-									}))
-								}
-							}
-						}
-					: {})
+	const canPreserve = tokenData.length === preservedTokens.length;
+	const plan = canPreserve
+		? {
+				tokens: tokenData.map((token, index) => {
+					const snapshot = preservedTokens[index];
+					return tokenPlanFromSnapshot(
+						token,
+						snapshot?.normalizedForm === token.normalizedForm ? snapshot : undefined
+					);
+				}),
+				autoLinkedCount: 0
 			}
-		});
-	}
+		: await resolveAutoLemmaTokenPlans(tx, tokenData, preservedTokens);
 
-	const linkedWordIds = collectLinkedWordIds(storySentence.tokens);
-	if (linkedWordIds.length > 0) {
-		await tx.wordSentence.createMany({
-			data: linkedWordIds.map((wordId) => ({
-				wordId,
-				exampleSentenceId: corpusSentence.id
-			}))
+	await createExampleSentenceTokensFromPlans(tx, exampleSentenceId, plan.tokens);
+	await tx.wordSentence.deleteMany({ where: { exampleSentenceId } });
+	await createWordSentenceLinks(tx, exampleSentenceId, collectLinkedWordIds(plan.tokens));
+	await recordAutoLemmaObservedForms(tx, plan.tokens);
+
+	if (plan.autoLinkedCount > 0) {
+		await tx.exampleSentence.update({
+			where: { id: exampleSentenceId },
+			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
 		});
 	}
+}
+
+async function createStoryExampleSentence(
+	tx: Prisma.TransactionClient,
+	kalenjin: string,
+	english: string
+): Promise<{ id: string }> {
+	return createExampleSentenceWithAutoLemma(tx, {
+		kalenjin,
+		english,
+		tokenData: tokenizeSentence(kalenjin)
+	});
 }
 
 export async function backfillMissingStoryCorpusEntries(storyId?: string): Promise<void> {
-	const missingSentences = await prisma.storySentence.findMany({
+	const missingTokenSentences = await prisma.storySentence.findMany({
 		where: {
 			...(storyId ? { storyId } : {}),
-			OR: [
-				{ corpusSentence: { is: null } },
-				{ corpusSentence: { is: { tokens: { none: {} } } } }
-			]
+			exampleSentence: { tokens: { none: {} } }
 		},
-		select: { id: true },
+		select: {
+			exampleSentence: {
+				select: { id: true, kalenjin: true }
+			}
+		},
 		orderBy: [{ storyId: 'asc' }, { sentenceOrder: 'asc' }]
 	});
 
-	if (missingSentences.length === 0) {
+	if (missingTokenSentences.length === 0) {
 		return;
 	}
 
 	await prisma.$transaction(async (tx) => {
-		for (const sentence of missingSentences) {
-			await syncStorySentenceToCorpus(tx, sentence.id);
+		for (const sentence of missingTokenSentences) {
+			await replaceExampleSentenceTokens(
+				tx,
+				sentence.exampleSentence.id,
+				tokenizeSentence(sentence.exampleSentence.kalenjin)
+			);
 		}
 	});
 }
@@ -181,27 +142,40 @@ export async function splitStorySentence(
 		select: {
 			id: true,
 			storyId: true,
+			exampleSentenceId: true,
 			sentenceOrder: true,
 			speaker: true,
-			kalenjin: true,
-			english: true,
-			tokens: {
-				orderBy: { tokenOrder: 'asc' },
+			exampleSentence: {
 				select: {
-					tokenOrder: true,
-					surfaceForm: true,
-					normalizedForm: true,
-					wordId: true,
-					inContextTranslation: true,
-					segments: {
-						orderBy: { segmentOrder: 'asc' },
+					kalenjin: true,
+					english: true,
+					notes: true,
+					imageUrl: true,
+					audioUrl: true,
+					audioRecordedById: true,
+					audioRecordedAt: true,
+					needsLemmaProofread: true,
+					lemmaProofreadAt: true,
+					lessonWords: { select: { id: true }, take: 1 },
+					tokens: {
+						orderBy: { tokenOrder: 'asc' },
 						select: {
-							segmentOrder: true,
-							segmentStart: true,
-							segmentEnd: true,
+							tokenOrder: true,
 							surfaceForm: true,
 							normalizedForm: true,
-							wordId: true
+							wordId: true,
+							inContextTranslation: true,
+							segments: {
+								orderBy: { segmentOrder: 'asc' },
+								select: {
+									segmentOrder: true,
+									segmentStart: true,
+									segmentEnd: true,
+									surfaceForm: true,
+									normalizedForm: true,
+									wordId: true
+								}
+							}
 						}
 					}
 				}
@@ -213,20 +187,21 @@ export async function splitStorySentence(
 		throw new Error('Story sentence not found.');
 	}
 
-	const pieces = splitIntoSentences(original.kalenjin, original.english);
+	const pieces = splitIntoSentences(
+		original.exampleSentence.kalenjin,
+		original.exampleSentence.english
+	);
 
 	if (pieces.length <= 1) {
 		return { splitCount: 1 };
 	}
 
-	const pieceTokens = pieces.map((piece) => tokenizeSentence(piece.kalenjin));
-	const totalNewTokens = pieceTokens.reduce((sum, list) => sum + list.length, 0);
-	const canPreserve = totalNewTokens === original.tokens.length;
+	if (original.exampleSentence.lessonWords.length > 0) {
+		throw new Error('Cannot split a story sentence while it is used by a lesson word.');
+	}
 
-	// Two-pass shift: Postgres checks (storyId, sentenceOrder) per-row during
-	// a single UPDATE, so incrementing contiguous orders fires a transient
-	// duplicate. Park affected rows above the offset first, then bring them
-	// down to their final positions.
+	const pieceTokens = pieces.map((piece) => tokenizeSentence(piece.kalenjin));
+
 	const SHIFT_OFFSET = 1_000_000;
 	await tx.storySentence.updateMany({
 		where: {
@@ -243,70 +218,54 @@ export async function splitStorySentence(
 		data: { sentenceOrder: { decrement: SHIFT_OFFSET } }
 	});
 
-	await tx.storySentence.update({
-		where: { id: original.id },
-		data: { kalenjin: pieces[0].kalenjin, english: pieces[0].english }
+	await tx.exampleSentence.update({
+		where: { id: original.exampleSentenceId },
+		data: {
+			kalenjin: pieces[0].kalenjin,
+			english: pieces[0].english,
+			needsLemmaProofread: true,
+			lemmaProofreadAt: null
+		}
 	});
+	await replaceExampleSentenceTokens(
+		tx,
+		original.exampleSentenceId,
+		pieceTokens[0],
+		original.exampleSentence.tokens.slice(0, pieceTokens[0].length)
+	);
 
-	await tx.storySentenceToken.deleteMany({ where: { storySentenceId: original.id } });
-
-	const rowIds: string[] = [original.id];
+	let cursor = pieceTokens[0].length;
 	for (let i = 1; i < pieces.length; i++) {
-		const created = await tx.storySentence.create({
+		const exampleSentence = await tx.exampleSentence.create({
 			data: {
-				storyId: original.storyId,
-				sentenceOrder: original.sentenceOrder + i,
-				speaker: original.speaker,
 				kalenjin: pieces[i].kalenjin,
-				english: pieces[i].english
+				english: pieces[i].english,
+				notes: original.exampleSentence.notes,
+				imageUrl: original.exampleSentence.imageUrl,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null
 			},
 			select: { id: true }
 		});
-		rowIds.push(created.id);
-	}
+		await replaceExampleSentenceTokens(
+			tx,
+			exampleSentence.id,
+			pieceTokens[i],
+			original.exampleSentence.tokens.slice(cursor, cursor + pieceTokens[i].length)
+		);
+		cursor += pieceTokens[i].length;
 
-	if (canPreserve) {
-		let cursor = 0;
-		for (let i = 0; i < pieces.length; i++) {
-			const rowId = rowIds[i];
-			const newTokens = pieceTokens[i];
-			for (let j = 0; j < newTokens.length; j++) {
-				const origToken = original.tokens[cursor + j];
-				const createdToken = await tx.storySentenceToken.create({
-					data: {
-						storySentenceId: rowId,
-						tokenOrder: j,
-						surfaceForm: newTokens[j].surfaceForm,
-						normalizedForm: newTokens[j].normalizedForm,
-						wordId: origToken.wordId,
-						inContextTranslation: origToken.inContextTranslation
-					},
-					select: { id: true }
-				});
-				if (origToken.segments.length > 0) {
-					await tx.storySentenceTokenSegment.createMany({
-						data: origToken.segments.map((segment) => ({
-							tokenId: createdToken.id,
-							segmentOrder: segment.segmentOrder,
-							segmentStart: segment.segmentStart,
-							segmentEnd: segment.segmentEnd,
-							surfaceForm: segment.surfaceForm,
-							normalizedForm: segment.normalizedForm,
-							wordId: segment.wordId
-						}))
-					});
-				}
+		await tx.storySentence.create({
+			data: {
+				storyId: original.storyId,
+				exampleSentenceId: exampleSentence.id,
+				sentenceOrder: original.sentenceOrder + i,
+				speaker: original.speaker
 			}
-			cursor += newTokens.length;
-		}
-	} else {
-		for (let i = 0; i < pieces.length; i++) {
-			await syncStorySentenceTokens(tx, rowIds[i], pieces[i].kalenjin);
-		}
-	}
-
-	for (const rowId of rowIds) {
-		await syncStorySentenceToCorpus(tx, rowId);
+		});
 	}
 
 	return { splitCount: pieces.length };
@@ -329,10 +288,43 @@ export async function mergeStorySentenceWithNext(
 		select: {
 			id: true,
 			storyId: true,
+			exampleSentenceId: true,
 			sentenceOrder: true,
-			kalenjin: true,
-			english: true,
-			tokens: { select: { id: true } }
+			exampleSentence: {
+				select: {
+					kalenjin: true,
+					english: true,
+					notes: true,
+					imageUrl: true,
+					audioUrl: true,
+					audioRecordedById: true,
+					audioRecordedAt: true,
+					needsLemmaProofread: true,
+					lemmaProofreadAt: true,
+					lessonWords: { select: { id: true }, take: 1 },
+					tokens: {
+						orderBy: { tokenOrder: 'asc' },
+						select: {
+							tokenOrder: true,
+							surfaceForm: true,
+							normalizedForm: true,
+							wordId: true,
+							inContextTranslation: true,
+							segments: {
+								orderBy: { segmentOrder: 'asc' },
+								select: {
+									segmentOrder: true,
+									segmentStart: true,
+									segmentEnd: true,
+									surfaceForm: true,
+									normalizedForm: true,
+									wordId: true
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	});
 
@@ -348,10 +340,43 @@ export async function mergeStorySentenceWithNext(
 		orderBy: { sentenceOrder: 'asc' },
 		select: {
 			id: true,
+			exampleSentenceId: true,
 			sentenceOrder: true,
-			kalenjin: true,
-			english: true,
-			tokens: { select: { id: true } }
+			exampleSentence: {
+				select: {
+					kalenjin: true,
+					english: true,
+					notes: true,
+					imageUrl: true,
+					audioUrl: true,
+					audioRecordedById: true,
+					audioRecordedAt: true,
+					needsLemmaProofread: true,
+					lemmaProofreadAt: true,
+					lessonWords: { select: { id: true }, take: 1 },
+					tokens: {
+						orderBy: { tokenOrder: 'asc' },
+						select: {
+							tokenOrder: true,
+							surfaceForm: true,
+							normalizedForm: true,
+							wordId: true,
+							inContextTranslation: true,
+							segments: {
+								orderBy: { segmentOrder: 'asc' },
+								select: {
+									segmentOrder: true,
+									segmentStart: true,
+									segmentEnd: true,
+									surfaceForm: true,
+									normalizedForm: true,
+									wordId: true
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	});
 
@@ -359,27 +384,62 @@ export async function mergeStorySentenceWithNext(
 		return { merged: false };
 	}
 
-	const mergedKalenjin = joinMergedText(target.kalenjin, next.kalenjin);
-	const mergedEnglish = joinMergedText(target.english, next.english);
-
-	const targetTokenCount = target.tokens.length;
-
-	if (next.tokens.length > 0) {
-		await tx.storySentenceToken.updateMany({
-			where: { storySentenceId: next.id },
-			data: {
-				storySentenceId: target.id,
-				tokenOrder: { increment: targetTokenCount }
-			}
-		});
+	if (
+		target.exampleSentence.lessonWords.length > 0 ||
+		next.exampleSentence.lessonWords.length > 0
+	) {
+		throw new Error('Cannot merge story sentences while either sentence is used by a lesson word.');
 	}
 
-	await tx.storySentence.update({
-		where: { id: target.id },
-		data: { kalenjin: mergedKalenjin, english: mergedEnglish }
+	const mergedKalenjin = joinMergedText(
+		target.exampleSentence.kalenjin,
+		next.exampleSentence.kalenjin
+	);
+	const mergedEnglish = joinMergedText(target.exampleSentence.english, next.exampleSentence.english);
+	const conflictingMetadata =
+		(Boolean(target.exampleSentence.notes) &&
+			Boolean(next.exampleSentence.notes) &&
+			target.exampleSentence.notes !== next.exampleSentence.notes) ||
+		(Boolean(target.exampleSentence.imageUrl) &&
+			Boolean(next.exampleSentence.imageUrl) &&
+			target.exampleSentence.imageUrl !== next.exampleSentence.imageUrl) ||
+		(Boolean(target.exampleSentence.audioUrl) &&
+			Boolean(next.exampleSentence.audioUrl) &&
+			target.exampleSentence.audioUrl !== next.exampleSentence.audioUrl);
+
+	if (conflictingMetadata) {
+		throw new Error('Cannot merge story sentences with separate notes, images, or audio.');
+	}
+	const needsLemmaProofread =
+		target.exampleSentence.needsLemmaProofread || next.exampleSentence.needsLemmaProofread;
+
+	await tx.exampleSentence.update({
+		where: { id: target.exampleSentenceId },
+		data: {
+			kalenjin: mergedKalenjin,
+			english: mergedEnglish,
+			notes: target.exampleSentence.notes ?? next.exampleSentence.notes,
+			imageUrl: target.exampleSentence.imageUrl ?? next.exampleSentence.imageUrl,
+			audioUrl: target.exampleSentence.audioUrl ?? next.exampleSentence.audioUrl,
+			audioRecordedById:
+				target.exampleSentence.audioRecordedById ?? next.exampleSentence.audioRecordedById,
+			audioRecordedAt: target.exampleSentence.audioRecordedAt ?? next.exampleSentence.audioRecordedAt,
+			needsLemmaProofread,
+			lemmaProofreadAt: needsLemmaProofread
+				? null
+				: (target.exampleSentence.lemmaProofreadAt ?? next.exampleSentence.lemmaProofreadAt)
+		}
 	});
 
+	await replaceExampleSentenceTokens(
+		tx,
+		target.exampleSentenceId,
+		tokenizeSentence(mergedKalenjin),
+		[...target.exampleSentence.tokens, ...next.exampleSentence.tokens]
+	);
+
 	await tx.storySentence.delete({ where: { id: next.id } });
+	await tx.exampleSentence.delete({ where: { id: next.exampleSentenceId } });
 
 	const SHIFT_OFFSET = 1_000_000;
 	await tx.storySentence.updateMany({
@@ -397,8 +457,6 @@ export async function mergeStorySentenceWithNext(
 		data: { sentenceOrder: { decrement: SHIFT_OFFSET + 1 } }
 	});
 
-	await syncStorySentenceToCorpus(tx, target.id);
-
 	return { merged: true };
 }
 
@@ -408,27 +466,45 @@ export async function syncStorySentences(
 	storyText: string | null
 ): Promise<void> {
 	const sentences = storyText ? parseStoryImportText(storyText) : [];
+	const existing = await tx.storySentence.findMany({
+		where: { storyId },
+		select: { exampleSentenceId: true }
+	});
 
 	await tx.storySentence.deleteMany({
 		where: { storyId }
 	});
 
-	if (sentences.length === 0) {
-		return;
+	if (existing.length > 0) {
+		const existingExampleIds = existing.map((sentence) => sentence.exampleSentenceId);
+		const stillReferenced = await tx.lessonWord.findMany({
+			where: { sentenceId: { in: existingExampleIds } },
+			select: { sentenceId: true }
+		});
+		const stillReferencedIds = new Set(stillReferenced.map((lessonWord) => lessonWord.sentenceId));
+		const orphanedExampleIds = existingExampleIds.filter((id) => !stillReferencedIds.has(id));
+
+		if (orphanedExampleIds.length > 0) {
+			await tx.exampleSentence.deleteMany({
+				where: { id: { in: orphanedExampleIds } }
+			});
+		}
 	}
 
 	for (const sentence of sentences) {
-		const createdSentence = await tx.storySentence.create({
+		const exampleSentence = await createStoryExampleSentence(
+			tx,
+			sentence.kalenjin,
+			sentence.english
+		);
+
+		await tx.storySentence.create({
 			data: {
 				storyId,
+				exampleSentenceId: exampleSentence.id,
 				sentenceOrder: sentence.sentenceOrder,
-				speaker: sentence.speaker,
-				kalenjin: sentence.kalenjin,
-				english: sentence.english
+				speaker: sentence.speaker
 			}
 		});
-
-		await syncStorySentenceTokens(tx, createdSentence.id, sentence.kalenjin);
-		await syncStorySentenceToCorpus(tx, createdSentence.id);
 	}
 }

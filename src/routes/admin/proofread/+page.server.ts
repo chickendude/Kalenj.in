@@ -54,9 +54,7 @@ function autoLemmaMessage(summary: AutoLemmatizeExistingSummary): string {
 
 	return `${capitalizedSummary} in ${summary.updatedSentences} sentence${
 		summary.updatedSentences === 1 ? '' : 's'
-	}; queued ${
-		summary.updatedSentences === 1 ? 'it' : 'them'
-	} for proofread.`;
+	}; queued ${summary.updatedSentences === 1 ? 'it' : 'them'} for proofread.`;
 }
 
 function parsePage(value: string | null): number {

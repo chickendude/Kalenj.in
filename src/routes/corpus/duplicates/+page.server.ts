@@ -131,13 +131,13 @@ export const actions: Actions = {
 
 		const targets = await prisma.exampleSentence.findMany({
 			where: { id: { in: ids } },
-			select: { id: true, storySentenceId: true }
+			select: { id: true, storySentence: { select: { id: true } } }
 		});
 
 		// Story-linked sentences are owned by the story and would be recreated
 		// by the corpus backfill, so skip them. Lesson references can be nulled
 		// out since LessonWord.sentenceId is optional.
-		const deletable = targets.filter((t) => !t.storySentenceId).map((t) => t.id);
+		const deletable = targets.filter((t) => !t.storySentence).map((t) => t.id);
 		const skippedCount = targets.length - deletable.length;
 
 		if (deletable.length === 0) {
@@ -200,7 +200,7 @@ export const actions: Actions = {
 				audioRecordedById: true,
 				audioRecordedAt: true,
 				imageUrl: true,
-				storySentenceId: true,
+				storySentence: { select: { id: true } },
 				words: { select: { wordId: true } },
 				lessonWords: { select: { id: true } }
 			}
@@ -216,7 +216,7 @@ export const actions: Actions = {
 		const mergeInput: MergeSentence[] = rows.map((r) => ({
 			id: r.id,
 			normalizedKey: normalizeKey(r.kalenjin),
-			storySourced: r.storySentenceId != null,
+			storySourced: r.storySentence != null,
 			hasLessonWord: r.lessonWords.length > 0,
 			english: '',
 			notes: r.notes,

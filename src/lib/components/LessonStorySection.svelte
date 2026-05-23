@@ -12,11 +12,14 @@
 	type Sentence = {
 		id: string;
 		speaker: string | null;
-		english: string;
-		kalenjin: string;
 		grammarNotes: string | null;
-		tokens: AnnotationsProps['tokens'];
-		corpusSentence: { audioUrl: string | null } | null;
+		exampleSentence: {
+			id: string;
+			english: string;
+			kalenjin: string;
+			audioUrl: string | null;
+			tokens: AnnotationsProps['tokens'];
+		};
 	};
 
 	let {
@@ -46,10 +49,16 @@
 
 	$effect(() => {
 		const signature = sentences
-			.map((s) => `${s.id}|${s.speaker ?? ''}|${s.english}|${s.kalenjin}|${s.grammarNotes ?? ''}`)
+			.map(
+				(s) =>
+					`${s.id}|${s.speaker ?? ''}|${s.exampleSentence.id}|${s.exampleSentence.english}|${s.exampleSentence.kalenjin}|${s.grammarNotes ?? ''}`
+			)
 			.join('');
 		if (signature !== lastIncomingSignature) {
-			storySentences = sentences.map((sentence) => ({ ...sentence }));
+			storySentences = sentences.map((sentence) => ({
+				...sentence,
+				exampleSentence: { ...sentence.exampleSentence }
+			}));
 			lastIncomingSignature = signature;
 		}
 	});
@@ -81,7 +90,7 @@
 				? sentence.speaker ?? ''
 				: field === 'grammarNotes'
 					? sentence.grammarNotes ?? ''
-					: sentence.english;
+					: sentence.exampleSentence.english;
 		inlineStoryError = null;
 	}
 
@@ -124,7 +133,10 @@
 					? {
 							...sentence,
 							speaker: result.sentence.speaker,
-							english: result.sentence.english,
+							exampleSentence: {
+								...sentence.exampleSentence,
+								english: result.sentence.english
+							},
 							grammarNotes: result.sentence.grammarNotes
 						}
 					: sentence
@@ -223,7 +235,8 @@
 					? storySentences[sentenceIndex + 1]
 					: null}
 			{@const showSpeaker = !prev || prev.speaker !== sentence.speaker}
-			{@const canSplit = splitSentenceText(sentence.kalenjin).length > 1}
+			{@const tokenSentence = sentence.exampleSentence}
+			{@const canSplit = splitSentenceText(tokenSentence.kalenjin).length > 1}
 			{@const canMerge = sentenceIndex < storySentences.length - 1}
 			<div class="table-row story-grid">
 				<div>
@@ -248,23 +261,23 @@
 				</div>
 				<div class="story-text-cell">
 					<AudioPlayButton
-						audioUrl={sentence.corpusSentence?.audioUrl ?? null}
+						audioUrl={tokenSentence.audioUrl}
 						size="sm"
 						label="Play sentence"
 					/>
 					<SentenceTokenAnnotations
-						entityId={sentence.id}
-						entityIdField="storySentenceId"
-						entityKind="story"
-						sentenceId={sentence.id}
-						sentenceText={sentence.kalenjin}
-						tokens={sentence.tokens}
+						entityId={tokenSentence.id}
+						entityIdField="sentenceId"
+						entityKind="example"
+						sentenceId={tokenSentence.id}
+						sentenceText={tokenSentence.kalenjin}
+						tokens={tokenSentence.tokens}
 						{dictionaryWords}
 						{ignoredNormalizedForms}
-						updateAction="?/updateStorySentenceToken"
-						createAction="?/createStorySentenceWord"
-						searchEndpoint={`/lessons/${lessonId}/word-search`}
-						tokenGroupEndpoint={`/lessons/${lessonId}/token-groups`}
+						updateAction={`/corpus/${tokenSentence.id}?/updateCorpusSentenceToken`}
+						createAction={`/corpus/${tokenSentence.id}?/createCorpusSentenceWord`}
+						searchEndpoint={`/corpus/${tokenSentence.id}/word-search`}
+						tokenGroupEndpoint={`/corpus/${tokenSentence.id}/token-groups`}
 						focusRequest={storyFocusRequests[sentence.id] ?? null}
 						onNavigatePrevSentence={prev
 							? () => focusStorySentence(prev.id, 'last')
@@ -351,7 +364,7 @@
 							class="inline-edit-button inline-edit-button--wide"
 							onclick={() => beginInlineStoryEdit(sentence, 'english')}
 						>
-							<SentenceTimeText text={sentence.english} />
+							<SentenceTimeText text={sentence.exampleSentence.english} />
 						</button>
 					{/if}
 

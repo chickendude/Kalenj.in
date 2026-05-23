@@ -3,6 +3,9 @@ import { actions } from './+page.server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
+		lesson: {
+			delete: vi.fn()
+		},
 		lessonSection: {
 			findFirst: vi.fn(),
 			create: vi.fn()
@@ -11,10 +14,22 @@ const mocks = vi.hoisted(() => {
 			findMany: vi.fn(),
 			create: vi.fn(),
 			update: vi.fn()
+		},
+		exampleSentence: {
+			deleteMany: vi.fn()
+		},
+		story: {
+			delete: vi.fn()
+		},
+		storySentence: {
+			findMany: vi.fn()
 		}
 	};
 
 	const prisma = {
+		lesson: {
+			findUnique: vi.fn()
+		},
 		lessonWord: {
 			findMany: vi.fn()
 		},
@@ -30,7 +45,17 @@ const mocks = vi.hoisted(() => {
 vi.mock('$lib/server/prisma', () => ({ prisma: mocks.prisma }));
 
 function resetMocks() {
-	for (const model of [mocks.prisma.lessonWord, mocks.prisma.word, mocks.tx.lessonSection, mocks.tx.lessonWord]) {
+	for (const model of [
+		mocks.prisma.lesson,
+		mocks.prisma.lessonWord,
+		mocks.prisma.word,
+		mocks.tx.lesson,
+		mocks.tx.lessonSection,
+		mocks.tx.lessonWord,
+		mocks.tx.exampleSentence,
+		mocks.tx.story,
+		mocks.tx.storySentence
+	]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
 		}
@@ -40,6 +65,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.lessonSection.findFirst.mockResolvedValue({ id: 'section-1' });
 	mocks.tx.lessonWord.findMany.mockResolvedValue([]);
+	mocks.tx.storySentence.findMany.mockResolvedValue([]);
 }
 
 async function reorderWords(orderedIds: unknown, lessonId = 'lesson-1') {
@@ -69,6 +95,16 @@ async function quickAddWord(wordId = 'word-1', lessonId = 'lesson-1') {
 			method: 'POST',
 			body: formData
 		})
+	} as never);
+}
+
+async function deleteLesson(lessonId = 'lesson-1') {
+	return actions.deleteLesson?.({
+		params: { id: lessonId },
+		locals: {
+			user: { id: 'u1', username: 'tester', displayName: null, role: 'ADMIN' },
+			sessionToken: 't'
+		}
 	} as never);
 }
 
@@ -189,5 +225,98 @@ describe('quickAddWord action', () => {
 				itemOrder: 1
 			}
 		});
+	});
+});
+
+describe('deleteLesson action', () => {
+	it('deletes story-owned example sentences after removing the story placements', async () => {
+		mocks.prisma.lesson.findUnique.mockResolvedValue({
+			storyId: 'story-1',
+			story: {
+				sentences: [
+					{ exampleSentenceId: 'story-example-1' },
+					{ exampleSentenceId: 'story-example-2' }
+				]
+			},
+			sections: [
+				{
+					words: [{ sentenceId: 'lesson-example-1' }]
+				}
+			]
+		});
+		mocks.tx.lessonWord.findMany.mockResolvedValue([]);
+
+		await expect(deleteLesson()).rejects.toMatchObject({
+			status: 303,
+			location: '/lessons'
+		});
+
+		expect(mocks.tx.lesson.delete).toHaveBeenCalledWith({ where: { id: 'lesson-1' } });
+		expect(mocks.tx.story.delete).toHaveBeenCalledWith({ where: { id: 'story-1' } });
+		expect(mocks.tx.lessonWord.findMany).toHaveBeenCalledWith({
+			where: {
+				sentenceId: { in: ['lesson-example-1', 'story-example-1', 'story-example-2'] }
+			},
+			select: { sentenceId: true }
+		});
+		expect(mocks.tx.storySentence.findMany).toHaveBeenCalledWith({
+			where: {
+				exampleSentenceId: { in: ['lesson-example-1', 'story-example-1', 'story-example-2'] }
+			},
+			select: { exampleSentenceId: true }
+		});
+		expect(mocks.tx.exampleSentence.deleteMany).toHaveBeenCalledWith({
+			where: { id: { in: ['lesson-example-1', 'story-example-1', 'story-example-2'] } }
+		});
+		expect(mocks.tx.story.delete.mock.invocationCallOrder[0]).toBeLessThan(
+			mocks.tx.exampleSentence.deleteMany.mock.invocationCallOrder[0]
+		);
+	});
+
+	it('keeps story example sentences that are still referenced by another lesson word', async () => {
+		mocks.prisma.lesson.findUnique.mockResolvedValue({
+			storyId: 'story-1',
+			story: {
+				sentences: [
+					{ exampleSentenceId: 'story-example-1' },
+					{ exampleSentenceId: 'shared-example' }
+				]
+			},
+			sections: []
+		});
+		mocks.tx.lessonWord.findMany.mockResolvedValue([{ sentenceId: 'shared-example' }]);
+
+		await expect(deleteLesson()).rejects.toMatchObject({
+			status: 303,
+			location: '/lessons'
+		});
+
+		expect(mocks.tx.story.delete).toHaveBeenCalledWith({ where: { id: 'story-1' } });
+		expect(mocks.tx.exampleSentence.deleteMany).toHaveBeenCalledWith({
+			where: { id: { in: ['story-example-1'] } }
+		});
+	});
+
+	it('keeps lesson word examples that are still used by story placements', async () => {
+		mocks.prisma.lesson.findUnique.mockResolvedValue({
+			storyId: null,
+			story: null,
+			sections: [
+				{
+					words: [{ sentenceId: 'shared-story-example' }]
+				}
+			]
+		});
+		mocks.tx.lessonWord.findMany.mockResolvedValue([]);
+		mocks.tx.storySentence.findMany.mockResolvedValue([
+			{ exampleSentenceId: 'shared-story-example' }
+		]);
+
+		await expect(deleteLesson()).rejects.toMatchObject({
+			status: 303,
+			location: '/lessons'
+		});
+
+		expect(mocks.tx.exampleSentence.deleteMany).not.toHaveBeenCalled();
 	});
 });

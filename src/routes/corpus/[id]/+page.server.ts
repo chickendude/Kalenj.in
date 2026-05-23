@@ -468,7 +468,7 @@ export const actions: Actions = {
 			where: { id: params.id },
 			select: {
 				id: true,
-				storySentenceId: true,
+				storySentence: { select: { id: true } },
 				imageUrl: true,
 				_count: { select: { lessonWords: true } }
 			}
@@ -485,7 +485,7 @@ export const actions: Actions = {
 			});
 		}
 
-		if (existing.storySentenceId) {
+		if (existing.storySentence) {
 			return fail(409, {
 				error: 'This sentence comes from a story lesson. Edit or delete it from the story lesson.'
 			});

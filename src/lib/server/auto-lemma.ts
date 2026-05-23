@@ -53,7 +53,6 @@ type ExampleSentenceCreateInput = {
 	english: string;
 	notes?: string | null;
 	tokenData: TokenizedWord[];
-	storySentenceId?: string | null;
 };
 
 function distinct(values: string[]): string[] {
@@ -568,7 +567,6 @@ export async function createExampleSentenceWithAutoLemma(
 
 	const sentence = await db.exampleSentence.create({
 		data: {
-			...(input.storySentenceId ? { storySentenceId: input.storySentenceId } : {}),
 			kalenjin: input.kalenjin,
 			english: input.english,
 			...(input.notes !== undefined ? { notes: input.notes } : {}),

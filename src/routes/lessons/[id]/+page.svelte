@@ -1,13 +1,12 @@
 <script lang="ts">
-	import { applyAction, enhance } from '$app/forms';
+	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import GrammarNotes from '$lib/components/GrammarNotes.svelte';
-	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
-	import LemmaSearchPicker from '$lib/components/LemmaSearchPicker.svelte';
+	import LessonAddWordForm from '$lib/components/LessonAddWordForm.svelte';
 	import LessonHeader from '$lib/components/LessonHeader.svelte';
 	import LessonStorySection from '$lib/components/LessonStorySection.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
@@ -53,58 +52,6 @@
 	let showAddWordForm = $state(false);
 	let vocabPanelsOpen = $state(false);
 
-	type AddWordPickerState = {
-		selectedWord: {
-			id: string;
-			kalenjin: string;
-			translations: string;
-			partOfSpeech?: PartOfSpeech | string | null;
-		} | null;
-		mode: 'search' | 'create';
-		draftKalenjin: string;
-		draftTranslations: string;
-		draftAlternativeSpellings: string;
-		draftNotes: string;
-		draftPartOfSpeech: PartOfSpeech | '';
-		draftPluralForm: string;
-		draftIsPluralOnly: boolean;
-		draftAlternativePluralForms: string;
-		draftPresentAnee: string;
-		draftPresentInyee: string;
-		draftPresentInee: string;
-		draftPresentEchek: string;
-		draftPresentOkwek: string;
-		draftPresentIchek: string;
-		sentenceKalenjin: string;
-		sentenceEnglish: string;
-		error: string | null;
-	};
-
-	function emptyAddWordState(): AddWordPickerState {
-		return {
-			selectedWord: null,
-			mode: 'search',
-			draftKalenjin: '',
-			draftTranslations: '',
-			draftAlternativeSpellings: '',
-			draftNotes: '',
-			draftPartOfSpeech: '',
-			draftPluralForm: '',
-			draftIsPluralOnly: false,
-			draftAlternativePluralForms: '',
-			draftPresentAnee: '',
-			draftPresentInyee: '',
-			draftPresentInee: '',
-			draftPresentEchek: '',
-			draftPresentOkwek: '',
-			draftPresentIchek: '',
-			sentenceKalenjin: '',
-			sentenceEnglish: '',
-			error: null
-		};
-	}
-
-	let addWordState = $state<AddWordPickerState>(emptyAddWordState());
 	let exampleFocusRequests = $state<
 		Record<string, { position: 'first' | 'last'; nonce: number }>
 	>({});
@@ -540,40 +487,7 @@
 	}
 
 	function toggleAddWordForm() {
-		if (showAddWordForm) {
-			showAddWordForm = false;
-			addWordState = emptyAddWordState();
-		} else {
-			addWordState = emptyAddWordState();
-			showAddWordForm = true;
-		}
-	}
-
-	function enhanceAddWordForm() {
-		return async ({
-			result,
-			update
-		}: {
-			result: EnhancedSubmitResult;
-			update: EnhancedUpdate;
-		}) => {
-			if (result.type === 'success') {
-				await update({ reset: false, invalidateAll: true });
-				showAddWordForm = false;
-				addWordState = emptyAddWordState();
-				return;
-			}
-			if (result.type === 'failure') {
-				const data = result.data;
-				const message =
-					data && typeof data === 'object' && 'error' in data && typeof data.error === 'string'
-						? (data.error as string)
-						: 'Could not create lesson word.';
-				addWordState = { ...addWordState, error: message };
-				return;
-			}
-			await applyAction(result);
-		};
+		showAddWordForm = !showAddWordForm;
 	}
 
 	function enhanceReorderWordsForm() {
@@ -804,77 +718,10 @@
 		</div>
 
 		{#if showAddWordForm}
-			<section class="card">
-				<form
-					method="POST"
-					action="?/createWord"
-					class="editor-form compact-form add-word-form"
-					enctype="multipart/form-data"
-					use:enhance={enhanceAddWordForm}
-				>
-					<input type="hidden" name="lessonId" value={data.lesson.id} />
-
-					<LemmaSearchPicker
-						searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-						idPrefix="lesson-add-word"
-						bind:selectedWord={addWordState.selectedWord}
-						bind:mode={addWordState.mode}
-						bind:draftKalenjin={addWordState.draftKalenjin}
-						bind:draftTranslations={addWordState.draftTranslations}
-						bind:draftAlternativeSpellings={addWordState.draftAlternativeSpellings}
-						bind:draftNotes={addWordState.draftNotes}
-						bind:draftPartOfSpeech={addWordState.draftPartOfSpeech}
-						bind:draftPluralForm={addWordState.draftPluralForm}
-						bind:draftIsPluralOnly={addWordState.draftIsPluralOnly}
-						bind:draftAlternativePluralForms={addWordState.draftAlternativePluralForms}
-						bind:draftPresentAnee={addWordState.draftPresentAnee}
-						bind:draftPresentInyee={addWordState.draftPresentInyee}
-						bind:draftPresentInee={addWordState.draftPresentInee}
-						bind:draftPresentEchek={addWordState.draftPresentEchek}
-						bind:draftPresentOkwek={addWordState.draftPresentOkwek}
-						bind:draftPresentIchek={addWordState.draftPresentIchek}
-					/>
-
-					<div class="add-word-sentence">
-						<label>
-							Example sentence
-							<textarea
-								name="sentenceKalenjin"
-								required
-								rows="2"
-								bind:value={addWordState.sentenceKalenjin}
-							></textarea>
-						</label>
-
-						<label>
-							Sentence translation
-							<textarea
-								name="sentenceEnglish"
-								required
-								rows="2"
-								bind:value={addWordState.sentenceEnglish}
-							></textarea>
-						</label>
-					</div>
-
-					<div class="add-word-images">
-						<ImageUploadField name="wordImage" idPrefix="add-word-image" label="Word image" />
-						<ImageUploadField name="sentenceImage" idPrefix="add-sentence-image" label="Sentence image" />
-					</div>
-
-					{#if addWordState.error}
-						<p class="error-text">{addWordState.error}</p>
-					{/if}
-
-					<div class="add-word-actions">
-						<button type="submit" class="btn">
-							{addWordState.selectedWord
-								? `Add "${addWordState.selectedWord.kalenjin}" to lesson`
-								: 'Create lesson word'}
-						</button>
-					</div>
-				</form>
-			</section>
+			<LessonAddWordForm
+				lessonId={data.lesson.id}
+				onSuccess={() => (showAddWordForm = false)}
+			/>
 		{/if}
 
 		{#if flattenedLessonWords.length === 0}
@@ -1247,13 +1094,6 @@
 		}
 	}
 
-	.card {
-		background: var(--bg-raised);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		padding: 1.25rem;
-	}
-
 	.content-card {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
@@ -1389,15 +1229,6 @@
 		padding: 0;
 		position: absolute;
 		width: 1px;
-	}
-
-	.editor-form {
-		display: grid;
-		gap: 0.75rem;
-	}
-
-	.compact-form {
-		max-width: 980px;
 	}
 
 	.table-header,
@@ -1808,11 +1639,6 @@
 		margin: 0;
 	}
 
-	label {
-		display: grid;
-		gap: 0.25rem;
-	}
-
 	.inline-actions {
 		align-items: center;
 		display: flex;
@@ -1871,50 +1697,6 @@
 		border-color: var(--brand);
 		box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
 		outline: none;
-	}
-
-	.add-word-form {
-		display: grid;
-		gap: 16px;
-	}
-
-	.add-word-sentence {
-		border-top: 1px dotted var(--line);
-		display: grid;
-		gap: 0.75rem;
-		padding-top: 16px;
-	}
-
-	.add-word-sentence label {
-		display: grid;
-		gap: 4px;
-	}
-
-	.add-word-sentence textarea {
-		background: var(--paper);
-		border: 1px solid var(--line);
-		border-radius: 8px;
-		font: inherit;
-		padding: 8px 10px;
-	}
-
-	.add-word-actions {
-		display: flex;
-		justify-content: flex-end;
-	}
-
-	.add-word-images {
-		border-top: 1px dotted var(--line);
-		display: grid;
-		gap: 16px;
-		grid-template-columns: 1fr 1fr;
-		padding-top: 16px;
-	}
-
-	@media (max-width: 640px) {
-		.add-word-images {
-			grid-template-columns: 1fr;
-		}
 	}
 
 	@media (max-width: 800px) {

@@ -1,11 +1,15 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import type { PartOfSpeech } from '@prisma/client';
+import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { autoLemmatizeMissingExampleSentenceWords } from '$lib/server/auto-lemma';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import {
+	buildSentenceStoryLinks,
+	sentenceStoryLinkSelect
+} from '$lib/server/sentence-story-links';
 import {
 	buildWordSelect,
 	createOrUpdateLinkedWord,
@@ -53,6 +57,34 @@ function autoLemmaSentenceMessage(summary: {
 	}; sentence queued for proofread.`;
 }
 
+const sentenceIncludeBase = {
+	tokens: {
+		orderBy: { tokenOrder: 'asc' },
+		include: {
+			word: {
+				select: buildWordSelect()
+			},
+			segments: {
+				orderBy: { segmentOrder: 'asc' },
+				include: {
+					word: {
+						select: buildWordSelect()
+					}
+				}
+			}
+		}
+	}
+} satisfies Prisma.ExampleSentenceInclude;
+
+const sentenceIncludeWithStory = {
+	...sentenceIncludeBase,
+	storySentence: { select: sentenceStoryLinkSelect }
+} satisfies Prisma.ExampleSentenceInclude;
+
+type SentenceDetailRow = Prisma.ExampleSentenceGetPayload<{
+	include: typeof sentenceIncludeWithStory;
+}>;
+
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
 	const token = await prisma.exampleSentenceToken.findUnique({
 		where: { id: tokenId },
@@ -95,28 +127,12 @@ async function ensureSentenceTokenSegment(
 	};
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ locals, params }) => {
+	const isAdmin = locals.user?.role === 'ADMIN';
 	const [sentence, words, ignoredForms] = await Promise.all([
 		prisma.exampleSentence.findUnique({
 			where: { id: params.id },
-			include: {
-				tokens: {
-					orderBy: { tokenOrder: 'asc' },
-					include: {
-						word: {
-							select: buildWordSelect()
-						},
-						segments: {
-							orderBy: { segmentOrder: 'asc' },
-							include: {
-								word: {
-									select: buildWordSelect()
-								}
-							}
-						}
-					}
-				}
-			}
+			include: isAdmin ? sentenceIncludeWithStory : sentenceIncludeBase
 		}),
 		prisma.word.findMany({
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
@@ -129,8 +145,14 @@ export const load: PageServerLoad = async ({ params }) => {
 		error(404, 'Sentence not found');
 	}
 
+	const sentenceForLinks = sentence as SentenceDetailRow;
+	const { storySentence: _storySentence, ...sentenceData } = sentenceForLinks;
+
 	return {
-		sentence,
+		sentence: {
+			...sentenceData,
+			storyLinks: isAdmin ? buildSentenceStoryLinks(sentenceForLinks) : []
+		},
 		words,
 		ignoredNormalizedForms: ignoredForms.map((entry) => entry.normalizedForm)
 	};

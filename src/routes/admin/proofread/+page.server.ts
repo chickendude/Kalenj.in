@@ -1,4 +1,5 @@
 import { fail } from '@sveltejs/kit';
+import type { Prisma } from '@prisma/client';
 import { buildWordSelect } from '$lib/server/lemma-words';
 import {
 	autoLemmatizeMissingExampleSentenceWords,
@@ -6,6 +7,10 @@ import {
 } from '$lib/server/auto-lemma';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import {
+	buildSentenceStoryLinks,
+	sentenceStoryLinkSelect
+} from '$lib/server/sentence-story-links';
 import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 25;
@@ -104,8 +109,46 @@ function buildPageHref(page: number, lemmaStatus: LemmaStatusFilter): string {
 	return query ? `/admin/proofread?${query}` : '/admin/proofread';
 }
 
+const pageSentenceIncludeBase = {
+	tokens: {
+		orderBy: { tokenOrder: 'asc' },
+		include: {
+			word: { select: buildWordSelect() },
+			segments: {
+				orderBy: { segmentOrder: 'asc' },
+				include: {
+					word: { select: buildWordSelect() }
+				}
+			}
+		}
+	}
+} satisfies Prisma.ExampleSentenceInclude;
+
+const pageSentenceIncludeWithStory = {
+	...pageSentenceIncludeBase,
+	storySentence: { select: sentenceStoryLinkSelect }
+} satisfies Prisma.ExampleSentenceInclude;
+
+type ProofreadSentenceRow = Prisma.ExampleSentenceGetPayload<{
+	include: typeof pageSentenceIncludeWithStory;
+}>;
+
+function serializeProofreadSentence(
+	sentence: ProofreadSentenceRow,
+	lemmaStats: LemmaStats,
+	isAdmin: boolean
+) {
+	const { storySentence: _storySentence, ...rest } = sentence;
+	return {
+		...rest,
+		lemmaStats,
+		storyLinks: isAdmin ? buildSentenceStoryLinks(sentence) : []
+	};
+}
+
 export const load: PageServerLoad = async ({ locals, url }) => {
 	requireEditor(locals);
+	const isAdmin = locals.user?.role === 'ADMIN';
 	const lemmaStatus = parseLemmaStatus(url.searchParams.get('lemmaStatus'));
 	const requestedPage = parsePage(url.searchParams.get('page'));
 
@@ -163,28 +206,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		visibleIds.length > 0
 			? await prisma.exampleSentence.findMany({
 					where: { id: { in: visibleIds } },
-					include: {
-						tokens: {
-							orderBy: { tokenOrder: 'asc' },
-							include: {
-								word: { select: buildWordSelect() },
-								segments: {
-									orderBy: { segmentOrder: 'asc' },
-									include: {
-										word: { select: buildWordSelect() }
-									}
-								}
-							}
-						}
-					}
+					include: isAdmin ? pageSentenceIncludeWithStory : pageSentenceIncludeBase
 				})
 			: [];
 	const statsById = new Map(visibleQueue.map((sentence) => [sentence.id, sentence.lemmaStats]));
-	const sentenceById = new Map(pageSentences.map((sentence) => [sentence.id, sentence]));
+	const sentenceById = new Map(
+		pageSentences.map((sentence) => [sentence.id, sentence as ProofreadSentenceRow])
+	);
 	const sentences = visibleIds.flatMap((id) => {
 		const sentence = sentenceById.get(id);
 		const lemmaStats = statsById.get(id);
-		return sentence && lemmaStats ? [{ ...sentence, lemmaStats }] : [];
+		return sentence && lemmaStats
+			? [serializeProofreadSentence(sentence, lemmaStats, isAdmin)]
+			: [];
 	});
 
 	return {

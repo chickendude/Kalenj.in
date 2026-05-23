@@ -5,6 +5,7 @@
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData } from './$types';
 
@@ -16,6 +17,7 @@
 	let autoLemmaConfirmed = $state(false);
 	let sentenceEnglish = $state<Record<string, string>>({});
 	let lastEnglishSignature = $state('');
+	const canSeeStoryLinks = $derived(data.user?.role === 'ADMIN');
 	const statusTabs = $derived([
 		{ label: 'All', href: '/admin/proofread', count: data.statusCounts.all, active: data.lemmaStatus === 'all' },
 		{
@@ -166,6 +168,9 @@
 							>
 								{sentence.lemmaStats.linkedUnits}/{sentence.lemmaStats.totalUnits} lemmas
 							</span>
+							{#if canSeeStoryLinks}
+								<StoryLinksIndicator storyLinks={sentence.storyLinks} />
+							{/if}
 						</div>
 						<h2>{sentence.kalenjin}</h2>
 						<div class="sentence-english">

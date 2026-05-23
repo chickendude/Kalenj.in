@@ -16,6 +16,10 @@ import { findMatchingExampleSentence } from '$lib/server/example-sentence-dedupe
 import { tokenizeSentence, type TokenizedWord } from '$lib/server/tokenize';
 import { requireAdmin, requireEditor } from '$lib/server/guards';
 import { backfillMissingStoryCorpusEntries } from '$lib/server/story-sync';
+import {
+	buildSentenceStoryLinks,
+	sentenceStoryLinkSelect
+} from '$lib/server/sentence-story-links';
 import type { Actions, PageServerLoad } from './$types';
 
 function readText(formData: FormData, key: string): string {
@@ -52,7 +56,7 @@ function parseReviewRows(formData: FormData): BulkSentenceReviewRow[] {
 
 // Token data drives the hover popups, so it must travel with the list (not be
 // lazy-fetched on hover, which would make the popups laggy).
-const sentenceInclude = {
+const sentenceIncludeBase = {
 	tokens: {
 		orderBy: { tokenOrder: 'asc' },
 		include: {
@@ -66,10 +70,29 @@ const sentenceInclude = {
 	_count: { select: { tokens: true } }
 } satisfies Prisma.ExampleSentenceInclude;
 
-export const load: PageServerLoad = async ({ url }) => {
+const sentenceIncludeWithStory = {
+	...sentenceIncludeBase,
+	storySentence: { select: sentenceStoryLinkSelect }
+} satisfies Prisma.ExampleSentenceInclude;
+
+type SentenceListRow = Prisma.ExampleSentenceGetPayload<{
+	include: typeof sentenceIncludeWithStory;
+}>;
+
+function serializeSentenceForList(sentence: SentenceListRow, isAdmin: boolean) {
+	const { storySentence: _storySentence, ...rest } = sentence;
+	return {
+		...rest,
+		storyLinks: isAdmin ? buildSentenceStoryLinks(sentence) : []
+	};
+}
+
+export const load: PageServerLoad = async ({ locals, url }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
 	const language = parseCorpusSearchLanguage(url.searchParams.get('lang'));
 	const nonEmpty: Prisma.ExampleSentenceWhereInput = { NOT: { kalenjin: '' } };
+	const isAdmin = locals.user?.role === 'ADMIN';
+	const include = isAdmin ? sentenceIncludeWithStory : sentenceIncludeBase;
 
 	// Empty search = landing/browse view: show a small random sample, and keep the
 	// story->corpus maintenance backfill on this path rather than every search/toggle.
@@ -82,12 +105,17 @@ export const load: PageServerLoad = async ({ url }) => {
 		const [sentences, totalCount] = await Promise.all([
 			prisma.exampleSentence.findMany({
 				where: { id: { in: randomIds.map((row) => row.id) } },
-				include: sentenceInclude
+				include
 			}),
 			prisma.exampleSentence.count({ where: nonEmpty })
 		]);
 
-		return { query, language, sentences, totalCount };
+		return {
+			query,
+			language,
+			sentences: sentences.map((sentence) => serializeSentenceForList(sentence as SentenceListRow, isAdmin)),
+			totalCount
+		};
 	}
 
 	const kalenjinSentenceIds =
@@ -101,13 +129,18 @@ export const load: PageServerLoad = async ({ url }) => {
 		prisma.exampleSentence.findMany({
 			where,
 			orderBy: { createdAt: 'desc' },
-			include: sentenceInclude,
+			include,
 			take: 100
 		}),
 		prisma.exampleSentence.count({ where: nonEmpty })
 	]);
 
-	return { query, language, sentences, totalCount };
+	return {
+		query,
+		language,
+		sentences: sentences.map((sentence) => serializeSentenceForList(sentence as SentenceListRow, isAdmin)),
+		totalCount
+	};
 };
 
 export const actions: Actions = {

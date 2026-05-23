@@ -11,6 +11,8 @@
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import NotesIndicator from '$lib/components/NotesIndicator.svelte';
+	import ProofreadIndicator from '$lib/components/ProofreadIndicator.svelte';
+	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
 	import FormActions from '$lib/components/FormActions.svelte';
 
@@ -21,6 +23,7 @@
 	const canEdit = $derived(
 		data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER'
 	);
+	const canSeeStoryLinks = $derived(data.user?.role === 'ADMIN');
 	const canBulkImport = $derived(data.user?.role === 'ADMIN');
 
 	let composeOpen = $state(false);
@@ -562,8 +565,11 @@
 									<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
 										<SentenceTimeText text={sentence.english} />
 									</a>
+									{#if canSeeStoryLinks}
+										<StoryLinksIndicator storyLinks={sentence.storyLinks} />
+									{/if}
 									{#if sentence.needsLemmaProofread}
-										<a class="proofread-badge" href="/admin/proofread">Needs proofread</a>
+										<ProofreadIndicator href="/admin/proofread" />
 									{/if}
 									{#if sentence.notes?.trim()}
 										<NotesIndicator notes={sentence.notes} />
@@ -589,23 +595,6 @@
 	.record-missing-link:hover {
 		text-decoration: underline;
 	}
-	.proofread-badge {
-		background: var(--accent-soft);
-		border-radius: 999px;
-		color: var(--accent);
-		font-size: 11px;
-		font-weight: 700;
-		line-height: 1;
-		padding: 5px 8px;
-		position: relative;
-		text-decoration: none;
-		text-transform: uppercase;
-		z-index: 1;
-	}
-	.proofread-badge:hover {
-		text-decoration: underline;
-	}
-
 	.corpus-layout {
 		display: grid;
 		grid-template-columns: 380px 1fr;

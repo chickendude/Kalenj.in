@@ -4,7 +4,9 @@
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
+	import ProofreadIndicator from '$lib/components/ProofreadIndicator.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
 	import { invalidateAll } from '$app/navigation';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
@@ -33,6 +35,7 @@
 	type SentenceInlineField = InlineSentenceField | 'english';
 
 	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
+	const canSeeStoryLinks = $derived(data.user?.role === 'ADMIN');
 
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
 	let autoLemmaForm = $state<HTMLFormElement | null>(null);
@@ -267,10 +270,13 @@
 				<div class="entry-label">Corpus sentence</div>
 				{#if data.sentence.needsLemmaProofread}
 					{#if canEdit}
-						<a class="proofread-badge" href="/admin/proofread">Not proofread</a>
+						<ProofreadIndicator href="/admin/proofread" />
 					{:else}
-						<span class="proofread-badge">Not proofread</span>
+						<ProofreadIndicator />
 					{/if}
+				{/if}
+				{#if canSeeStoryLinks}
+					<StoryLinksIndicator storyLinks={data.sentence.storyLinks} />
 				{/if}
 			</div>
 		</div>
@@ -532,23 +538,6 @@
 		line-height: 1;
 		margin-bottom: 0;
 	}
-	.proofread-badge {
-		align-items: center;
-		background: var(--accent-soft);
-		border-radius: 999px;
-		color: var(--accent);
-		display: inline-flex;
-		font-size: 11px;
-		font-weight: 700;
-		line-height: 1;
-		padding: 5px 8px;
-		text-decoration: none;
-		text-transform: uppercase;
-	}
-	a.proofread-badge:hover {
-		text-decoration: underline;
-	}
-
 	.sentence-display {
 		align-items: baseline;
 		display: flex;

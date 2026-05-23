@@ -25,8 +25,7 @@
 
 	$effect(() => {
 		if (!open) return;
-		const timeout = window.setTimeout(() => confirmButton?.focus(), 0);
-		return () => window.clearTimeout(timeout);
+		confirmButton?.focus();
 	});
 
 	$effect(() => {

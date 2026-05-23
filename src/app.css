@@ -2152,21 +2152,25 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   }
 }
 
-/* ---------- Shared mobile rules ---------- */
-@media (max-width: 720px) {
+/* ---------- Topbar mobile (aligned with NavSearch mobile) ---------- */
+@media (max-width: 900px) {
   .topbar-inner {
     padding: 14px 16px;
-    gap: 8px;
+    gap: 10px;
   }
   .brand-sub { display: none; }
   .desktop-only { display: none !important; }
-  .side-menu { display: flex; }
   .topbar-nav { display: none; }
+  .side-menu { display: flex; }
   .topbar-user {
     margin-left: 0;
     padding-left: 0;
     border-left: 0;
   }
+}
+
+/* ---------- Shared mobile rules ---------- */
+@media (max-width: 720px) {
   .shell { padding: 32px 16px 64px; }
   .site-foot { padding: 0 16px 56px; }
   .page-head {

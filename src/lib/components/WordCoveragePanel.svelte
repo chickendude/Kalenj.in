@@ -36,11 +36,11 @@
 
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
-	function enhanceQuickAdd(wordId: string) {
-		// SvelteKit enhance actions receive a submit callback, which can return the result handler.
-		return () => async ({ result, update }: { result: { type: string }; update: EnhancedUpdate }) => {
-			if (result.type === 'success') {
-				addedWordIds = new Set([...addedWordIds, wordId]);
+	function enhanceQuickAdd({ formData }: { formData: FormData }) {
+		const submittedWordId = String(formData.get('wordId') ?? '');
+		return async ({ result, update }: { result: { type: string }; update: EnhancedUpdate }) => {
+			if (result.type === 'success' && submittedWordId) {
+				addedWordIds = new Set([...addedWordIds, submittedWordId]);
 				await update({ invalidateAll: true });
 			}
 		};
@@ -75,7 +75,7 @@
 				</label>
 			</div>
 			<div class="coverage-list">
-				{#each visibleEntries as entry}
+				{#each visibleEntries as entry (entry.word.id)}
 					<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
 						<div class="coverage-word">
 							<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
@@ -92,7 +92,7 @@
 							{#if entry.introduced || addedWordIds.has(entry.word.id)}
 								<span class="status-introduced">✓ Introduced</span>
 							{:else if quickAddAction}
-								<form method="POST" action={quickAddAction} use:enhance={enhanceQuickAdd(entry.word.id)}>
+								<form method="POST" action={quickAddAction} use:enhance={enhanceQuickAdd}>
 									<input type="hidden" name="wordId" value={entry.word.id} />
 									<button type="submit" class="add-button">+ Add to lesson</button>
 								</form>

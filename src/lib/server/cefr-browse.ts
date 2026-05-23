@@ -3,6 +3,7 @@ import { parsePositiveInteger } from '$lib/server/course-form';
 import type { CefrLevel } from '@prisma/client';
 
 const CEFR_PAGE_SIZE = 100;
+const CEFR_RANDOM_SAMPLE_SIZE = 10;
 const CEFR_SORT_OPTIONS = ['alpha-asc', 'alpha-desc'] as const;
 export type CefrSortOption = (typeof CEFR_SORT_OPTIONS)[number];
 
@@ -14,9 +15,9 @@ export function parseCefrSortOption(value: string | null): CefrSortOption {
 }
 
 function parseCefrCoverageFilter(value: string | null): CefrCoverageFilter {
+	if (value === 'all') return 'all';
 	if (value === 'yes' || value === 'covered') return 'covered';
-	if (value === 'no' || value === 'uncovered') return 'uncovered';
-	return 'all';
+	return 'uncovered';
 }
 
 function parseCefrPosFilters(value: string | null): string[] {
@@ -58,6 +59,7 @@ export type CefrBrowseData = {
 	totalPages: number;
 	totalCount: number;
 	coveredCount: number;
+	isRandom: boolean;
 };
 
 async function fetchTargets(level: CefrLevel, sort: CefrSortOption) {
@@ -130,9 +132,21 @@ export async function loadCefrBrowse(
 		.map(({ target }) => target);
 
 	const filteredCount = filteredTargets.length;
-	const totalPages = Math.max(1, Math.ceil(filteredCount / CEFR_PAGE_SIZE));
-	const page = Math.min(requestedPage, totalPages);
-	const targets = filteredTargets.slice((page - 1) * CEFR_PAGE_SIZE, page * CEFR_PAGE_SIZE);
+	const isRandom = Boolean(searchParams.get('random'));
+
+	let targets: typeof filteredTargets;
+	let page: number;
+	let totalPages: number;
+
+	if (isRandom) {
+		targets = sampleRandom(filteredTargets, CEFR_RANDOM_SAMPLE_SIZE);
+		page = 1;
+		totalPages = 1;
+	} else {
+		totalPages = Math.max(1, Math.ceil(filteredCount / CEFR_PAGE_SIZE));
+		page = Math.min(requestedPage, totalPages);
+		targets = filteredTargets.slice((page - 1) * CEFR_PAGE_SIZE, page * CEFR_PAGE_SIZE);
+	}
 
 	const posOptions = [...posTokenCounts.entries()]
 		.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
@@ -150,6 +164,18 @@ export async function loadCefrBrowse(
 		filteredCount,
 		totalPages,
 		totalCount,
-		coveredCount
+		coveredCount,
+		isRandom
 	};
+}
+
+function sampleRandom<T>(items: T[], size: number): T[] {
+	if (items.length <= size) {
+		return [...items].sort(() => Math.random() - 0.5);
+	}
+	const indices = new Set<number>();
+	while (indices.size < size) {
+		indices.add(Math.floor(Math.random() * items.length));
+	}
+	return [...indices].map((i) => items[i]);
 }

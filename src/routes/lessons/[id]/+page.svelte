@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
@@ -26,6 +26,7 @@
 		page?: number;
 		coverage?: 'all' | 'covered' | 'uncovered';
 		pos?: string[];
+		random?: number | null;
 	};
 
 	function buildLessonCefrUrl(changes: CefrUrlChanges = {}): string {
@@ -39,8 +40,10 @@
 		if (query) params.set('q', query);
 		if (sort !== 'alpha-asc') params.set('sort', sort);
 		if (page > 1) params.set('page', String(page));
-		if (coverage !== 'all') params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+		if (coverage === 'covered') params.set('covered', 'yes');
+		else if (coverage === 'all') params.set('covered', 'all');
 		if (pos.length > 0) params.set('pos', pos.join(','));
+		if (changes.random) params.set('random', String(changes.random));
 
 		const qs = params.toString();
 		return qs ? `/lessons/${data.lesson.id}?${qs}` : `/lessons/${data.lesson.id}`;
@@ -512,6 +515,21 @@
 		};
 	}
 
+	function enhanceDeleteWordForm() {
+		return async ({
+			result,
+			update
+		}: {
+			result: EnhancedSubmitResult;
+			update: EnhancedUpdate;
+		}) => {
+			await update({ reset: false, invalidateAll: true });
+			if (result.type !== 'success' && result.type !== 'failure') {
+				await applyAction(result);
+			}
+		};
+	}
+
 	function requestDeleteWord(event: SubmitEvent, wordLabel: string) {
 		if (pendingDelete?.kind === 'word' && pendingDelete.form === event.currentTarget) {
 			return;
@@ -543,7 +561,7 @@
 		if (!pendingDelete) return;
 		const form = pendingDelete.form;
 		pendingDelete = null;
-		form.submit();
+		form.requestSubmit();
 	}
 
 	function handleLessonWordDragStart(event: DragEvent, lessonWordId: string) {
@@ -675,6 +693,7 @@
 					filteredCount={data.cefrBrowse.filteredCount}
 					totalCount={data.cefrBrowse.totalCount}
 					coveredCount={data.cefrBrowse.coveredCount}
+					isRandom={data.cefrBrowse.isRandom}
 					buildUrl={buildLessonCefrUrl}
 					collapsible
 					bind:expanded={vocabPanelsOpen}
@@ -909,6 +928,7 @@
 									method="POST"
 									action="?/deleteWord"
 									class="inline-delete"
+									use:enhance={enhanceDeleteWordForm}
 									onsubmit={(event) =>
 										requestDeleteWord(
 											event,

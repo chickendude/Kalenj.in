@@ -1,75 +1,19 @@
 import type { Prisma } from '@prisma/client';
+import {
+	buildAutoLemmaTokenPlans,
+	collectLinkedWordIds,
+	createExampleSentenceTokensFromPlans,
+	createWordSentenceLinks,
+	recordAutoLemmaObservedForms,
+	resolveAutoLemmaTokenPlans,
+	type ExistingLemmaAnnotation
+} from '$lib/server/auto-lemma';
 import { tokenizeSentence, type TokenizedWord } from '$lib/server/tokenize';
-
-type ExistingSentenceToken = {
-	tokenOrder: number;
-	surfaceForm: string;
-	normalizedForm: string;
-	wordId: string | null;
-	inContextTranslation: string | null;
-	word?: {
-		kalenjinNormalized: string;
-	} | null;
-};
-
-type PreservedAnnotation = {
-	wordId: string | null;
-	inContextTranslation: string | null;
-};
-
-function hasAnnotation(token: ExistingSentenceToken): boolean {
-	return Boolean(token.wordId || token.inContextTranslation?.trim());
-}
-
-function findPreservedAnnotation(
-	incoming: TokenizedWord,
-	existingTokens: ExistingSentenceToken[],
-	usedIndexes: Set<number>
-): PreservedAnnotation | null {
-	const sameOrderIndex = existingTokens.findIndex(
-		(existing, index) =>
-			!usedIndexes.has(index) &&
-			existing.tokenOrder === incoming.tokenOrder &&
-			existing.normalizedForm === incoming.normalizedForm &&
-			hasAnnotation(existing)
-	);
-
-	if (sameOrderIndex >= 0) {
-		usedIndexes.add(sameOrderIndex);
-		return existingTokens[sameOrderIndex];
-	}
-
-	const sameNormalizedIndex = existingTokens.findIndex(
-		(existing, index) =>
-			!usedIndexes.has(index) &&
-			existing.normalizedForm === incoming.normalizedForm &&
-			hasAnnotation(existing)
-	);
-
-	if (sameNormalizedIndex >= 0) {
-		usedIndexes.add(sameNormalizedIndex);
-		return existingTokens[sameNormalizedIndex];
-	}
-
-	const sameLemmaIndex = existingTokens.findIndex(
-		(existing, index) =>
-			!usedIndexes.has(index) &&
-			Boolean(existing.wordId) &&
-			existing.word?.kalenjinNormalized === incoming.normalizedForm
-	);
-
-	if (sameLemmaIndex >= 0) {
-		usedIndexes.add(sameLemmaIndex);
-		return existingTokens[sameLemmaIndex];
-	}
-
-	return null;
-}
 
 export function buildSyncedTokenRows<T extends Record<string, string>>(
 	parentIds: T,
 	tokenData: TokenizedWord[],
-	existingTokens: ExistingSentenceToken[]
+	existingTokens: ExistingLemmaAnnotation[]
 ): Array<
 	T & {
 		tokenOrder: number;
@@ -79,19 +23,15 @@ export function buildSyncedTokenRows<T extends Record<string, string>>(
 		inContextTranslation?: string;
 	}
 > {
-	const usedIndexes = new Set<number>();
-
-	return tokenData.map((incoming) => {
-		const preserved = findPreservedAnnotation(incoming, existingTokens, usedIndexes);
-
+	return buildAutoLemmaTokenPlans(tokenData, existingTokens, new Map()).tokens.map((token) => {
 		return {
 			...parentIds,
-			tokenOrder: incoming.tokenOrder,
-			surfaceForm: incoming.surfaceForm,
-			normalizedForm: incoming.normalizedForm,
-			...(preserved?.wordId ? { wordId: preserved.wordId } : {}),
-			...(preserved?.inContextTranslation?.trim()
-				? { inContextTranslation: preserved.inContextTranslation }
+			tokenOrder: token.tokenOrder,
+			surfaceForm: token.surfaceForm,
+			normalizedForm: token.normalizedForm,
+			...(token.wordId ? { wordId: token.wordId } : {}),
+			...(token.inContextTranslation?.trim()
+				? { inContextTranslation: token.inContextTranslation }
 				: {})
 		};
 	});
@@ -128,9 +68,17 @@ export async function syncExampleSentenceTokens(
 		return;
 	}
 
-	await tx.exampleSentenceToken.createMany({
-		data: buildSyncedTokenRows({ exampleSentenceId }, tokenData, existingTokens)
-	});
+	const plan = await resolveAutoLemmaTokenPlans(tx, tokenData, existingTokens);
+	await createExampleSentenceTokensFromPlans(tx, exampleSentenceId, plan.tokens);
+	await createWordSentenceLinks(tx, exampleSentenceId, collectLinkedWordIds(plan.tokens));
+	await recordAutoLemmaObservedForms(tx, plan.tokens);
+
+	if (plan.autoLinkedCount > 0) {
+		await tx.exampleSentence.update({
+			where: { id: exampleSentenceId },
+			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+		});
+	}
 }
 
 export async function syncStorySentenceTokens(

@@ -6,11 +6,15 @@ const mocks = vi.hoisted(() => {
 		exampleSentenceToken: {
 			update: vi.fn(),
 			delete: vi.fn(),
-			create: vi.fn()
+			create: vi.fn(),
+			findFirst: vi.fn()
 		},
 		exampleSentenceTokenSegment: {
 			deleteMany: vi.fn(),
 			createMany: vi.fn()
+		},
+		wordSentence: {
+			deleteMany: vi.fn()
 		},
 		observedWordForm: {
 			upsert: vi.fn(),
@@ -48,6 +52,7 @@ function resetMocks() {
 		mocks.prisma.observedWordForm,
 		mocks.tx.exampleSentenceToken,
 		mocks.tx.exampleSentenceTokenSegment,
+		mocks.tx.wordSentence,
 		mocks.tx.observedWordForm
 	]) {
 		for (const mock of Object.values(model)) {
@@ -275,6 +280,65 @@ describe('POST /corpus/[id]/token-groups', () => {
 						expect.objectContaining({ id: 'segment-a', surfaceForm: 'Kot' }),
 						expect.objectContaining({ id: 'segment-b', surfaceForm: 'ab' })
 					]
+				})
+			]
+		});
+	});
+
+	it('removes stale word-sentence links when lexical segments are unsplit', async () => {
+		mocks.prisma.exampleSentence.findUnique.mockResolvedValue({ id: 'sentence-1' });
+		mocks.prisma.exampleSentenceToken.findMany
+			.mockResolvedValueOnce([
+				{
+					id: 'token-a',
+					tokenOrder: 0,
+					surfaceForm: 'nenyun.',
+					normalizedForm: 'nenyun',
+					wordId: null,
+					inContextTranslation: null,
+					segments: [
+						{ wordId: 'word-ne', normalizedForm: 'ne' },
+						{ wordId: 'word-nyun', normalizedForm: 'nyun' }
+					]
+				}
+			])
+			.mockResolvedValueOnce([
+				{
+					id: 'token-a',
+					tokenOrder: 0,
+					surfaceForm: 'nenyun.',
+					normalizedForm: 'nenyun',
+					wordId: null,
+					inContextTranslation: null,
+					word: null,
+					segments: []
+				}
+			]);
+		mocks.tx.exampleSentenceToken.findFirst.mockResolvedValue(null);
+
+		const response = await post('sentence-1', {
+			action: 'unsplit',
+			sentenceId: 'sentence-1',
+			tokenId: 'token-a'
+		});
+
+		expect(response.status).toBe(200);
+		expect(mocks.tx.exampleSentenceTokenSegment.deleteMany).toHaveBeenCalledWith({
+			where: { tokenId: 'token-a' }
+		});
+		expect(mocks.tx.wordSentence.deleteMany).toHaveBeenCalledWith({
+			where: { wordId: 'word-ne', exampleSentenceId: 'sentence-1' }
+		});
+		expect(mocks.tx.wordSentence.deleteMany).toHaveBeenCalledWith({
+			where: { wordId: 'word-nyun', exampleSentenceId: 'sentence-1' }
+		});
+		expect(mocks.tx.exampleSentenceToken.findFirst).toHaveBeenCalledTimes(2);
+		await expect(response.json()).resolves.toEqual({
+			tokens: [
+				expect.objectContaining({
+					id: 'token-a',
+					surfaceForm: 'nenyun.',
+					segments: []
 				})
 			]
 		});

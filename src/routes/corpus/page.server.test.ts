@@ -4,6 +4,16 @@ const mocks = vi.hoisted(() => {
 	const tx = {
 		exampleSentence: {
 			create: vi.fn()
+		},
+		exampleSentenceToken: {
+			findMany: vi.fn()
+		},
+		observedWordForm: {
+			findMany: vi.fn(),
+			upsert: vi.fn()
+		},
+		wordSentence: {
+			createMany: vi.fn()
 		}
 	};
 
@@ -56,8 +66,15 @@ beforeEach(() => {
 	mocks.prisma.exampleSentence.findFirst.mockReset();
 	mocks.prisma.$transaction.mockReset();
 	mocks.tx.exampleSentence.create.mockReset();
+	mocks.tx.exampleSentenceToken.findMany.mockReset();
+	mocks.tx.observedWordForm.findMany.mockReset();
+	mocks.tx.observedWordForm.upsert.mockReset();
+	mocks.tx.wordSentence.createMany.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.prisma.exampleSentence.findFirst.mockResolvedValue(null);
+	mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([]);
+	mocks.tx.observedWordForm.findMany.mockResolvedValue([]);
+	mocks.tx.exampleSentence.create.mockResolvedValue({ id: 'sentence-created' });
 });
 
 describe('previewBulkSentences action', () => {
@@ -121,13 +138,25 @@ describe('saveBulkSentences action', () => {
 			data: {
 				kalenjin: 'Labat kaa.',
 				english: 'Run home.',
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
 				tokens: {
-					createMany: {
-						data: [
-							{ tokenOrder: 0, surfaceForm: 'Labat', normalizedForm: 'labat' },
-							{ tokenOrder: 1, surfaceForm: 'kaa.', normalizedForm: 'kaa' }
-						]
-					}
+					create: [
+						{
+							tokenOrder: 0,
+							surfaceForm: 'Labat',
+							normalizedForm: 'labat',
+							wordId: null,
+							inContextTranslation: null
+						},
+						{
+							tokenOrder: 1,
+							surfaceForm: 'kaa.',
+							normalizedForm: 'kaa',
+							wordId: null,
+							inContextTranslation: null
+						}
+					]
 				}
 			}
 		});
@@ -135,13 +164,25 @@ describe('saveBulkSentences action', () => {
 			data: {
 				kalenjin: 'Labat boisyet.',
 				english: 'Run to work.',
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
 				tokens: {
-					createMany: {
-						data: [
-							{ tokenOrder: 0, surfaceForm: 'Labat', normalizedForm: 'labat' },
-							{ tokenOrder: 1, surfaceForm: 'boisyet.', normalizedForm: 'boisyet' }
-						]
-					}
+					create: [
+						{
+							tokenOrder: 0,
+							surfaceForm: 'Labat',
+							normalizedForm: 'labat',
+							wordId: null,
+							inContextTranslation: null
+						},
+						{
+							tokenOrder: 1,
+							surfaceForm: 'boisyet.',
+							normalizedForm: 'boisyet',
+							wordId: null,
+							inContextTranslation: null
+						}
+					]
 				}
 			}
 		});

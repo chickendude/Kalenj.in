@@ -11,6 +11,14 @@ const mocks = vi.hoisted(() => {
 		exampleSentenceToken: {
 			findMany: vi.fn(),
 			deleteMany: vi.fn(),
+			create: vi.fn(),
+			createMany: vi.fn()
+		},
+		observedWordForm: {
+			findMany: vi.fn(),
+			upsert: vi.fn()
+		},
+		wordSentence: {
 			createMany: vi.fn()
 		},
 		lessonWord: {
@@ -41,6 +49,8 @@ function resetMocks() {
 		mocks.prisma.exampleSentence,
 		mocks.tx.exampleSentence,
 		mocks.tx.exampleSentenceToken,
+		mocks.tx.observedWordForm,
+		mocks.tx.wordSentence,
 		mocks.tx.lessonWord
 	]) {
 		for (const mock of Object.values(model)) {
@@ -51,6 +61,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([]);
+	mocks.tx.observedWordForm.findMany.mockResolvedValue([]);
 	mocks.tx.exampleSentence.create.mockResolvedValue({ id: 'sentence-2' });
 	mocks.prisma.exampleSentence.findFirst.mockResolvedValue(null);
 }
@@ -154,24 +165,26 @@ describe('POST /lessons/[id]/lesson-word-inline', () => {
 	});
 
 	it('preserves marked lemmas and meanings on matching regenerated tokens', async () => {
-		mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([
-			{
-				tokenOrder: 0,
-				surfaceForm: 'Oh',
-				normalizedForm: 'oh',
-				wordId: 'word-oh',
-				inContextTranslation: 'hello',
-				word: { kalenjinNormalized: 'oh' }
-			},
-			{
-				tokenOrder: 1,
-				surfaceForm: 'eh',
-				normalizedForm: 'eh',
-				wordId: 'word-eh',
-				inContextTranslation: 'you',
-				word: { kalenjinNormalized: 'eh' }
-			}
-		]);
+		mocks.tx.exampleSentenceToken.findMany
+			.mockResolvedValueOnce([
+				{
+					tokenOrder: 0,
+					surfaceForm: 'Oh',
+					normalizedForm: 'oh',
+					wordId: 'word-oh',
+					inContextTranslation: 'hello',
+					word: { kalenjinNormalized: 'oh' }
+				},
+				{
+					tokenOrder: 1,
+					surfaceForm: 'eh',
+					normalizedForm: 'eh',
+					wordId: 'word-eh',
+					inContextTranslation: 'you',
+					word: { kalenjinNormalized: 'eh' }
+				}
+			])
+			.mockResolvedValueOnce([]);
 
 		await post({
 			lessonWordId: 'lesson-word-1',
@@ -209,16 +222,18 @@ describe('POST /lessons/[id]/lesson-word-inline', () => {
 	});
 
 	it('preserves an old unsplit token link when its lemma matches a regenerated word', async () => {
-		mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([
-			{
-				tokenOrder: 0,
-				surfaceForm: 'Oh eh',
-				normalizedForm: 'oh eh',
-				wordId: 'word-oh',
-				inContextTranslation: 'hello',
-				word: { kalenjinNormalized: 'oh' }
-			}
-		]);
+		mocks.tx.exampleSentenceToken.findMany
+			.mockResolvedValueOnce([
+				{
+					tokenOrder: 0,
+					surfaceForm: 'Oh eh',
+					normalizedForm: 'oh eh',
+					wordId: 'word-oh',
+					inContextTranslation: 'hello',
+					word: { kalenjinNormalized: 'oh' }
+				}
+			])
+			.mockResolvedValueOnce([]);
 
 		await post({
 			lessonWordId: 'lesson-word-1',

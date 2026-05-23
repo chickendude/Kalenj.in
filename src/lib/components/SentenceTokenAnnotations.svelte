@@ -2,15 +2,13 @@
 	import { enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import { groupSentenceTokens } from '$lib/word-groups';
-	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { stripWordLinks } from '$lib/word-links';
 	import ConfirmDialog from './ConfirmDialog.svelte';
-	import ImageUploadField from './ImageUploadField.svelte';
+	import LemmaCreationForm from './LemmaCreationForm.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenSearchPanel from '$lib/components/TokenSearchPanel.svelte';
 	import TokenSplitter from '$lib/components/TokenSplitter.svelte';
-	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 	import {
 		normalizeSearchQuery,
@@ -19,17 +17,6 @@
 	} from '$lib/token-annotations';
 	import type { PartOfSpeech } from '@prisma/client';
 	import type { ActionResult } from '@sveltejs/kit';
-
-	const CORE_POS = ['NOUN', 'ADJECTIVE', 'VERB'] as const satisfies readonly PartOfSpeech[];
-	const OTHER_POS = [
-		'ADVERB',
-		'PRONOUN',
-		'PREPOSITION',
-		'CONJUNCTION',
-		'INTERJECTION',
-		'PHRASE',
-		'OTHER'
-	] as const satisfies readonly PartOfSpeech[];
 
 	type DictionaryWord = {
 		id: string;
@@ -198,8 +185,6 @@
 	let surfaceEditInput = $state<HTMLInputElement | null>(null);
 	let groupActionError = $state<string | null>(null);
 	let splitMarkers = $state<Record<string, number[]>>({});
-	let posOtherOpen = $state(false);
-	let posOtherWrap = $state<HTMLDivElement | null>(null);
 	const autoSaveTimers = new Map<string, number>();
 
 		const groups = $derived(
@@ -357,29 +342,6 @@
 	});
 
 	$effect(() => {
-		if (!posOtherOpen) {
-			return;
-		}
-
-		function handlePointerDown(event: MouseEvent) {
-			const wrap = posOtherWrap;
-			if (!wrap) {
-				return;
-			}
-
-			const target = event.target;
-			if (target instanceof Node && wrap.contains(target)) {
-				return;
-			}
-
-			posOtherOpen = false;
-		}
-
-		window.addEventListener('pointerdown', handlePointerDown, true);
-		return () => window.removeEventListener('pointerdown', handlePointerDown, true);
-	});
-
-	$effect(() => {
 		if (!shortcutsOpen) {
 			return;
 		}
@@ -401,7 +363,6 @@
 		const segment = token.segments?.find((entry) => entry.id === segmentId) ?? null;
 		activeSegmentId = segment?.id ?? null;
 		groupActionError = null;
-		posOtherOpen = false;
 	}
 
 	function openPicker(token: SentenceToken) {
@@ -1116,18 +1077,6 @@
 		{@const pendingSplits = splitMarkersFor(activeToken.id)}
 		{@const hasCommittedSegments = splitTabSegments.length > 1}
 		{@const activeSurfaceTrim = (activeSurface ?? '').trim()}
-		{@const createLemmaValue =
-			drafts[activeDraftKey]?.createLemma ?? activeSurface ?? ''}
-		{@const createTranslationsValue = drafts[activeDraftKey]?.createTranslations ?? ''}
-		{@const selectedWordInDraft = drafts[activeDraftKey]?.selectedWordId ?? ''}
-		{@const canSubmitCreate =
-			createLemmaValue.trim().length > 0 && createTranslationsValue.trim().length > 0}
-		{@const currentPos = drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
-		{@const otherSelected =
-			currentPos !== '' && !(CORE_POS as readonly string[]).includes(currentPos)}
-		{@const currentPosNeedsPlural = currentPos === 'NOUN' || currentPos === 'ADJECTIVE'}
-		{@const pluralFormValue = drafts[activeDraftKey]?.createPluralForm ?? ''}
-		{@const isPluralOnlyValue = drafts[activeDraftKey]?.createIsPluralOnly ?? false}
 		<div
 			class="modal-backdrop"
 			role="button"
@@ -1278,313 +1227,27 @@
 					onPickEnhance={enhanceUpdateForm(activeToken.id)}
 				/>
 
-				<!-- Mode switch row -->
-				<div class="lemma-mode-row">
-					<div class="pos-group">
-						<span class="pos-group-label">Part of speech</span>
-						<div class="pos-pills" role="radiogroup" aria-label="Part of speech">
-							{#each CORE_POS as pos}
-								{@const selected = currentPos === pos}
-								<button
-									type="button"
-									role="radio"
-									aria-checked={selected}
-									class="pos-pill"
-									class:selected
-									onclick={() => {
-										posOtherOpen = false;
-										updateDraft(
-											activeDraftKey,
-											'createPartOfSpeech',
-											selected ? '' : pos
-										);
-									}}
-								>
-									{PART_OF_SPEECH_LABELS[pos]}
-								</button>
-							{/each}
-							<div class="pos-other-wrap" bind:this={posOtherWrap}>
-								<button
-									type="button"
-									aria-pressed={otherSelected}
-									aria-haspopup="menu"
-									aria-expanded={posOtherOpen}
-									class="pos-pill pos-pill-other"
-									class:selected={otherSelected}
-									onclick={() => {
-										if (otherSelected) {
-											updateDraft(activeDraftKey, 'createPartOfSpeech', '');
-											posOtherOpen = false;
-										} else {
-											posOtherOpen = !posOtherOpen;
-										}
-									}}
-								>
-									<span>
-										{otherSelected
-											? PART_OF_SPEECH_LABELS[currentPos as PartOfSpeech]
-											: 'Other'}
-									</span>
-									<span class="pos-pill-caret" aria-hidden="true">▾</span>
-								</button>
-								{#if posOtherOpen}
-									<div class="pos-other-menu" role="menu">
-										{#each OTHER_POS as pos}
-											{@const itemSelected = currentPos === pos}
-											<button
-												type="button"
-												role="menuitemradio"
-												aria-checked={itemSelected}
-												class="pos-other-item"
-												class:selected={itemSelected}
-												onclick={() => {
-													updateDraft(
-														activeDraftKey,
-														'createPartOfSpeech',
-														itemSelected ? '' : pos
-													);
-													posOtherOpen = false;
-												}}
-											>
-												{PART_OF_SPEECH_LABELS[pos]}
-											</button>
-										{/each}
-									</div>
-								{/if}
-							</div>
-						</div>
-					</div>
-					<div class="lemma-mode-side">
-						{#if activeWord}
-							<a
-								href={`/dictionary/${activeWord.id}`}
-								target="_blank"
-								rel="noreferrer"
-								class="lemma-sideling"
-							>
-								Open entry ↗
-							</a>
-						{/if}
-						{#if activeWordId}
-							<form
-								method="POST"
-								action={updateAction}
-								use:enhance={enhanceUpdateForm(activeToken.id, {
-									closeOnSuccess: !activeSegment,
-									invalidateOnSuccess: true
-								})}
-							>
-								<input type="hidden" name={entityIdField} value={entityId} />
-								<input type="hidden" name="tokenId" value={activeToken.id} />
-								{#if activeSegment}
-									<input type="hidden" name="segmentId" value={activeSegment.id} />
-								{/if}
-								<input type="hidden" name="wordId" value="" />
-								<input
-									type="hidden"
-									name="inContextTranslation"
-									value={drafts[activeToken.id]?.inContextTranslation ?? ''}
-								/>
-								<button type="submit" class="btn ghost sm">Clear lemma</button>
-							</form>
-						{/if}
-					</div>
-				</div>
-
-				<!-- Form -->
-				<form
-					method="POST"
-					action={createAction}
-					class="lemma-form"
-					enctype="multipart/form-data"
-					use:enhance={enhanceCreateForm(activeToken.id)}
-				>
-					<input type="hidden" name={entityIdField} value={entityId} />
-					<input type="hidden" name="tokenId" value={activeToken.id} />
-					{#if activeSegment}
-						<input type="hidden" name="segmentId" value={activeSegment.id} />
-					{/if}
-					<input type="hidden" name="wordId" value={selectedWordInDraft} />
-					<input
-						type="hidden"
-						name="inContextTranslation"
-						value={drafts[activeToken.id]?.inContextTranslation ?? ''}
-					/>
-					<input
-						type="hidden"
-						name="partOfSpeech"
-						value={drafts[activeDraftKey]?.createPartOfSpeech ?? ''}
-					/>
-					<input
-						type="hidden"
-						name="pluralForm"
-						value={currentPosNeedsPlural && !isPluralOnlyValue ? pluralFormValue : ''}
-					/>
-					<input
-						type="hidden"
-						name="isPluralOnly"
-						value={currentPosNeedsPlural && isPluralOnlyValue ? 'on' : ''}
-					/>
-					<input
-						type="hidden"
-						name="alternativePluralForms"
-						value={currentPosNeedsPlural && !isPluralOnlyValue ? drafts[activeDraftKey]?.createAlternativePluralForms ?? '' : ''}
-					/>
-
-					<div class="lemma-form-grid">
-						<div class="field">
-							<label for="lemma-field-kalenjin">Lemma</label>
-							<input
-								id="lemma-field-kalenjin"
-								class="input"
-								name="kalenjin"
-								required
-								value={createLemmaValue}
-								oninput={(event) =>
-									updateDraft(
-										activeDraftKey,
-										'createLemma',
-										(event.currentTarget as HTMLInputElement).value
-									)}
-							/>
-						</div>
-						<div class="field">
-							<label for="lemma-field-alt">Alternative spellings</label>
-							<input
-								id="lemma-field-alt"
-								class="input"
-								name="alternativeSpellings"
-								placeholder="comma, separated"
-								value={drafts[activeDraftKey]?.createAlternativeSpellings ?? ''}
-								oninput={(event) =>
-									updateDraft(
-										activeDraftKey,
-										'createAlternativeSpellings',
-										(event.currentTarget as HTMLInputElement).value
-									)}
-							/>
-						</div>
-					</div>
-
-					{#if currentPosNeedsPlural}
-						<div class="lemma-forms-block">
-							<div class="lemma-forms-head">
-								<span class="lemma-forms-label">Forms</span>
-								<span class="lemma-forms-hint">
-									{currentPos === 'NOUN'
-										? 'Nouns need a plural form. Use commas for alternates.'
-										: 'Adjectives need a plural form. Use commas for alternates.'}
-								</span>
-							</div>
-							<div class="lemma-forms-grid">
-								<div class="field">
-									<label for="lemma-field-plural">Plural</label>
-									<input
-										id="lemma-field-plural"
-										class="input"
-										placeholder="e.g. chego"
-										disabled={isPluralOnlyValue}
-										value={pluralFormValue}
-										oninput={(event) =>
-											updateDraft(
-												activeDraftKey,
-												'createPluralForm',
-												(event.currentTarget as HTMLInputElement).value
-											)}
-									/>
-								</div>
-								<div class="field">
-									<label for="lemma-field-plural-alt">Alternative plurals</label>
-									<input
-										id="lemma-field-plural-alt"
-										class="input"
-										placeholder="comma, separated"
-										disabled={isPluralOnlyValue}
-										value={drafts[activeDraftKey]?.createAlternativePluralForms ?? ''}
-										oninput={(event) =>
-											updateDraft(
-												activeDraftKey,
-												'createAlternativePluralForms',
-												(event.currentTarget as HTMLInputElement).value
-											)}
-									/>
-								</div>
-							</div>
-							<label class="plural-only-toggle">
-								<input
-									type="checkbox"
-									checked={isPluralOnlyValue}
-									onchange={(event) =>
-										updateDraft(
-											activeDraftKey,
-											'createIsPluralOnly',
-											(event.currentTarget as HTMLInputElement).checked
-										)}
-								/>
-								<span>Plural-only</span>
-							</label>
-						</div>
-					{/if}
-
-					<div class="field lemma-full-field">
-						<label for="lemma-field-translations">Translations</label>
-						<input
-							id="lemma-field-translations"
-							class="input"
-							name="translations"
-							required
-							placeholder="translation one; translation two"
-							value={createTranslationsValue}
-							oninput={(event) =>
-								updateDraft(
-									activeDraftKey,
-									'createTranslations',
-									(event.currentTarget as HTMLInputElement).value
-								)}
-						/>
-					</div>
-
-					<div class="lemma-notes-image-grid">
-						<div class="field notes-field">
-							<label for="lemma-field-notes">Notes</label>
-							<WordLinkEditor
-								id="lemma-field-notes"
-								name="notes"
-								className="input notes-input"
-								multiline
-								rows={4}
-								placeholder="Optional. Type [ to link another lemma."
-								value={drafts[activeDraftKey]?.createNotes ?? ''}
-								oninput={(next) => updateDraft(activeDraftKey, 'createNotes', next)}
-							/>
-						</div>
-						<ImageUploadField
-							name="image"
-							idPrefix="lemma-create-image"
-							currentUrl={selectedWordInDraft && selectedWordInDraft === activeWord?.id
-								? activeWord?.imageUrl ?? null
-								: null}
-						/>
-					</div>
-
-					<!-- Footer -->
-					<div class="lemma-modal-foot">
-						<button type="button" class="btn ghost" onclick={() => closePicker()}>Cancel</button>
-						<button
-							type="submit"
-							class="btn"
-							disabled={!canSubmitCreate || createState[activeToken.id] === 'saving'}
-						>
-							{#if createState[activeToken.id] === 'saving'}
-								Saving…
-							{:else if selectedWordInDraft}
-								Update
-							{:else}
-								Create
-							{/if}
-						</button>
-					</div>
-				</form>
+				<LemmaCreationForm
+					{createAction}
+					{updateAction}
+					{entityId}
+					{entityIdField}
+					activeTokenId={activeToken.id}
+					activeSegmentId={activeSegment?.id ?? null}
+					activeWord={activeWord}
+					{activeWordId}
+					inContextTranslation={drafts[activeToken.id]?.inContextTranslation ?? ''}
+					activeSurface={activeSurface ?? ''}
+					draft={drafts[activeDraftKey]}
+					createState={createState[activeToken.id] ?? 'idle'}
+					onDraftChange={(field, value) => updateDraft(activeDraftKey, field, value)}
+					onCreateEnhance={enhanceCreateForm(activeToken.id)}
+					onClearEnhance={enhanceUpdateForm(activeToken.id, {
+						closeOnSuccess: !activeSegment,
+						invalidateOnSuccess: true
+					})}
+					onCancel={() => closePicker()}
+				/>
 			</div>
 		</div>
 	{/if}
@@ -1954,265 +1617,12 @@
 		font-size: 11px;
 	}
 
-	/* Mode switch row */
-	.lemma-mode-row {
-		align-items: flex-end;
-		border-bottom: 1px dotted var(--line);
-		border-top: 1px dotted var(--line);
-		display: flex;
-		gap: 16px;
-		justify-content: space-between;
-		margin-bottom: 14px;
-		padding: 12px 0;
-	}
-	.pos-group {
-		display: flex;
-		flex: 1;
-		flex-direction: column;
-		gap: 8px;
-		min-width: 0;
-	}
-	.pos-group-label {
-		color: var(--ink-mute);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-	.lemma-mode-side {
-		align-items: center;
-		display: flex;
-		gap: 12px;
-	}
-	.lemma-mode-side form {
-		margin: 0;
-	}
-	.lemma-sideling {
-		color: var(--ink-soft);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.1em;
-		text-transform: uppercase;
-	}
-	.lemma-sideling:hover {
-		color: var(--brand);
-		text-decoration: none;
-	}
-
-	/* Form */
-	.lemma-form {
-		display: block;
-	}
-	.lemma-form-grid {
-		display: grid;
-		gap: 12px;
-		grid-template-columns: 1fr 1fr;
-	}
-	.lemma-full-field {
-		margin-top: 12px;
-	}
-	.lemma-notes-image-grid {
-		align-items: stretch;
-		display: grid;
-		gap: 12px;
-		grid-template-columns: 2fr 1fr;
-		margin-top: 12px;
-	}
-	.lemma-notes-image-grid .notes-field {
-		display: flex;
-		flex-direction: column;
-	}
-	.lemma-notes-image-grid :global(.notes-input) {
-		flex: 1;
-		min-height: 0;
-		resize: none;
-		font-family: inherit;
-	}
-	.lemma-notes-image-grid .notes-field :global(.wle-wrap) {
-		display: flex;
-		flex: 1;
-		flex-direction: column;
-		min-height: 0;
-	}
-	.lemma-notes-image-grid :global(.image-upload) {
-		height: 100%;
-	}
-	.lemma-notes-image-grid :global(.dropzone) {
-		flex: 1;
-	}
-	.lemma-notes-image-grid :global(.dropzone.has-image) {
-		padding: 0;
-		overflow: hidden;
-	}
-	.lemma-notes-image-grid :global(.preview) {
-		position: absolute;
-		inset: 0;
-		width: 100%;
-		height: 100%;
-		max-width: none;
-		max-height: none;
-		object-fit: cover;
-		border-radius: 5px;
-	}
-	.lemma-forms-block {
-		background: color-mix(in oklch, var(--accent) 10%, var(--paper));
-		border: 1px solid color-mix(in oklch, var(--accent) 32%, var(--line));
-		border-radius: 12px;
-		margin-top: 12px;
-		padding: 14px 16px;
-	}
-	.lemma-forms-head {
-		align-items: baseline;
-		display: flex;
-		gap: 12px;
-		justify-content: space-between;
-		margin-bottom: 10px;
-	}
-	.lemma-forms-label {
-		color: var(--ink-soft);
-		font-size: 12px;
-		font-weight: 600;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
-	}
-	.lemma-forms-hint {
-		color: var(--ink-soft);
-		font-size: 12px;
-		font-style: italic;
-	}
-	.lemma-forms-grid {
-		display: grid;
-		gap: 12px;
-		grid-template-columns: 1fr 1fr;
-	}
-	.lemma-forms-grid .input:disabled {
-		background: color-mix(in oklch, var(--ink-mute) 8%, var(--paper));
-		color: var(--ink-mute);
-		cursor: not-allowed;
-	}
-	.plural-only-toggle {
-		align-items: center;
-		color: var(--ink-soft);
-		display: inline-flex;
-		font-size: 13px;
-		gap: 8px;
-		margin-top: 10px;
-	}
-	.plural-only-toggle input {
-		accent-color: var(--brand);
-	}
-	.pos-pills {
-		display: flex;
-		flex-wrap: nowrap;
-		gap: 8px;
-	}
-	.pos-pill {
-		background: var(--paper);
-		border: 1px solid var(--line);
-		border-radius: 10px;
-		color: var(--ink);
-		cursor: pointer;
-		flex: 1 1 0;
-		font-size: 14px;
-		font-weight: 500;
-		min-width: 0;
-		padding: 10px 14px;
-		text-align: center;
-		transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-		white-space: nowrap;
-	}
-	.pos-pill:hover {
-		background: color-mix(in oklch, var(--brand) 8%, var(--paper));
-		border-color: color-mix(in oklch, var(--brand) 32%, var(--line));
-	}
-	.pos-pill.selected {
-		background: var(--brand);
-		border-color: var(--brand);
-		color: var(--paper);
-	}
-	.pos-pill.selected:hover {
-		background: var(--brand);
-		border-color: var(--brand);
-	}
-
-	.pos-other-wrap {
-		flex: 1 1 0;
-		min-width: 0;
-		position: relative;
-	}
-	.pos-other-wrap .pos-pill {
-		align-items: center;
-		display: flex;
-		gap: 6px;
-		justify-content: center;
-		width: 100%;
-	}
-	.pos-pill-caret {
-		font-size: 10px;
-		line-height: 1;
-		opacity: 0.7;
-	}
-	.pos-other-menu {
-		background: var(--paper);
-		border: 1px solid var(--line);
-		border-radius: 10px;
-		box-shadow: var(--shadow-md);
-		display: flex;
-		flex-direction: column;
-		left: 0;
-		min-width: 100%;
-		overflow: hidden;
-		position: absolute;
-		top: calc(100% + 6px);
-		width: max-content;
-		z-index: 2;
-	}
-	.pos-other-item {
-		background: transparent;
-		border: 0;
-		color: var(--ink);
-		cursor: pointer;
-		font-size: 13px;
-		padding: 8px 12px;
-		text-align: left;
-		white-space: nowrap;
-	}
-	.pos-other-item:hover {
-		background: color-mix(in oklch, var(--brand) 10%, transparent);
-	}
-	.pos-other-item.selected {
-		background: color-mix(in oklch, var(--brand) 16%, transparent);
-		color: var(--brand-ink);
-		font-weight: 600;
-	}
-
-	/* Footer */
-	.lemma-modal-foot {
-		border-top: 1px solid var(--line-soft);
-		display: flex;
-		gap: 10px;
-		justify-content: flex-end;
-		margin-top: 20px;
-		padding-top: 16px;
-	}
-	.lemma-modal-foot .btn {
-		min-width: 140px;
-	}
-	.lemma-modal-foot .btn:disabled {
-		cursor: not-allowed;
-		opacity: 0.45;
-	}
-
 	.status-text {
 		color: var(--ink-soft);
 		margin: 0;
 	}
 	.error-text {
 		color: var(--danger);
-	}
-	label {
-		display: grid;
-		gap: 0.25rem;
 	}
 	input,
 	button {
@@ -2226,23 +1636,8 @@
 		.lemma-modal {
 			padding: 20px 18px 18px;
 		}
-		.lemma-form-grid,
-		.lemma-forms-grid,
-		.lemma-notes-image-grid {
-			grid-template-columns: 1fr;
-		}
 		.lemma-modal-title {
 			font-size: 20px;
-		}
-		.lemma-mode-row {
-			align-items: stretch;
-			flex-direction: column;
-		}
-		.lemma-mode-side {
-			justify-content: flex-end;
-		}
-		.pos-pills {
-			flex-wrap: wrap;
 		}
 	}
 </style>

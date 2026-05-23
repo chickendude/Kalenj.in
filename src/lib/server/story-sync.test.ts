@@ -3,7 +3,6 @@ import {
 	canSplitStorySentence,
 	mergeStorySentenceWithNext,
 	splitStorySentence,
-	syncStorySentenceToCorpus,
 	syncStorySentences
 } from './story-sync';
 import {
@@ -156,63 +155,6 @@ describe('syncStorySentences', () => {
 	});
 });
 
-describe('syncStorySentenceToCorpus', () => {
-	it('backfills tokens on the linked example sentence when they are missing', async () => {
-		tx.storySentence.findUnique.mockResolvedValue({ exampleSentenceId: 'example-1' });
-		tx.exampleSentence.findUnique.mockResolvedValue({
-			id: 'example-1',
-			kalenjin: 'Kip kele',
-			tokens: []
-		});
-
-		await syncStorySentenceToCorpus(tx as never, 'story-sentence-1');
-
-		expect(tx.exampleSentenceToken.deleteMany).toHaveBeenCalledWith({
-			where: { exampleSentenceId: 'example-1' }
-		});
-		expect(createExampleSentenceTokensFromPlans).toHaveBeenCalledWith(
-			tx,
-			'example-1',
-			expect.arrayContaining([
-				expect.objectContaining({ surfaceForm: 'Kip' }),
-				expect.objectContaining({ surfaceForm: 'kele' })
-			])
-		);
-	});
-
-	it('marks auto-linked backfilled tokens for proofread and records observed forms', async () => {
-		const plans = [
-			{
-				tokenOrder: 0,
-				surfaceForm: 'Kip',
-				normalizedForm: 'kip',
-				wordId: 'word-kip',
-				inContextTranslation: null,
-				segments: [],
-				autoLinked: true
-			}
-		];
-		tx.storySentence.findUnique.mockResolvedValue({ exampleSentenceId: 'example-1' });
-		tx.exampleSentence.findUnique.mockResolvedValue({
-			id: 'example-1',
-			kalenjin: 'Kip',
-			tokens: []
-		});
-		vi.mocked(resolveAutoLemmaTokenPlans).mockResolvedValue({
-			tokens: plans,
-			autoLinkedCount: 1
-		});
-
-		await syncStorySentenceToCorpus(tx as never, 'story-sentence-1');
-
-		expect(recordAutoLemmaObservedForms).toHaveBeenCalledWith(tx, plans);
-		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
-			where: { id: 'example-1' },
-			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
-		});
-	});
-});
-
 describe('canSplitStorySentence', () => {
 	it('returns true when the text has multiple terminated sentences', () => {
 		expect(canSplitStorySentence('Chamgei. Kilyan?')).toBe(true);
@@ -281,7 +223,12 @@ describe('splitStorySentence', () => {
 		expect(result).toEqual({ splitCount: 2 });
 		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'example-1' },
-			data: { kalenjin: 'One.', english: 'Un.' }
+			data: {
+				kalenjin: 'One.',
+				english: 'Un.',
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null
+			}
 		});
 		expect(tx.exampleSentence.create).toHaveBeenCalledWith({
 			data: {
@@ -289,9 +236,9 @@ describe('splitStorySentence', () => {
 				english: 'Deux.',
 				notes: 'Original note',
 				imageUrl: 'image.jpg',
-				audioUrl: 'audio.mp3',
-				audioRecordedById: 'user-1',
-				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
 				needsLemmaProofread: true,
 				lemmaProofreadAt: null
 			},
@@ -442,6 +389,80 @@ describe('mergeStorySentenceWithNext', () => {
 		expect(tx.exampleSentenceToken.updateMany).not.toHaveBeenCalled();
 		expect(tx.storySentence.delete).toHaveBeenCalledWith({ where: { id: 'next-1' } });
 		expect(tx.exampleSentence.delete).toHaveBeenCalledWith({ where: { id: 'example-2' } });
+	});
+
+	it('does not preserve token annotations by position when normalized forms changed', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({
+			id: 'target-1',
+			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
+			sentenceOrder: 3,
+			exampleSentence: {
+				kalenjin: 'One',
+				english: 'Un',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: [
+					{
+						tokenOrder: 0,
+						surfaceForm: 'Shifted',
+						normalizedForm: 'shifted',
+						wordId: 'word-shifted',
+						inContextTranslation: 'wrong slot',
+						segments: []
+					}
+				]
+			}
+		});
+		tx.storySentence.findFirst.mockResolvedValue({
+			id: 'next-1',
+			exampleSentenceId: 'example-2',
+			sentenceOrder: 4,
+			exampleSentence: {
+				kalenjin: 'Two',
+				english: 'Deux',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: [
+					{
+						tokenOrder: 0,
+						surfaceForm: 'Two',
+						normalizedForm: 'two',
+						wordId: 'word-two',
+						inContextTranslation: 'two translation',
+						segments: []
+					}
+				]
+			}
+		});
+
+		await mergeStorySentenceWithNext(tx as never, 'target-1');
+
+		expect(createExampleSentenceTokensFromPlans).toHaveBeenCalledWith(tx, 'example-1', [
+			expect.objectContaining({
+				normalizedForm: 'one',
+				wordId: null,
+				inContextTranslation: null
+			}),
+			expect.objectContaining({
+				normalizedForm: 'two',
+				wordId: 'word-two',
+				inContextTranslation: 'two translation'
+			})
+		]);
+		expect(createWordSentenceLinks).toHaveBeenCalledWith(tx, 'example-1', ['word-two']);
 	});
 
 	it('refuses to merge when either sentence is shared with a lesson word', async () => {

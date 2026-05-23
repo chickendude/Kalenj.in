@@ -714,8 +714,6 @@
 		<p class="success">Saved lesson changes.</p>
 	{:else if form?.createWordSuccess}
 		<p class="success">Created lesson word.</p>
-	{:else if form?.updateStorySentenceSuccess}
-		<p class="success">Saved story sentence.</p>
 	{:else if form?.deleteWordSuccess}
 		<p class="success">Deleted lesson word.</p>
 	{:else if form?.reorderWordsSuccess}

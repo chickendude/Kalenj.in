@@ -64,7 +64,13 @@ async function replaceExampleSentenceTokens(
 	const canPreserve = tokenData.length === preservedTokens.length;
 	const plan = canPreserve
 		? {
-				tokens: tokenData.map((token, index) => tokenPlanFromSnapshot(token, preservedTokens[index])),
+				tokens: tokenData.map((token, index) => {
+					const snapshot = preservedTokens[index];
+					return tokenPlanFromSnapshot(
+						token,
+						snapshot?.normalizedForm === token.normalizedForm ? snapshot : undefined
+					);
+				}),
 				autoLinkedCount: 0
 			}
 		: await resolveAutoLemmaTokenPlans(tx, tokenData, preservedTokens);
@@ -92,33 +98,6 @@ async function createStoryExampleSentence(
 		english,
 		tokenData: tokenizeSentence(kalenjin)
 	});
-}
-
-export async function syncStorySentenceToCorpus(
-	tx: Prisma.TransactionClient,
-	storySentenceId: string
-): Promise<void> {
-	const storySentence = await tx.storySentence.findUnique({
-		where: { id: storySentenceId },
-		select: { exampleSentenceId: true }
-	});
-
-	if (!storySentence) {
-		return;
-	}
-
-	const exampleSentence = await tx.exampleSentence.findUnique({
-		where: { id: storySentence.exampleSentenceId },
-		select: { id: true, kalenjin: true, tokens: { select: { id: true }, take: 1 } }
-	});
-
-	if (exampleSentence && exampleSentence.kalenjin.trim().length > 0 && exampleSentence.tokens.length === 0) {
-		await replaceExampleSentenceTokens(
-			tx,
-			exampleSentence.id,
-			tokenizeSentence(exampleSentence.kalenjin)
-		);
-	}
 }
 
 export async function backfillMissingStoryCorpusEntries(storyId?: string): Promise<void> {
@@ -241,7 +220,12 @@ export async function splitStorySentence(
 
 	await tx.exampleSentence.update({
 		where: { id: original.exampleSentenceId },
-		data: { kalenjin: pieces[0].kalenjin, english: pieces[0].english }
+		data: {
+			kalenjin: pieces[0].kalenjin,
+			english: pieces[0].english,
+			needsLemmaProofread: true,
+			lemmaProofreadAt: null
+		}
 	});
 	await replaceExampleSentenceTokens(
 		tx,
@@ -258,11 +242,11 @@ export async function splitStorySentence(
 				english: pieces[i].english,
 				notes: original.exampleSentence.notes,
 				imageUrl: original.exampleSentence.imageUrl,
-				audioUrl: original.exampleSentence.audioUrl,
-				audioRecordedById: original.exampleSentence.audioRecordedById,
-				audioRecordedAt: original.exampleSentence.audioRecordedAt,
-				needsLemmaProofread: original.exampleSentence.needsLemmaProofread,
-				lemmaProofreadAt: original.exampleSentence.lemmaProofreadAt
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null
 			},
 			select: { id: true }
 		});

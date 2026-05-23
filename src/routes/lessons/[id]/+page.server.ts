@@ -999,66 +999,6 @@ export const actions: Actions = {
 
 		return { reorderWordsSuccess: true };
 	},
-	updateStorySentence: async ({ request, locals}) => {
-		requireEditor(locals);
-		const formData = await request.formData();
-		const id = readText(formData, 'id');
-		const speaker = readOptionalText(formData, 'speaker');
-		const kalenjin = readText(formData, 'kalenjin');
-		const english = readText(formData, 'english');
-		const grammarNotes = readOptionalText(formData, 'grammarNotes');
-
-		if (!id || !kalenjin || !english) {
-			return fail(400, { error: 'Sentence, text, and translation are required.' });
-		}
-
-		const existingSentence = await prisma.storySentence.findUnique({
-			where: { id },
-			select: {
-				exampleSentenceId: true,
-				exampleSentence: {
-					select: { kalenjin: true, english: true }
-				}
-			}
-		});
-
-		if (!existingSentence) {
-			return fail(404, { error: 'Story sentence not found.' });
-		}
-
-		try {
-			await prisma.$transaction(async (tx) => {
-				await tx.storySentence.update({
-					where: { id },
-					data: {
-						speaker,
-						grammarNotes
-					}
-				});
-
-				const kalenjinChanged = existingSentence.exampleSentence.kalenjin !== kalenjin;
-				const englishChanged = existingSentence.exampleSentence.english !== english;
-
-				if (kalenjinChanged || englishChanged) {
-					await tx.exampleSentence.update({
-						where: { id: existingSentence.exampleSentenceId },
-						data: { kalenjin, english }
-					});
-				}
-
-				if (kalenjinChanged) {
-					await syncExampleSentenceTokens(tx, existingSentence.exampleSentenceId, kalenjin);
-				}
-			});
-		} catch (updateError) {
-			return fail(400, {
-				error:
-					updateError instanceof Error ? updateError.message : 'Could not update story sentence.'
-			});
-		}
-
-		return { updateStorySentenceSuccess: true };
-	},
 	updateExampleSentenceToken: async ({ request, locals}) => {
 		requireEditor(locals);
 		const formData = await request.formData();

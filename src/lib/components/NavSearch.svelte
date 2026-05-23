@@ -309,7 +309,16 @@
 
 	@media (max-width: 900px) {
 		.nav-search {
-			display: none;
+			flex: 1 1 auto;
+			width: auto;
+			min-width: 0;
+		}
+	}
+
+	@media (max-width: 720px) {
+		.nav-search-input {
+			font-size: 13px;
+			padding: 6px 0;
 		}
 	}
 </style>

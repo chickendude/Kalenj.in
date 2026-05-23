@@ -623,7 +623,7 @@
 						</div>
 						<div role="list" aria-label={`Section ${section.sectionNumber}`}>
 
-						{#each section.items as lessonWord}
+						{#each section.items as lessonWord (lessonWord.id)}
 							{@const lwLocal = getLessonWordLocal(lessonWord)}
 							<div
 								class="table-row vocab-grid vocab-row"

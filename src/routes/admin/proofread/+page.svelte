@@ -11,7 +11,6 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
-	const visibleIds = $derived(data.sentences.map((sentence) => sentence.id).join(','));
 	let autoLemmaForm = $state<HTMLFormElement | null>(null);
 	let pendingAutoLemmaForm = $state<HTMLFormElement | null>(null);
 	let autoLemmaConfirmed = $state(false);
@@ -127,12 +126,6 @@
 		>
 			<button type="button" class="btn" onclick={openAutoLemmaDialog}>Run across corpus</button>
 		</form>
-		{#if data.sentences.length > 0}
-			<form method="POST" action="?/markAllVisibleProofread" use:enhance>
-				<input type="hidden" name="sentenceIds" value={visibleIds} />
-				<button type="submit" class="btn ghost">Mark visible proofread</button>
-			</form>
-		{/if}
 	</div>
 </div>
 

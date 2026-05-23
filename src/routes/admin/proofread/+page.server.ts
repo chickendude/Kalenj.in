@@ -235,30 +235,5 @@ export const actions: Actions = {
 		});
 
 		return { proofreadSuccess: 'Sentence marked proofread.' };
-	},
-
-	markAllVisibleProofread: async ({ request, locals }) => {
-		requireEditor(locals);
-		const data = await request.formData();
-		const ids = String(data.get('sentenceIds') ?? '')
-			.split(',')
-			.map((id) => id.trim())
-			.filter(Boolean);
-
-		if (ids.length === 0) {
-			return fail(400, { proofreadError: 'No visible sentences to mark.' });
-		}
-
-		await prisma.exampleSentence.updateMany({
-			where: { id: { in: ids } },
-			data: {
-				needsLemmaProofread: false,
-				lemmaProofreadAt: new Date()
-			}
-		});
-
-		return {
-			proofreadSuccess: `Marked ${ids.length} visible sentence${ids.length === 1 ? '' : 's'} proofread.`
-		};
 	}
 };

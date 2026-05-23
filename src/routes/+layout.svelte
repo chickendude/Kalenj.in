@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page, navigating } from '$app/state';
+	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
-	import { theme, toggleTheme } from '$lib/stores/theme';
+	import { initTheme, theme, toggleTheme } from '$lib/stores/theme';
 	import Toast from '$lib/components/Toast.svelte';
 	import NavSearch from '$lib/components/NavSearch.svelte';
 	import '../app.css';
@@ -10,6 +11,10 @@
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 	const year = new Date().getFullYear();
+
+	onMount(() => {
+		initTheme();
+	});
 
 	const navItems = $derived.by(() => {
 		const items = [

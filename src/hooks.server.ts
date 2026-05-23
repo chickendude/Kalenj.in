@@ -5,7 +5,11 @@ import {
 	setSessionCookie,
 	validateSession
 } from '$lib/server/session';
-import { THEME_PREF_COOKIE, setThemePreferenceCookie } from '$lib/server/themeCookie';
+import {
+	THEME_PREF_COOKIE,
+	clearThemePreferenceCookie,
+	setThemePreferenceCookie
+} from '$lib/server/themeCookie';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const token = event.cookies.get(SESSION_COOKIE) ?? null;
@@ -26,6 +30,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 			}
 		} else {
 			clearSessionCookie(event.cookies);
+			clearThemePreferenceCookie(event.cookies);
 		}
 	}
 

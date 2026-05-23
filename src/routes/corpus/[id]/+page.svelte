@@ -256,12 +256,24 @@
 
 <section>
 	<div class="entry-head-row">
-		<a href="/corpus" class="back-link">
-			<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-				<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			Back to corpus
-		</a>
+		<div class="entry-nav-meta">
+			<a href="/corpus" class="back-link">
+				<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+					<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+				</svg>
+				Back to corpus
+			</a>
+			<div class="entry-label-row">
+				<div class="entry-label">Corpus sentence</div>
+				{#if data.sentence.needsLemmaProofread}
+					{#if canEdit}
+						<a class="proofread-badge" href="/admin/proofread">Not proofread</a>
+					{:else}
+						<span class="proofread-badge">Not proofread</span>
+					{/if}
+				{/if}
+			</div>
+		</div>
 		{#if canEdit}
 			<div class="sentence-admin-actions">
 				<form
@@ -289,12 +301,6 @@
 	</div>
 
 	<div class="entry-head">
-		<div class="entry-label-row">
-			<div class="entry-label">Corpus sentence</div>
-			{#if data.sentence.needsLemmaProofread}
-				<a class="proofread-badge" href="/admin/proofread">Needs lemma proofread</a>
-			{/if}
-		</div>
 		<div class="sentence-display">
 			{#if inlineSentenceEdit === 'kalenjin'}
 				<textarea
@@ -490,9 +496,20 @@
 	.entry-head-row {
 		align-items: center;
 		display: flex;
+		flex-wrap: wrap;
 		gap: 12px;
 		justify-content: space-between;
 		margin-bottom: 8px;
+	}
+	.entry-nav-meta {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 12px;
+	}
+	.entry-nav-meta .back-link {
+		line-height: 1;
+		margin-bottom: 0;
 	}
 
 	.sentence-admin-actions {
@@ -511,10 +528,16 @@
 		flex-wrap: wrap;
 		gap: 8px;
 	}
+	.entry-label-row .entry-label {
+		line-height: 1;
+		margin-bottom: 0;
+	}
 	.proofread-badge {
+		align-items: center;
 		background: var(--accent-soft);
 		border-radius: 999px;
 		color: var(--accent);
+		display: inline-flex;
 		font-size: 11px;
 		font-weight: 700;
 		line-height: 1;
@@ -522,7 +545,7 @@
 		text-decoration: none;
 		text-transform: uppercase;
 	}
-	.proofread-badge:hover {
+	a.proofread-badge:hover {
 		text-decoration: underline;
 	}
 

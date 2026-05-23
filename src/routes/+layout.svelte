@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { page, navigating } from '$app/state';
+	import { onMount } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
-	import { theme, toggleTheme } from '$lib/stores/theme';
+	import { initTheme, theme, toggleTheme } from '$lib/stores/theme';
 	import Toast from '$lib/components/Toast.svelte';
 	import NavSearch from '$lib/components/NavSearch.svelte';
 	import '../app.css';
@@ -10,6 +11,10 @@
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 	const year = new Date().getFullYear();
+
+	onMount(() => {
+		initTheme();
+	});
 
 	const navItems = $derived.by(() => {
 		const items = [
@@ -104,12 +109,12 @@
 {#snippet userMenuLinks(onSelect: () => void)}
 	{#if data.user}
 		<a
-			href="/account"
+			href="/settings"
 			role="menuitem"
-			class:active={isActive('/account')}
+			class:active={isActive('/settings')}
 			onclick={onSelect}
 		>
-			Account
+			Settings
 		</a>
 		{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
 			<a
@@ -247,15 +252,16 @@
 				</a>
 			{/each}
 		</nav>
-		<button
-			type="button"
-			class="theme-toggle desktop-only"
-			onclick={toggleTheme}
-			aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-			aria-pressed={$theme === 'dark'}
-			title={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-		>
-			{#if $theme === 'dark'}
+		{#if !data.user}
+			<button
+				type="button"
+				class="theme-toggle desktop-only"
+				onclick={toggleTheme}
+				aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+				aria-pressed={$theme === 'dark'}
+				title={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+			>
+				{#if $theme === 'dark'}
 				<svg
 					width="16"
 					height="16"
@@ -292,7 +298,8 @@
 					<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79Z" />
 				</svg>
 			{/if}
-		</button>
+			</button>
+		{/if}
 		<div class="topbar-user desktop-only">
 			{#if data.user}
 				<div class="user-menu" bind:this={userMenuRoot}>
@@ -362,15 +369,16 @@
 					<div class="side-menu-divider" role="presentation"></div>
 					{#if data.user}
 						<div class="side-menu-user">{data.user.username}</div>
+					{:else}
+						<button
+							type="button"
+							role="menuitem"
+							class="user-menu-item"
+							onclick={handleSideMenuTheme}
+						>
+							{$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+						</button>
 					{/if}
-					<button
-						type="button"
-						role="menuitem"
-						class="user-menu-item"
-						onclick={handleSideMenuTheme}
-					>
-						{$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-					</button>
 					{@render userMenuLinks(closeSideMenu)}
 				</div>
 			{/if}

@@ -25,6 +25,7 @@ export type ValidatedSession = {
 		username: string;
 		displayName: string | null;
 		role: 'ADMIN' | 'MANAGER';
+		themePreference: 'light' | 'dark' | 'auto';
 	};
 	renewed: boolean;
 };
@@ -53,10 +54,15 @@ export async function validateSession(token: string): Promise<ValidatedSession |
 			id: session.user.id,
 			username: session.user.username,
 			displayName: session.user.displayName,
-			role: session.user.role as 'ADMIN' | 'MANAGER'
+			role: session.user.role as 'ADMIN' | 'MANAGER',
+			themePreference: normalizeThemePreference(session.user.themePreference)
 		},
 		renewed
 	};
+}
+
+function normalizeThemePreference(value: string): 'light' | 'dark' | 'auto' {
+	return value === 'light' || value === 'dark' ? value : 'auto';
 }
 
 export async function invalidateSession(token: string): Promise<void> {

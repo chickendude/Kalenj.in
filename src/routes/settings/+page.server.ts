@@ -2,6 +2,7 @@ import { fail } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { hashPassword, verifyPassword } from '$lib/server/password';
 import { invalidateOtherUserSessions } from '$lib/server/session';
+import { parseThemePreference, setThemePreferenceCookie } from '$lib/server/themeCookie';
 import { requireEditor } from '$lib/server/guards';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -13,6 +14,19 @@ export const load: PageServerLoad = ({ locals }) => {
 };
 
 export const actions: Actions = {
+	setTheme: async ({ request, cookies, locals }) => {
+		const user = requireEditor(locals);
+		const data = await request.formData();
+		const pref = parseThemePreference(String(data.get('pref') ?? ''));
+		if (!pref) return fail(400, { themeError: 'Invalid theme preference.' });
+
+		await prisma.user.update({
+			where: { id: user.id },
+			data: { themePreference: pref }
+		});
+		setThemePreferenceCookie(cookies, pref);
+		return { themePreference: pref };
+	},
 	changePassword: async ({ request, locals }) => {
 		const user = requireEditor(locals);
 		const data = await request.formData();

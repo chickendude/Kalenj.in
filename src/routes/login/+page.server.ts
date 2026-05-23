@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { verifyPassword } from '$lib/server/password';
 import { createSession, setSessionCookie } from '$lib/server/session';
+import { parseThemePreference, setThemePreferenceCookie } from '$lib/server/themeCookie';
 import type { Actions, PageServerLoad } from './$types';
 
 function safeRedirect(target: string | null): string {
@@ -38,6 +39,8 @@ export const actions: Actions = {
 
 		const session = await createSession(user.id);
 		setSessionCookie(cookies, session.id, session.expiresAt);
+		const pref = parseThemePreference(user.themePreference) ?? 'auto';
+		setThemePreferenceCookie(cookies, pref);
 		throw redirect(303, redirectTo);
 	}
 };

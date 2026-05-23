@@ -9,13 +9,20 @@
 		<script>
 			(function () {
 				try {
-					var stored = localStorage.getItem('theme');
-					var theme =
-						stored === 'light' || stored === 'dark'
-							? stored
-							: window.matchMedia('(prefers-color-scheme: dark)').matches
-								? 'dark'
-								: 'light';
+					function readCookie(name) {
+						var m = document.cookie.match('(?:^|; )' + name + '=([^;]*)');
+						return m ? decodeURIComponent(m[1]) : null;
+					}
+					function valid(v) {
+						return v === 'light' || v === 'dark' || v === 'auto' ? v : null;
+					}
+					var pref = valid(readCookie('theme_pref')) || valid(localStorage.getItem('theme'));
+					var theme;
+					if (pref === 'light' || pref === 'dark') {
+						theme = pref;
+					} else {
+						theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+					}
 					document.documentElement.dataset.theme = theme;
 				} catch (e) {
 					document.documentElement.dataset.theme = 'light';

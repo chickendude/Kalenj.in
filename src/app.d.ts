@@ -9,6 +9,7 @@ declare global {
 				username: string;
 				displayName: string | null;
 				role: 'ADMIN' | 'MANAGER';
+				themePreference: 'light' | 'dark' | 'auto';
 			} | null;
 			sessionToken: string | null;
 		}

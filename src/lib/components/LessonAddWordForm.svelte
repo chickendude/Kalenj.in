@@ -173,6 +173,13 @@
 </section>
 
 <style>
+	.card {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		padding: 1.25rem;
+	}
+
 	.add-word-form {
 		display: grid;
 		gap: 16px;

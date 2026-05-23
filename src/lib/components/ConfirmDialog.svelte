@@ -40,13 +40,6 @@
 		return () => window.removeEventListener('keydown', handleWindowKeydown);
 	});
 
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter') {
-			event.preventDefault();
-			onconfirm();
-		}
-	}
-
 	function handleBackdropClick(event: MouseEvent) {
 		if (event.target === event.currentTarget) {
 			oncancel();
@@ -54,13 +47,14 @@
 	}
 </script>
 
+<!--
+  Don't shortcut Enter on the backdrop: keydown bubbles from any focused child,
+  so Enter on the focused Cancel button would otherwise confirm instead of
+  cancel. The dialog auto-focuses the confirm button on open, so Enter still
+  confirms via native button activation when that's what the user wants.
+-->
 {#if open}
-	<div
-		class="confirm-backdrop"
-		role="presentation"
-		onclick={handleBackdropClick}
-		onkeydown={handleKeydown}
-	>
+	<div class="confirm-backdrop" role="presentation" onclick={handleBackdropClick}>
 		<div
 			class="confirm-dialog"
 			role="dialog"

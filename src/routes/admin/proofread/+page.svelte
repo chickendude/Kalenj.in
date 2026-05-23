@@ -110,23 +110,8 @@
 	<title>Lemma proofread · Admin</title>
 </svelte:head>
 
-<div class="page-head proofread-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Lemma proofread</h1>
-		<p>Review sentences where lemmas were filled automatically from earlier confirmed matches.</p>
-	</div>
-	<div class="proofread-actions">
-		<form
-			bind:this={autoLemmaForm}
-			method="POST"
-			action="?/autoLemmatize"
-			use:enhance
-			onsubmit={requestAutoLemma}
-		>
-			<button type="button" class="btn" onclick={openAutoLemmaDialog}>Run across corpus</button>
-		</form>
-	</div>
+<div class="proofread-head">
+	<div class="page-kicker">Lemma proofread</div>
 </div>
 
 <FormErrorFeedback error={form && 'proofreadError' in form ? form.proofreadError : null} />
@@ -138,12 +123,21 @@
 			<span>{tab.count.toLocaleString()}</span>
 		</a>
 	{/each}
+	<form
+		bind:this={autoLemmaForm}
+		method="POST"
+		action="?/autoLemmatize"
+		use:enhance
+		onsubmit={requestAutoLemma}
+	>
+		<button type="button" class="btn" onclick={openAutoLemmaDialog}>Run across corpus</button>
+	</form>
 </nav>
 
 <section class="proofread-summary">
 	<div>
 		<span class="summary-number">{data.total.toLocaleString()}</span>
-		<span class="summary-label">sentence{data.total === 1 ? '' : 's'} in this view</span>
+		<span class="summary-label">sentence{data.total === 1 ? '' : 's'} to proofread</span>
 	</div>
 	{#if data.total > 0}
 		<p>
@@ -242,12 +236,8 @@
 
 <style>
 	.proofread-head {
-		align-items: flex-start;
-		display: flex;
-		gap: 18px;
-		justify-content: space-between;
+		margin-bottom: 14px;
 	}
-	.proofread-actions,
 	.proofread-sentence-actions {
 		align-items: center;
 		display: flex;
@@ -255,7 +245,6 @@
 		gap: 8px;
 		justify-content: flex-end;
 	}
-	.proofread-actions form,
 	.proofread-sentence-actions form {
 		margin: 0;
 	}
@@ -264,7 +253,10 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
-		margin: -4px 0 18px;
+		margin: 0 0 18px;
+	}
+	.proofread-tabs form {
+		margin: 0 0 0 auto;
 	}
 	.proofread-tabs a {
 		align-items: center;
@@ -373,10 +365,12 @@
 		.proofread-sentence-head {
 			display: block;
 		}
-		.proofread-actions,
 		.proofread-sentence-actions {
 			justify-content: flex-start;
 			margin-top: 12px;
+		}
+		.proofread-tabs form {
+			margin-left: 0;
 		}
 	}
 </style>

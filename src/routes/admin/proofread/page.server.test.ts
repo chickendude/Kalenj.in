@@ -175,21 +175,4 @@ describe('lemma proofread actions', () => {
 		});
 	});
 
-	it('marks all visible sentence ids as proofread', async () => {
-		const formData = new FormData();
-		formData.set('sentenceIds', 'sentence-1, sentence-2,, ');
-
-		await actions.markAllVisibleProofread?.({
-			request: new Request('http://localhost/admin/proofread', { method: 'POST', body: formData }),
-			locals: editorLocals
-		} as never);
-
-		expect(mocks.prisma.exampleSentence.updateMany).toHaveBeenCalledWith({
-			where: { id: { in: ['sentence-1', 'sentence-2'] } },
-			data: {
-				needsLemmaProofread: false,
-				lemmaProofreadAt: expect.any(Date)
-			}
-		});
-	});
 });

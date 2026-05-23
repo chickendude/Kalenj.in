@@ -34,37 +34,42 @@
 		return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
 	}
 
-	let menuOpen = $state(false);
-	let menuRoot: HTMLDivElement | undefined = $state();
-	let navOpen = $state(false);
-	let navRoot: HTMLDivElement | undefined = $state();
+	let userMenuOpen = $state(false);
+	let userMenuRoot: HTMLDivElement | undefined = $state();
+	let sideMenuOpen = $state(false);
+	let sideMenuRoot: HTMLDivElement | undefined = $state();
 
-	function toggleMenu() {
-		menuOpen = !menuOpen;
+	function toggleUserMenu() {
+		userMenuOpen = !userMenuOpen;
 	}
 
-	function closeMenu() {
-		menuOpen = false;
+	function closeUserMenu() {
+		userMenuOpen = false;
 	}
 
-	function toggleNav() {
-		navOpen = !navOpen;
+	function toggleSideMenu() {
+		sideMenuOpen = !sideMenuOpen;
 	}
 
-	function closeNav() {
-		navOpen = false;
+	function closeSideMenu() {
+		sideMenuOpen = false;
+	}
+
+	function handleSideMenuTheme() {
+		toggleTheme();
+		closeSideMenu();
 	}
 
 	$effect(() => {
-		if (!menuOpen) return;
+		if (!userMenuOpen) return;
 
 		function onPointerDown(event: PointerEvent) {
-			if (menuRoot && !menuRoot.contains(event.target as Node)) {
-				menuOpen = false;
+			if (userMenuRoot && !userMenuRoot.contains(event.target as Node)) {
+				userMenuOpen = false;
 			}
 		}
 		function onKey(event: KeyboardEvent) {
-			if (event.key === 'Escape') menuOpen = false;
+			if (event.key === 'Escape') userMenuOpen = false;
 		}
 
 		document.addEventListener('pointerdown', onPointerDown);
@@ -76,15 +81,15 @@
 	});
 
 	$effect(() => {
-		if (!navOpen) return;
+		if (!sideMenuOpen) return;
 
 		function onPointerDown(event: PointerEvent) {
-			if (navRoot && !navRoot.contains(event.target as Node)) {
-				navOpen = false;
+			if (sideMenuRoot && !sideMenuRoot.contains(event.target as Node)) {
+				sideMenuOpen = false;
 			}
 		}
 		function onKey(event: KeyboardEvent) {
-			if (event.key === 'Escape') navOpen = false;
+			if (event.key === 'Escape') sideMenuOpen = false;
 		}
 
 		document.addEventListener('pointerdown', onPointerDown);
@@ -95,6 +100,76 @@
 		};
 	});
 </script>
+
+{#snippet userMenuLinks(onSelect: () => void)}
+	{#if data.user}
+		<a
+			href="/account"
+			role="menuitem"
+			class:active={isActive('/account')}
+			onclick={onSelect}
+		>
+			Account
+		</a>
+		{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
+			<a
+				href="/admin/word-of-day"
+				role="menuitem"
+				class:active={isActive('/admin/word-of-day')}
+				onclick={onSelect}
+			>
+				Word of the day
+			</a>
+			<a
+				href="/admin/cleanup"
+				role="menuitem"
+				class:active={isActive('/admin/cleanup')}
+				onclick={onSelect}
+			>
+				Cleanup
+			</a>
+			<a
+				href="/dictionary/record-audio"
+				role="menuitem"
+				class:active={isActive('/dictionary/record-audio')}
+				onclick={onSelect}
+			>
+				Record word audio
+			</a>
+			<a
+				href="/corpus/record-audio"
+				role="menuitem"
+				class:active={isActive('/corpus/record-audio')}
+				onclick={onSelect}
+			>
+				Record sentence audio
+			</a>
+			<a
+				href="/corpus/duplicates"
+				role="menuitem"
+				class:active={isActive('/corpus/duplicates')}
+				onclick={onSelect}
+			>
+				Check duplicates
+			</a>
+		{/if}
+		{#if data.user.role === 'ADMIN'}
+			<a
+				href="/admin/users"
+				role="menuitem"
+				class:active={isActive('/admin/users')}
+				onclick={onSelect}
+			>
+				Admin
+			</a>
+		{/if}
+		<form method="POST" action="/logout">
+			<button type="submit" role="menuitem" class="user-menu-item">Sign out</button>
+		</form>
+	{:else if page.url.pathname !== '/login'}
+		<a href="/login" role="menuitem" onclick={onSelect}>Sign in</a>
+	{/if}
+{/snippet}
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
@@ -153,57 +228,20 @@
 			</span>
 		</a>
 		<NavSearch {canAddWord} />
-		<div class="topbar-nav-wrap" bind:this={navRoot}>
-			<button
-				type="button"
-				class="nav-toggle"
-				aria-label={navOpen ? 'Close menu' : 'Open menu'}
-				aria-expanded={navOpen}
-				aria-controls="primary-nav"
-				onclick={toggleNav}
-			>
-				<svg
-					width="20"
-					height="20"
-					viewBox="0 0 24 24"
-					fill="none"
-					stroke="currentColor"
-					stroke-width="2"
-					stroke-linecap="round"
-					stroke-linejoin="round"
-					aria-hidden="true"
+		<nav id="primary-nav" class="topbar-nav" aria-label="Primary navigation">
+			{#each navItems as item}
+				<a
+					href={item.href}
+					class:active={isActive(item.href)}
+					aria-current={isActive(item.href) ? 'page' : undefined}
 				>
-					{#if navOpen}
-						<path d="M18 6 6 18" />
-						<path d="m6 6 12 12" />
-					{:else}
-						<path d="M4 6h16" />
-						<path d="M4 12h16" />
-						<path d="M4 18h16" />
-					{/if}
-				</svg>
-			</button>
-			<nav
-				id="primary-nav"
-				class="topbar-nav"
-				class:open={navOpen}
-				aria-label="Primary navigation"
-			>
-				{#each navItems as item}
-					<a
-						href={item.href}
-						class:active={isActive(item.href)}
-						aria-current={isActive(item.href) ? 'page' : undefined}
-						onclick={closeNav}
-					>
-						{item.label}
-					</a>
-				{/each}
-			</nav>
-		</div>
+					{item.label}
+				</a>
+			{/each}
+		</nav>
 		<button
 			type="button"
-			class="theme-toggle"
+			class="theme-toggle desktop-only"
 			onclick={toggleTheme}
 			aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
 			aria-pressed={$theme === 'dark'}
@@ -247,89 +285,86 @@
 				</svg>
 			{/if}
 		</button>
-		<div class="topbar-user">
+		<div class="topbar-user desktop-only">
 			{#if data.user}
-				<div class="user-menu" bind:this={menuRoot}>
+				<div class="user-menu" bind:this={userMenuRoot}>
 					<button
 						type="button"
 						class="user-menu-trigger"
 						aria-haspopup="menu"
-						aria-expanded={menuOpen}
-						onclick={toggleMenu}
+						aria-expanded={userMenuOpen}
+						onclick={toggleUserMenu}
 					>
 						<span class="who">{data.user.username}</span>
 						<span class="caret" aria-hidden="true">▾</span>
 					</button>
-					{#if menuOpen}
+					{#if userMenuOpen}
 						<div class="user-menu-panel" role="menu">
-							<a
-								href="/account"
-								role="menuitem"
-								class:active={isActive('/account')}
-								onclick={closeMenu}
-							>
-								Account
-							</a>
-							{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
-								<a
-									href="/admin/word-of-day"
-									role="menuitem"
-									class:active={isActive('/admin/word-of-day')}
-									onclick={closeMenu}
-								>
-									Word of the day
-								</a>
-								<a
-									href="/admin/cleanup"
-									role="menuitem"
-									class:active={isActive('/admin/cleanup')}
-									onclick={closeMenu}
-								>
-									Cleanup
-								</a>
-								<a
-									href="/dictionary/record-audio"
-									role="menuitem"
-									class:active={isActive('/dictionary/record-audio')}
-									onclick={closeMenu}
-								>
-									Record word audio
-								</a>
-								<a
-									href="/corpus/record-audio"
-									role="menuitem"
-									class:active={isActive('/corpus/record-audio')}
-									onclick={closeMenu}
-								>
-									Record sentence audio
-								</a>
-								<a
-									href="/corpus/duplicates"
-									role="menuitem"
-									class:active={isActive('/corpus/duplicates')}
-									onclick={closeMenu}
-								>
-									Check duplicates
-								</a>
-							{/if}
-							{#if data.user.role === 'ADMIN'}
-								<a
-									href="/admin/users"
-									role="menuitem"
-									class:active={isActive('/admin/users')}
-									onclick={closeMenu}
-								>
-									Admin
-								</a>
-							{/if}
-							<form method="POST" action="/logout">
-								<button type="submit" role="menuitem" class="user-menu-item">Sign out</button>
-							</form>
+							{@render userMenuLinks(closeUserMenu)}
 						</div>
 					{/if}
 				</div>
 			{:else if page.url.pathname !== '/login'}
 				<a href="/login">Sign in</a>
+			{/if}
+		</div>
+		<div class="side-menu mobile-only" bind:this={sideMenuRoot}>
+			<button
+				type="button"
+				class="side-menu-toggle"
+				aria-label={sideMenuOpen ? 'Close menu' : 'Open menu'}
+				aria-expanded={sideMenuOpen}
+				aria-controls="side-menu-panel"
+				onclick={toggleSideMenu}
+			>
+				<svg
+					width="20"
+					height="20"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="2"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					{#if sideMenuOpen}
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					{:else}
+						<path d="M4 6h16" />
+						<path d="M4 12h16" />
+						<path d="M4 18h16" />
+					{/if}
+				</svg>
+			</button>
+			{#if sideMenuOpen}
+				<div id="side-menu-panel" class="side-menu-panel" role="menu">
+					{#each navItems as item}
+						<a
+							href={item.href}
+							role="menuitem"
+							class:active={isActive(item.href)}
+							aria-current={isActive(item.href) ? 'page' : undefined}
+							onclick={closeSideMenu}
+						>
+							{item.label}
+						</a>
+					{/each}
+					<div class="side-menu-divider" role="presentation"></div>
+					{#if data.user}
+						<div class="side-menu-user">{data.user.username}</div>
+					{/if}
+					<button
+						type="button"
+						role="menuitem"
+						class="user-menu-item"
+						onclick={handleSideMenuTheme}
+					>
+						{$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+					</button>
+					{@render userMenuLinks(closeSideMenu)}
+				</div>
 			{/if}
 		</div>
 	</div>

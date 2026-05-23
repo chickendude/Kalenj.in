@@ -309,7 +309,31 @@
 
 	@media (max-width: 900px) {
 		.nav-search {
-			display: none;
+			/* Take all remaining inline space so the input is usable */
+			flex: 1 1 0;
+			width: auto;
+			min-width: 0;
+			/* Drop position context so the dropdown anchors to the topbar instead */
+			position: static;
+		}
+		.nav-search-input {
+			font-size: 14px;
+			padding: 10px 0;
+		}
+		/* Dropdown spans the topbar width rather than the cramped input */
+		.nav-search-menu {
+			left: 8px;
+			right: 8px;
+			top: 100%;
+			border-radius: var(--radius);
+			border-top: 1px solid var(--brand);
+			margin-top: -1px;
+		}
+		/* Don't try to merge the field with the dropdown — they no longer share an edge */
+		.nav-search.open .nav-search-field {
+			border-radius: var(--radius);
+			border-bottom-color: var(--brand);
+			box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
 		}
 	}
 </style>

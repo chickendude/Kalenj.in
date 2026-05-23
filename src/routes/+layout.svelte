@@ -406,6 +406,8 @@
 				<span aria-hidden="true"> · </span>
 				<span>&copy; {year}</span>
 				<span aria-hidden="true"> · </span>
+				<a href="/privacy">Privacy</a>
+				<span aria-hidden="true"> · </span>
 				<a href="/terms">Terms</a>
 			</p>
 		</div>

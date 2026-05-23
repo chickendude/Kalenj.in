@@ -15,7 +15,7 @@ export type ExistingLemmaAnnotation = {
 	} | null;
 };
 
-export type AutoLemmaSegmentPlan = {
+type AutoLemmaSegmentPlan = {
 	segmentOrder: number;
 	segmentStart: number;
 	segmentEnd: number;
@@ -152,7 +152,7 @@ function edgePunctuationLengths(surfaceForm: string): { leading: number; trailin
 	};
 }
 
-export function inferKnownFusedTokenSegments(
+function inferKnownFusedTokenSegments(
 	surfaceForm: string,
 	normalizedForm: string,
 	pattern: AutoLemmaSegmentPattern | undefined
@@ -192,7 +192,7 @@ export function inferKnownFusedTokenSegments(
 	});
 }
 
-export async function loadAutoLemmaMatches(
+async function loadAutoLemmaMatches(
 	db: AutoLemmaDb,
 	normalizedForms: string[]
 ): Promise<Map<string, string>> {
@@ -282,7 +282,7 @@ export async function loadAutoLemmaInContextTranslations(
 	return translations;
 }
 
-export async function loadAutoLemmaSegmentPatterns(
+async function loadAutoLemmaSegmentPatterns(
 	db: AutoLemmaDb,
 	normalizedForms: string[]
 ): Promise<Map<string, AutoLemmaSegmentPattern>> {

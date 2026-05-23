@@ -1,6 +1,5 @@
 import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
-import { syncStorySentenceToCorpus } from '$lib/server/story-sync';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -36,7 +35,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const sentence = await prisma.storySentence.findUnique({
 		where: { id: sentenceId },
-		select: { id: true, storyId: true }
+		select: { id: true, storyId: true, exampleSentenceId: true }
 	});
 
 	if (!sentence || sentence.storyId !== lesson.storyId) {
@@ -48,30 +47,35 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	const updatedSentence = await prisma.$transaction(async (tx) => {
-		const updated = await tx.storySentence.update({
+		if (field === 'english') {
+			await tx.exampleSentence.update({
+				where: { id: sentence.exampleSentenceId },
+				data: { english: value }
+			});
+		} else {
+			await tx.storySentence.update({
+				where: { id: sentenceId },
+				data: field === 'speaker' ? { speaker: value || null } : { grammarNotes: value || null }
+			});
+		}
+
+		return tx.storySentence.findUniqueOrThrow({
 			where: { id: sentenceId },
-			data:
-				field === 'speaker'
-					? { speaker: value || null }
-					: field === 'grammarNotes'
-						? { grammarNotes: value || null }
-						: { english: value },
 			select: {
 				id: true,
 				speaker: true,
-				english: true,
-				grammarNotes: true
+				grammarNotes: true,
+				exampleSentence: { select: { english: true } }
 			}
 		});
-
-		if (field === 'english') {
-			await syncStorySentenceToCorpus(tx, sentenceId);
-		}
-
-		return updated;
 	});
 
 	return json({
-		sentence: updatedSentence
+		sentence: {
+			id: updatedSentence.id,
+			speaker: updatedSentence.speaker,
+			english: updatedSentence.exampleSentence.english,
+			grammarNotes: updatedSentence.grammarNotes
+		}
 	});
 };

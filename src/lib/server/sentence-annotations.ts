@@ -80,39 +80,3 @@ export async function syncExampleSentenceTokens(
 		});
 	}
 }
-
-export async function syncStorySentenceTokens(
-	tx: Prisma.TransactionClient,
-	storySentenceId: string,
-	sentenceText: string
-): Promise<void> {
-	const tokenData = tokenizeSentence(sentenceText);
-	const existingTokens = await tx.storySentenceToken.findMany({
-		where: { storySentenceId },
-		orderBy: { tokenOrder: 'asc' },
-		select: {
-			tokenOrder: true,
-			surfaceForm: true,
-			normalizedForm: true,
-			wordId: true,
-			inContextTranslation: true,
-			word: {
-				select: {
-					kalenjinNormalized: true
-				}
-			}
-		}
-	});
-
-	await tx.storySentenceToken.deleteMany({
-		where: { storySentenceId }
-	});
-
-	if (tokenData.length === 0) {
-		return;
-	}
-
-	await tx.storySentenceToken.createMany({
-		data: buildSyncedTokenRows({ storySentenceId }, tokenData, existingTokens)
-	});
-}

@@ -454,9 +454,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 	}
 
 	const nextTokens = await loadTokensWithWords(sentenceId);
-	await prisma.exampleSentence.update({
-		where: { id: sentenceId },
-		data: { kalenjin: buildSentenceText(nextTokens) }
+	await prisma.$transaction(async (tx) => {
+		await tx.exampleSentence.update({
+			where: { id: sentenceId },
+			data: { kalenjin: buildSentenceText(nextTokens) }
+		});
 	});
 
 	return json({

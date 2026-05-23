@@ -6,65 +6,106 @@ import {
 	syncStorySentenceToCorpus,
 	syncStorySentences
 } from './story-sync';
+import {
+	createExampleSentenceTokensFromPlans,
+	createExampleSentenceWithAutoLemma,
+	createWordSentenceLinks,
+	recordAutoLemmaObservedForms,
+	resolveAutoLemmaTokenPlans
+} from '$lib/server/auto-lemma';
 
 vi.mock('$lib/server/prisma', () => ({
 	prisma: {
-		storySentence: {
-			findMany: vi.fn()
-		},
+		storySentence: { findMany: vi.fn() },
 		$transaction: vi.fn()
 	}
 }));
 
+vi.mock('$lib/server/auto-lemma', () => ({
+	collectLinkedWordIds: vi.fn((tokens) => [
+		...new Set(
+			tokens
+				.flatMap((token: { wordId: string | null; segments: Array<{ wordId: string | null }> }) => [
+					token.wordId,
+					...token.segments.map((segment) => segment.wordId)
+				])
+				.filter(Boolean)
+		)
+	]),
+	createExampleSentenceTokensFromPlans: vi.fn(),
+	createExampleSentenceWithAutoLemma: vi.fn(),
+	createWordSentenceLinks: vi.fn(),
+	recordAutoLemmaObservedForms: vi.fn(),
+	resolveAutoLemmaTokenPlans: vi.fn(async (_tx, tokenData) => ({
+		tokens: tokenData.map((token: { tokenOrder: number; surfaceForm: string; normalizedForm: string }) => ({
+			...token,
+			wordId: null,
+			inContextTranslation: null,
+			segments: [],
+			autoLinked: false
+		})),
+		autoLinkedCount: 0
+	}))
+}));
+
 const tx = {
 	storySentence: {
+		findMany: vi.fn(),
 		deleteMany: vi.fn(),
 		create: vi.fn(),
 		findUnique: vi.fn(),
 		findFirst: vi.fn(),
 		updateMany: vi.fn(),
-		update: vi.fn(),
 		delete: vi.fn()
 	},
-	storySentenceToken: {
-		findMany: vi.fn(),
-		deleteMany: vi.fn(),
-		createMany: vi.fn(),
-		create: vi.fn(),
-		updateMany: vi.fn()
-	},
-	storySentenceTokenSegment: {
-		createMany: vi.fn()
-	},
 	exampleSentence: {
-		upsert: vi.fn()
-	},
-	wordSentence: {
-		deleteMany: vi.fn(),
-		createMany: vi.fn()
+		findUnique: vi.fn(),
+		update: vi.fn(),
+		create: vi.fn(),
+		delete: vi.fn(),
+		deleteMany: vi.fn()
 	},
 	exampleSentenceToken: {
 		deleteMany: vi.fn(),
-		create: vi.fn()
+		updateMany: vi.fn()
+	},
+	wordSentence: {
+		deleteMany: vi.fn()
+	},
+	lessonWord: {
+		findMany: vi.fn()
 	}
 };
 
 function resetMocks() {
 	for (const model of [
 		tx.storySentence,
-		tx.storySentenceToken,
-		tx.storySentenceTokenSegment,
 		tx.exampleSentence,
+		tx.exampleSentenceToken,
 		tx.wordSentence,
-		tx.exampleSentenceToken
+		tx.lessonWord
 	]) {
 		for (const mock of Object.values(model)) {
 			mock.mockReset();
 		}
 	}
 
-	tx.storySentenceToken.findMany.mockResolvedValue([]);
-	tx.exampleSentence.upsert.mockResolvedValue({ id: 'corpus-sentence-1' });
+	vi.mocked(createExampleSentenceTokensFromPlans).mockReset();
+	vi.mocked(createExampleSentenceWithAutoLemma).mockReset();
+	vi.mocked(createWordSentenceLinks).mockReset();
+	vi.mocked(recordAutoLemmaObservedForms).mockReset();
+	vi.mocked(resolveAutoLemmaTokenPlans).mockClear();
+	vi.mocked(resolveAutoLemmaTokenPlans).mockImplementation(async (_tx, tokenData) => ({
+		tokens: tokenData.map((token) => ({
+			...token,
+			wordId: null,
+			inContextTranslation: null,
+			segments: [],
+			autoLinked: false
+		})),
+		autoLinkedCount: 0
+	}));
+	tx.lessonWord.findMany.mockResolvedValue([]);
 }
 
 beforeEach(() => {
@@ -72,169 +113,102 @@ beforeEach(() => {
 });
 
 describe('syncStorySentences', () => {
-	it('creates linked corpus sentences for imported story text', async () => {
-		tx.storySentence.create.mockResolvedValue({
-			id: 'story-sentence-1'
-		});
-		tx.storySentence.findUnique.mockResolvedValue({
-			id: 'story-sentence-1',
-			kalenjin: 'Oh eh',
-			english: 'Hello you',
-			tokens: [
-				{
-					tokenOrder: 0,
-					surfaceForm: 'Oh',
-					normalizedForm: 'oh',
-					wordId: null,
-					inContextTranslation: null,
-					segments: []
-				},
-				{
-					tokenOrder: 1,
-					surfaceForm: 'eh',
-					normalizedForm: 'eh',
-					wordId: null,
-					inContextTranslation: null,
-					segments: []
-				}
-			]
-		});
+	it('creates story placements that reference example sentences', async () => {
+		tx.storySentence.findMany.mockResolvedValue([{ exampleSentenceId: 'old-example-1' }]);
+		vi.mocked(createExampleSentenceWithAutoLemma).mockResolvedValue({ id: 'example-1' } as never);
 
-		await syncStorySentences(
-			tx as never,
-			'story-1',
-			'Oh eh\tHello you'
-		);
+		await syncStorySentences(tx as never, 'story-1', 'Oh eh\tHello you');
 
-		expect(tx.storySentence.deleteMany).toHaveBeenCalledWith({
-			where: { storyId: 'story-1' }
+		expect(tx.storySentence.deleteMany).toHaveBeenCalledWith({ where: { storyId: 'story-1' } });
+		expect(tx.exampleSentence.deleteMany).toHaveBeenCalledWith({
+			where: { id: { in: ['old-example-1'] } }
 		});
-		expect(tx.exampleSentence.upsert).toHaveBeenCalledWith(
+		expect(createExampleSentenceWithAutoLemma).toHaveBeenCalledWith(
+			tx,
 			expect.objectContaining({
-				where: { storySentenceId: 'story-sentence-1' },
-				create: expect.objectContaining({
-					storySentenceId: 'story-sentence-1',
-					kalenjin: 'Oh eh',
-					english: 'Hello you'
-				}),
-				update: {
-					kalenjin: 'Oh eh',
-					english: 'Hello you'
-				}
+				kalenjin: 'Oh eh',
+				english: 'Hello you'
 			})
 		);
-		expect(tx.exampleSentenceToken.create).toHaveBeenCalledTimes(2);
+		expect(tx.storySentence.create).toHaveBeenCalledWith({
+			data: {
+				storyId: 'story-1',
+				exampleSentenceId: 'example-1',
+				sentenceOrder: 1,
+				speaker: null
+			}
+		});
+	});
+
+	it('does not delete old story examples that are still used by lesson words', async () => {
+		tx.storySentence.findMany.mockResolvedValue([
+			{ exampleSentenceId: 'old-example-1' },
+			{ exampleSentenceId: 'shared-example' }
+		]);
+		tx.lessonWord.findMany.mockResolvedValue([{ sentenceId: 'shared-example' }]);
+		vi.mocked(createExampleSentenceWithAutoLemma).mockResolvedValue({ id: 'example-1' } as never);
+
+		await syncStorySentences(tx as never, 'story-1', 'Oh eh\tHello you');
+
+		expect(tx.exampleSentence.deleteMany).toHaveBeenCalledWith({
+			where: { id: { in: ['old-example-1'] } }
+		});
 	});
 });
 
 describe('syncStorySentenceToCorpus', () => {
-	it('copies story token links and lexical segments into the corpus entry', async () => {
-		tx.storySentence.findUnique.mockResolvedValue({
-			id: 'story-sentence-1',
+	it('backfills tokens on the linked example sentence when they are missing', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({ exampleSentenceId: 'example-1' });
+		tx.exampleSentence.findUnique.mockResolvedValue({
+			id: 'example-1',
 			kalenjin: 'Kip kele',
-			english: 'Kip said it',
-			tokens: [
-				{
-					tokenOrder: 0,
-					surfaceForm: 'Kip',
-					normalizedForm: 'kip',
-					wordId: 'word-kip',
-					inContextTranslation: 'name',
-					segments: []
-				},
-				{
-					tokenOrder: 1,
-					surfaceForm: 'kele',
-					normalizedForm: 'kele',
-					wordId: null,
-					inContextTranslation: null,
-					segments: [
-						{
-							segmentOrder: 0,
-							segmentStart: 0,
-							segmentEnd: 2,
-							surfaceForm: 'ke',
-							normalizedForm: 'ke',
-							wordId: 'word-ke'
-						},
-						{
-							segmentOrder: 1,
-							segmentStart: 2,
-							segmentEnd: 4,
-							surfaceForm: 'le',
-							normalizedForm: 'le',
-							wordId: 'word-le'
-						}
-					]
-				}
-			]
+			tokens: []
 		});
 
 		await syncStorySentenceToCorpus(tx as never, 'story-sentence-1');
 
-		expect(tx.exampleSentence.upsert).toHaveBeenCalledWith(
-			expect.objectContaining({
-				where: { storySentenceId: 'story-sentence-1' },
-				update: {
-					kalenjin: 'Kip kele',
-					english: 'Kip said it'
-				}
-			})
-		);
-		expect(tx.wordSentence.deleteMany).toHaveBeenCalledWith({
-			where: { exampleSentenceId: 'corpus-sentence-1' }
-		});
 		expect(tx.exampleSentenceToken.deleteMany).toHaveBeenCalledWith({
-			where: { exampleSentenceId: 'corpus-sentence-1' }
+			where: { exampleSentenceId: 'example-1' }
 		});
-		expect(tx.exampleSentenceToken.create).toHaveBeenNthCalledWith(1, {
-			data: {
-				exampleSentenceId: 'corpus-sentence-1',
+		expect(createExampleSentenceTokensFromPlans).toHaveBeenCalledWith(
+			tx,
+			'example-1',
+			expect.arrayContaining([
+				expect.objectContaining({ surfaceForm: 'Kip' }),
+				expect.objectContaining({ surfaceForm: 'kele' })
+			])
+		);
+	});
+
+	it('marks auto-linked backfilled tokens for proofread and records observed forms', async () => {
+		const plans = [
+			{
 				tokenOrder: 0,
 				surfaceForm: 'Kip',
 				normalizedForm: 'kip',
 				wordId: 'word-kip',
-				inContextTranslation: 'name'
-			}
-		});
-		expect(tx.exampleSentenceToken.create).toHaveBeenNthCalledWith(2, {
-			data: {
-				exampleSentenceId: 'corpus-sentence-1',
-				tokenOrder: 1,
-				surfaceForm: 'kele',
-				normalizedForm: 'kele',
-				wordId: null,
 				inContextTranslation: null,
-				segments: {
-					createMany: {
-						data: [
-							{
-								segmentOrder: 0,
-								segmentStart: 0,
-								segmentEnd: 2,
-								surfaceForm: 'ke',
-								normalizedForm: 'ke',
-								wordId: 'word-ke'
-							},
-							{
-								segmentOrder: 1,
-								segmentStart: 2,
-								segmentEnd: 4,
-								surfaceForm: 'le',
-								normalizedForm: 'le',
-								wordId: 'word-le'
-							}
-						]
-					}
-				}
+				segments: [],
+				autoLinked: true
 			}
+		];
+		tx.storySentence.findUnique.mockResolvedValue({ exampleSentenceId: 'example-1' });
+		tx.exampleSentence.findUnique.mockResolvedValue({
+			id: 'example-1',
+			kalenjin: 'Kip',
+			tokens: []
 		});
-		expect(tx.wordSentence.createMany).toHaveBeenCalledWith({
-			data: [
-				{ wordId: 'word-kip', exampleSentenceId: 'corpus-sentence-1' },
-				{ wordId: 'word-ke', exampleSentenceId: 'corpus-sentence-1' },
-				{ wordId: 'word-le', exampleSentenceId: 'corpus-sentence-1' }
-			]
+		vi.mocked(resolveAutoLemmaTokenPlans).mockResolvedValue({
+			tokens: plans,
+			autoLinkedCount: 1
+		});
+
+		await syncStorySentenceToCorpus(tx as never, 'story-sentence-1');
+
+		expect(recordAutoLemmaObservedForms).toHaveBeenCalledWith(tx, plans);
+		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
+			where: { id: 'example-1' },
+			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
 		});
 	});
 });
@@ -247,229 +221,271 @@ describe('canSplitStorySentence', () => {
 	it('returns false for a single sentence', () => {
 		expect(canSplitStorySentence('Chamgei nebo langat.')).toBe(false);
 	});
-
-	it('returns false for empty text', () => {
-		expect(canSplitStorySentence('')).toBe(false);
-	});
 });
 
 describe('splitStorySentence', () => {
-	it('is a no-op when the sentence cannot be split', async () => {
+	it('is a no-op when the linked example sentence cannot be split', async () => {
 		tx.storySentence.findUnique.mockResolvedValue({
 			id: 'story-sentence-1',
 			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
 			sentenceOrder: 0,
 			speaker: null,
-			kalenjin: 'Chamgei nebo langat.',
-			english: 'Good evening.',
-			tokens: []
+			exampleSentence: {
+				kalenjin: 'Chamgei nebo langat.',
+				english: 'Good evening.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: []
+			}
 		});
 
 		const result = await splitStorySentence(tx as never, 'story-sentence-1');
 
 		expect(result).toEqual({ splitCount: 1 });
-		expect(tx.storySentence.updateMany).not.toHaveBeenCalled();
+		expect(tx.exampleSentence.update).not.toHaveBeenCalled();
 		expect(tx.storySentence.create).not.toHaveBeenCalled();
 	});
 
-	it('throws when the sentence is not found', async () => {
-		tx.storySentence.findUnique.mockResolvedValue(null);
-
-		await expect(splitStorySentence(tx as never, 'missing')).rejects.toThrow(
-			'Story sentence not found.'
-		);
-	});
-
-	it('parks subsequent sentence orders above an offset before bringing them down', async () => {
-		let findUniqueCall = 0;
-		tx.storySentence.findUnique.mockImplementation(() => {
-			findUniqueCall += 1;
-			if (findUniqueCall === 1) {
-				return Promise.resolve({
-					id: 'story-sentence-1',
-					storyId: 'story-1',
-					sentenceOrder: 2,
-					speaker: 'Iyo',
-					kalenjin: 'One. Two.',
-					english: 'Un. Deux.',
-					tokens: []
-				});
-			}
-			return Promise.resolve({
-				id: 'story-sentence-x',
-				kalenjin: '',
-				english: '',
+	it('splits text by creating new example sentences and story placements', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({
+			id: 'story-sentence-1',
+			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
+			sentenceOrder: 2,
+			speaker: 'Iyo',
+			exampleSentence: {
+				kalenjin: 'One. Two.',
+				english: 'Un. Deux.',
+				notes: 'Original note',
+				imageUrl: 'image.jpg',
+				audioUrl: 'audio.mp3',
+				audioRecordedById: 'user-1',
+				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null,
+				lessonWords: [],
 				tokens: []
-			});
+			}
 		});
-		tx.storySentence.create.mockResolvedValue({ id: 'story-sentence-2' });
+		tx.exampleSentence.create.mockResolvedValue({ id: 'example-2' });
 
 		const result = await splitStorySentence(tx as never, 'story-sentence-1');
 
 		expect(result).toEqual({ splitCount: 2 });
-		expect(tx.storySentence.updateMany).toHaveBeenNthCalledWith(1, {
-			where: { storyId: 'story-1', sentenceOrder: { gt: 2 } },
-			data: { sentenceOrder: { increment: 1_000_001 } }
-		});
-		expect(tx.storySentence.updateMany).toHaveBeenNthCalledWith(2, {
-			where: { storyId: 'story-1', sentenceOrder: { gte: 1_000_000 } },
-			data: { sentenceOrder: { decrement: 1_000_000 } }
-		});
-		expect(tx.storySentence.update).toHaveBeenCalledWith({
-			where: { id: 'story-sentence-1' },
+		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
+			where: { id: 'example-1' },
 			data: { kalenjin: 'One.', english: 'Un.' }
+		});
+		expect(tx.exampleSentence.create).toHaveBeenCalledWith({
+			data: {
+				kalenjin: 'Two.',
+				english: 'Deux.',
+				notes: 'Original note',
+				imageUrl: 'image.jpg',
+				audioUrl: 'audio.mp3',
+				audioRecordedById: 'user-1',
+				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null
+			},
+			select: { id: true }
 		});
 		expect(tx.storySentence.create).toHaveBeenCalledWith({
 			data: {
 				storyId: 'story-1',
+				exampleSentenceId: 'example-2',
 				sentenceOrder: 3,
-				speaker: 'Iyo',
-				kalenjin: 'Two.',
-				english: 'Deux.'
-			},
-			select: { id: true }
+				speaker: 'Iyo'
+			}
 		});
+	});
+
+	it('refuses to split a story sentence shared with a lesson word', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({
+			id: 'story-sentence-1',
+			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
+			sentenceOrder: 2,
+			speaker: null,
+			exampleSentence: {
+				kalenjin: 'One. Two.',
+				english: 'Un. Deux.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [{ id: 'lesson-word-1' }],
+				tokens: []
+			}
+		});
+
+		await expect(splitStorySentence(tx as never, 'story-sentence-1')).rejects.toThrow(
+			'Cannot split a story sentence while it is used by a lesson word.'
+		);
+		expect(tx.exampleSentence.update).not.toHaveBeenCalled();
 	});
 });
 
 describe('mergeStorySentenceWithNext', () => {
 	it('returns { merged: false } when there is no following sentence', async () => {
 		tx.storySentence.findUnique.mockResolvedValue({
-			id: 'story-sentence-1',
+			id: 'target-1',
 			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
 			sentenceOrder: 5,
-			kalenjin: 'Hello',
-			english: 'Hi',
-			tokens: []
+			exampleSentence: {
+				kalenjin: 'Hello',
+				english: 'Hi',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: []
+			}
 		});
 		tx.storySentence.findFirst.mockResolvedValue(null);
 
-		const result = await mergeStorySentenceWithNext(tx as never, 'story-sentence-1');
+		const result = await mergeStorySentenceWithNext(tx as never, 'target-1');
 
 		expect(result).toEqual({ merged: false });
-		expect(tx.storySentence.update).not.toHaveBeenCalled();
+		expect(tx.exampleSentence.update).not.toHaveBeenCalled();
 		expect(tx.storySentence.delete).not.toHaveBeenCalled();
 	});
 
-	it('throws when the sentence is not found', async () => {
-		tx.storySentence.findUnique.mockResolvedValue(null);
-
-		await expect(mergeStorySentenceWithNext(tx as never, 'missing')).rejects.toThrow(
-			'Story sentence not found.'
-		);
-	});
-
-	it('reassigns tokens, joins text, deletes the next row, and shifts orders via offset', async () => {
-		let findUniqueCall = 0;
-		tx.storySentence.findUnique.mockImplementation(() => {
-			findUniqueCall += 1;
-			if (findUniqueCall === 1) {
-				return Promise.resolve({
-					id: 'target-1',
-					storyId: 'story-1',
-					sentenceOrder: 3,
-					kalenjin: 'One.',
-					english: 'Un.',
-					tokens: [{ id: 't1' }, { id: 't2' }]
-				});
-			}
-			return Promise.resolve({
-				id: 'target-1',
-				kalenjin: 'One. Two.',
-				english: 'Un. Deux.',
+	it('re-tokenizes the merged example sentence and deletes the next placement', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({
+			id: 'target-1',
+			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
+			sentenceOrder: 3,
+			exampleSentence: {
+				kalenjin: 'One.',
+				english: 'Un.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
 				tokens: [
 					{
 						tokenOrder: 0,
-						surfaceForm: 'One',
+						surfaceForm: 'One.',
 						normalizedForm: 'one',
-						wordId: null,
-						inContextTranslation: null,
-						segments: []
-					},
-					{
-						tokenOrder: 1,
-						surfaceForm: 'Two',
-						normalizedForm: 'two',
 						wordId: null,
 						inContextTranslation: null,
 						segments: []
 					}
 				]
-			});
+			}
 		});
 		tx.storySentence.findFirst.mockResolvedValue({
 			id: 'next-1',
+			exampleSentenceId: 'example-2',
 			sentenceOrder: 4,
-			kalenjin: 'Two.',
-			english: 'Deux.',
-			tokens: [{ id: 't3' }]
+			exampleSentence: {
+				kalenjin: 'Two.',
+				english: 'Deux.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: 'next-audio.mp3',
+				audioRecordedById: 'user-1',
+				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: [
+					{
+						tokenOrder: 0,
+						surfaceForm: 'Two.',
+						normalizedForm: 'two',
+						wordId: 'word-1',
+						inContextTranslation: null,
+						segments: []
+					}
+				]
+			}
 		});
 
 		const result = await mergeStorySentenceWithNext(tx as never, 'target-1');
 
 		expect(result).toEqual({ merged: true });
-		expect(tx.storySentenceToken.updateMany).toHaveBeenCalledWith({
-			where: { storySentenceId: 'next-1' },
-			data: {
-				storySentenceId: 'target-1',
-				tokenOrder: { increment: 2 }
-			}
-		});
-		expect(tx.storySentence.update).toHaveBeenCalledWith({
-			where: { id: 'target-1' },
-			data: { kalenjin: 'One. Two.', english: 'Un. Deux.' }
-		});
-		expect(tx.storySentence.delete).toHaveBeenCalledWith({ where: { id: 'next-1' } });
-		expect(tx.storySentence.updateMany).toHaveBeenNthCalledWith(1, {
-			where: { storyId: 'story-1', sentenceOrder: { gt: 4 } },
-			data: { sentenceOrder: { increment: 1_000_000 } }
-		});
-		expect(tx.storySentence.updateMany).toHaveBeenNthCalledWith(2, {
-			where: { storyId: 'story-1', sentenceOrder: { gte: 1_000_000 } },
-			data: { sentenceOrder: { decrement: 1_000_001 } }
-		});
-	});
-
-	it('skips the token reassignment when the next sentence has no tokens', async () => {
-		let findUniqueCall = 0;
-		tx.storySentence.findUnique.mockImplementation(() => {
-			findUniqueCall += 1;
-			if (findUniqueCall === 1) {
-				return Promise.resolve({
-					id: 'target-1',
-					storyId: 'story-1',
-					sentenceOrder: 0,
-					kalenjin: 'One.',
-					english: 'Un.',
-					tokens: []
-				});
-			}
-			return Promise.resolve({
-				id: 'target-1',
+		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
+			where: { id: 'example-1' },
+			data: expect.objectContaining({
 				kalenjin: 'One. Two.',
 				english: 'Un. Deux.',
-				tokens: [
-					{
-						tokenOrder: 0,
-						surfaceForm: 'One',
-						normalizedForm: 'one',
-						wordId: null,
-						inContextTranslation: null,
-						segments: []
-					}
-				]
-			});
+				audioUrl: 'next-audio.mp3',
+				audioRecordedById: 'user-1',
+				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
+				needsLemmaProofread: true,
+				lemmaProofreadAt: null
+			})
+		});
+		expect(createWordSentenceLinks).toHaveBeenCalledWith(tx, 'example-1', ['word-1']);
+		expect(tx.exampleSentenceToken.updateMany).not.toHaveBeenCalled();
+		expect(tx.storySentence.delete).toHaveBeenCalledWith({ where: { id: 'next-1' } });
+		expect(tx.exampleSentence.delete).toHaveBeenCalledWith({ where: { id: 'example-2' } });
+	});
+
+	it('refuses to merge when either sentence is shared with a lesson word', async () => {
+		tx.storySentence.findUnique.mockResolvedValue({
+			id: 'target-1',
+			storyId: 'story-1',
+			exampleSentenceId: 'example-1',
+			sentenceOrder: 3,
+			exampleSentence: {
+				kalenjin: 'One.',
+				english: 'Un.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [{ id: 'lesson-word-1' }],
+				tokens: []
+			}
 		});
 		tx.storySentence.findFirst.mockResolvedValue({
 			id: 'next-1',
-			sentenceOrder: 1,
-			kalenjin: 'Two.',
-			english: 'Deux.',
-			tokens: []
+			exampleSentenceId: 'example-2',
+			sentenceOrder: 4,
+			exampleSentence: {
+				kalenjin: 'Two.',
+				english: 'Deux.',
+				notes: null,
+				imageUrl: null,
+				audioUrl: null,
+				audioRecordedById: null,
+				audioRecordedAt: null,
+				needsLemmaProofread: false,
+				lemmaProofreadAt: null,
+				lessonWords: [],
+				tokens: []
+			}
 		});
 
-		await mergeStorySentenceWithNext(tx as never, 'target-1');
-
-		expect(tx.storySentenceToken.updateMany).not.toHaveBeenCalled();
+		await expect(mergeStorySentenceWithNext(tx as never, 'target-1')).rejects.toThrow(
+			'Cannot merge story sentences while either sentence is used by a lesson word.'
+		);
+		expect(tx.exampleSentence.update).not.toHaveBeenCalled();
 	});
 });

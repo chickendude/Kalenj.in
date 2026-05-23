@@ -491,4 +491,5 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
 		});
 	});
+
 });

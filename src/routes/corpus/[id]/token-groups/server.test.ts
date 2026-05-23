@@ -3,6 +3,10 @@ import { POST } from './+server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
+		exampleSentence: {
+			findUnique: vi.fn(),
+			update: vi.fn()
+		},
 		exampleSentenceToken: {
 			update: vi.fn(),
 			delete: vi.fn(),
@@ -50,6 +54,7 @@ function resetMocks() {
 		mocks.prisma.exampleSentence,
 		mocks.prisma.exampleSentenceToken,
 		mocks.prisma.observedWordForm,
+		mocks.tx.exampleSentence,
 		mocks.tx.exampleSentenceToken,
 		mocks.tx.exampleSentenceTokenSegment,
 		mocks.tx.wordSentence,
@@ -62,6 +67,7 @@ function resetMocks() {
 
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
+	mocks.tx.exampleSentence.findUnique.mockResolvedValue(null);
 }
 
 async function post(sentenceId: string, payload: Record<string, unknown>) {
@@ -152,7 +158,7 @@ describe('POST /corpus/[id]/token-groups', () => {
 				inContextTranslation: 'house'
 			}
 		});
-		expect(mocks.prisma.exampleSentence.update).toHaveBeenCalledWith({
+		expect(mocks.tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
 			data: { kalenjin: 'Missing kot ak' }
 		});

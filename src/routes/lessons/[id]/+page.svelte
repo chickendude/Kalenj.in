@@ -720,9 +720,9 @@
 		<p class="success">Deleted lesson word.</p>
 	{:else if form?.reorderWordsSuccess}
 		<p class="success">Saved word order.</p>
-	{:else if form?.updateStorySentenceTokenSuccess || form?.updateExampleSentenceTokenSuccess}
+	{:else if form?.updateExampleSentenceTokenSuccess}
 		<p class="success">Saved sentence annotation.</p>
-	{:else if form?.createStorySentenceWordSuccess || form?.createExampleSentenceWordSuccess}
+	{:else if form?.createExampleSentenceWordSuccess}
 		<p class="success">Created lemma and linked it.</p>
 	{/if}
 
@@ -994,7 +994,7 @@
 											updateAction="?/updateExampleSentenceToken"
 											createAction="?/createExampleSentenceWord"
 											searchEndpoint={`/lessons/${data.lesson.id}/word-search`}
-											tokenGroupEndpoint={`/lessons/${data.lesson.id}/token-groups`}
+											tokenGroupEndpoint={`/corpus/${lessonWord.sentence.id}/token-groups`}
 											focusRequest={exampleFocusRequests[lessonWord.sentence.id] ?? null}
 											onNavigatePrevSentence={prevExampleWord?.sentence
 												? () =>

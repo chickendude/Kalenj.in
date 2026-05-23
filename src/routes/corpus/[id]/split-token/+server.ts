@@ -73,7 +73,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		}
 	});
 
-	const { sentenceText, splitTokens } = await prisma.$transaction(async (tx) => {
+	const { splitTokens } = await prisma.$transaction(async (tx) => {
 		for (const update of temporaryTokenOrderUpdates(sentenceTokens)) {
 			await tx.exampleSentenceToken.update({
 				where: { id: update.id },
@@ -128,15 +128,12 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			}
 		}
 
-		return {
-			sentenceText: sentenceSurfaces.join(' '),
-			splitTokens: output
-		};
-	});
+		await tx.exampleSentence.update({
+			where: { id: token.exampleSentenceId },
+			data: { kalenjin: sentenceSurfaces.join(' ') }
+		});
 
-	await prisma.exampleSentence.update({
-		where: { id: token.exampleSentenceId },
-		data: { kalenjin: sentenceText }
+		return { splitTokens: output };
 	});
 
 	return json({

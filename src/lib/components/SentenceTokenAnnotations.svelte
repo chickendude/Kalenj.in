@@ -5,6 +5,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { stripWordLinks } from '$lib/word-links';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
@@ -207,7 +208,6 @@
 	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
-	let mergeConfirmButton = $state<HTMLButtonElement | null>(null);
 	let editingSurfaceTokenId = $state<string | null>(null);
 	let surfaceDraft = $state('');
 	let surfaceEditInput = $state<HTMLInputElement | null>(null);
@@ -400,18 +400,6 @@
 		return () => {
 			window.clearTimeout(focusTimeout);
 		};
-	});
-
-	$effect(() => {
-		if (!pendingMerge) {
-			return;
-		}
-
-		const timeout = window.setTimeout(() => {
-			mergeConfirmButton?.focus();
-		}, 0);
-
-		return () => window.clearTimeout(timeout);
 	});
 
 	$effect(() => {
@@ -1850,22 +1838,17 @@
 		</div>
 	{/if}
 
-	{#if pendingMerge}
-		<div class="modal-backdrop" role="presentation">
-			<div class="picker-modal merge-modal" role="dialog" aria-modal="true" aria-label="Confirm word merge">
-				<strong>Combine words?</strong>
-				<p class="status-text">
-					Combine "{pendingMerge.sourceSurface}" and "{pendingMerge.targetSurface}" into one word group?
-				</p>
-				<div class="inline-actions">
-					<button bind:this={mergeConfirmButton} type="button" onclick={() => void confirmMerge()}>
-						Combine words
-					</button>
-					<button type="button" class="secondary-button" onclick={() => (pendingMerge = null)}>Cancel</button>
-				</div>
-			</div>
-		</div>
-	{/if}
+	<ConfirmDialog
+		open={pendingMerge !== null}
+		title="Combine words?"
+		message={pendingMerge
+			? `Combine "${pendingMerge.sourceSurface}" and "${pendingMerge.targetSurface}" into one word group?`
+			: ''}
+		confirmLabel="Combine words"
+		cancelLabel="Cancel"
+		onconfirm={() => void confirmMerge()}
+		oncancel={() => (pendingMerge = null)}
+	/>
 </div>
 
 <style>
@@ -2745,9 +2728,6 @@
 		gap: 0.75rem;
 		padding: 1rem;
 		width: min(480px, calc(100vw - 2rem));
-	}
-	.merge-modal {
-		width: min(360px, calc(100vw - 2rem));
 	}
 	.inline-actions {
 		align-items: center;

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
@@ -23,20 +24,26 @@
 	$effect(() => {
 		if (form?.updateSentenceImageSuccess) toast.success('Image updated.');
 	});
+	$effect(() => {
+		if (form?.autoLemmaSuccess) toast.success(form.autoLemmaSuccess);
+	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
-	type InlineSentenceField = 'kalenjin' | 'english' | 'notes';
+	type InlineSentenceField = 'kalenjin' | 'notes';
+	type SentenceInlineField = InlineSentenceField | 'english';
 
 	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
+	let autoLemmaForm = $state<HTMLFormElement | null>(null);
+	let pendingAutoLemmaForm = $state<HTMLFormElement | null>(null);
+	let autoLemmaConfirmed = $state(false);
 	let inlineSentenceEdit = $state<InlineSentenceField | null>(null);
 	let inlineSentenceValue = $state('');
 	let inlineSentenceError = $state<string | null>(null);
 	let inlineSentenceInput = $state<HTMLTextAreaElement | null>(null);
 	let inlineSentenceEditorHeight = $state<number | null>(null);
 	let kalenjinDisplayShell = $state<HTMLDivElement | null>(null);
-	let englishDisplayShell = $state<HTMLButtonElement | null>(null);
 	let notesDisplayShell = $state<HTMLDivElement | null>(null);
 	let sentenceKalenjin = $state('');
 	let sentenceEnglish = $state('');
@@ -110,16 +117,9 @@
 		inlineSentenceEditorHeight =
 			field === 'kalenjin'
 				? kalenjinDisplayShell?.offsetHeight ?? null
-				: field === 'english'
-					? englishDisplayShell?.offsetHeight ?? null
-					: notesDisplayShell?.offsetHeight ?? null;
+				: notesDisplayShell?.offsetHeight ?? null;
 		inlineSentenceEdit = field;
-		inlineSentenceValue =
-			field === 'kalenjin'
-				? sentenceKalenjin
-				: field === 'english'
-					? sentenceEnglish
-					: sentenceNotes;
+		inlineSentenceValue = field === 'kalenjin' ? sentenceKalenjin : sentenceNotes;
 		inlineSentenceError = null;
 	}
 
@@ -130,20 +130,50 @@
 		inlineSentenceEditorHeight = null;
 	}
 
+	async function updateSentenceInline(field: SentenceInlineField, value: string) {
+		const response = await fetch(`/corpus/${data.sentence.id}/sentence-inline`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ field, value })
+		});
+		const result = (await response.json()) as {
+			message?: string;
+			sentence?: {
+				id: string;
+				kalenjin: string;
+				english: string;
+				notes: string | null;
+				tokens: SentenceToken[];
+			};
+		};
+
+		if (!response.ok || !result.sentence) {
+			throw new Error(result.message ?? 'Could not save sentence.');
+		}
+
+		sentenceKalenjin = result.sentence.kalenjin;
+		sentenceEnglish = result.sentence.english;
+		sentenceNotes = result.sentence.notes ?? '';
+		sentenceTokens = result.sentence.tokens.map(cloneSentenceToken);
+
+		if (field === 'kalenjin') {
+			await invalidateAll();
+		}
+	}
+
+	async function saveSentenceEnglish(value: string) {
+		await updateSentenceInline('english', value);
+	}
+
 	async function saveInlineSentenceEdit() {
 		if (!inlineSentenceEdit) return;
 
 		const field = inlineSentenceEdit;
 		const trimmedValue = inlineSentenceValue.trim();
-		const currentValue =
-			field === 'kalenjin'
-				? sentenceKalenjin
-				: field === 'english'
-					? sentenceEnglish
-					: sentenceNotes;
+		const currentValue = field === 'kalenjin' ? sentenceKalenjin : sentenceNotes;
 
 		if (field !== 'notes' && !trimmedValue) {
-			inlineSentenceError = field === 'kalenjin' ? 'Sentence is required.' : 'Translation is required.';
+			inlineSentenceError = 'Sentence is required.';
 			return;
 		}
 
@@ -153,35 +183,8 @@
 		}
 
 		try {
-			const response = await fetch(`/corpus/${data.sentence.id}/sentence-inline`, {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ field, value: trimmedValue })
-			});
-			const result = (await response.json()) as {
-				message?: string;
-				sentence?: {
-					id: string;
-					kalenjin: string;
-					english: string;
-					notes: string | null;
-					tokens: SentenceToken[];
-				};
-			};
-
-			if (!response.ok || !result.sentence) {
-				throw new Error(result.message ?? 'Could not save sentence.');
-			}
-
-			sentenceKalenjin = result.sentence.kalenjin;
-			sentenceEnglish = result.sentence.english;
-			sentenceNotes = result.sentence.notes ?? '';
-			sentenceTokens = result.sentence.tokens.map(cloneSentenceToken);
+			await updateSentenceInline(field, trimmedValue);
 			cancelInlineSentenceEdit();
-
-			if (field === 'kalenjin') {
-				await invalidateAll();
-			}
 		} catch (saveError) {
 			inlineSentenceError =
 				saveError instanceof Error ? saveError.message : 'Could not save sentence.';
@@ -210,8 +213,25 @@
 		pendingDeleteForm = event.currentTarget as HTMLFormElement;
 	}
 
+	function requestAutoLemma(event: SubmitEvent) {
+		if (autoLemmaConfirmed) {
+			autoLemmaConfirmed = false;
+			return;
+		}
+		event.preventDefault();
+		pendingAutoLemmaForm = event.currentTarget as HTMLFormElement;
+	}
+
+	function openAutoLemmaDialog() {
+		pendingAutoLemmaForm = autoLemmaForm;
+	}
+
 	function cancelPendingDelete() {
 		pendingDeleteForm = null;
+	}
+
+	function cancelPendingAutoLemma() {
+		pendingAutoLemmaForm = null;
 	}
 
 	function confirmPendingDelete() {
@@ -219,6 +239,14 @@
 		const form = pendingDeleteForm;
 		pendingDeleteForm = null;
 		form.submit();
+	}
+
+	function confirmPendingAutoLemma() {
+		if (!pendingAutoLemmaForm) return;
+		const form = pendingAutoLemmaForm;
+		pendingAutoLemmaForm = null;
+		autoLemmaConfirmed = true;
+		form.requestSubmit();
 	}
 </script>
 
@@ -235,19 +263,38 @@
 			Back to corpus
 		</a>
 		{#if canEdit}
-			<form
-				method="POST"
-				action="?/deleteSentence"
-				class="sentence-delete-form"
-				onsubmit={requestDeleteSentence}
-			>
-				<button type="submit" class="btn-sm danger">Delete sentence</button>
-			</form>
+			<div class="sentence-admin-actions">
+				<form
+					bind:this={autoLemmaForm}
+					method="POST"
+					action="?/autoLemmatizeSentence"
+					class="sentence-action-form"
+					use:enhance={() => async ({ update }) => update({ reset: false })}
+					onsubmit={requestAutoLemma}
+				>
+					<button type="button" class="btn-sm ghost" onclick={openAutoLemmaDialog}>
+						Auto-fill missing lemmas
+					</button>
+				</form>
+				<form
+					method="POST"
+					action="?/deleteSentence"
+					class="sentence-action-form"
+					onsubmit={requestDeleteSentence}
+				>
+					<button type="submit" class="btn-sm danger">Delete sentence</button>
+				</form>
+			</div>
 		{/if}
 	</div>
 
 	<div class="entry-head">
-		<div class="entry-label">Corpus sentence</div>
+		<div class="entry-label-row">
+			<div class="entry-label">Corpus sentence</div>
+			{#if data.sentence.needsLemmaProofread}
+				<a class="proofread-badge" href="/admin/proofread">Needs lemma proofread</a>
+			{/if}
+		</div>
 		<div class="sentence-display">
 			{#if inlineSentenceEdit === 'kalenjin'}
 				<textarea
@@ -302,25 +349,17 @@
 			{/if}
 		</div>
 		<div class="sentence-english">
-			{#if inlineSentenceEdit === 'english'}
-				<textarea
-					bind:this={inlineSentenceInput}
-					class="inline-sentence-input sentence-english-input"
-					rows="2"
-					style:min-height={inlineSentenceEditorHeight ? `${inlineSentenceEditorHeight}px` : undefined}
-					bind:value={inlineSentenceValue}
-					onkeydown={handleInlineSentenceKeydown}
-					onblur={saveInlineSentenceEditOnBlur}
-				></textarea>
-			{:else if canEdit}
-				<button
-					bind:this={englishDisplayShell}
-					type="button"
-					class="inline-edit-button sentence-english-button"
-					onclick={() => beginInlineSentenceEdit('english')}
+			{#if canEdit}
+				<ClickToEditText
+					value={sentenceEnglish}
+					label="English translation"
+					rows={2}
+					requiredMessage="Translation is required."
+					preserveHeight
+					onSave={saveSentenceEnglish}
 				>
 					<SentenceTimeText text={sentenceEnglish} />
-				</button>
+				</ClickToEditText>
 			{:else}
 				<SentenceTimeText text={sentenceEnglish} />
 			{/if}
@@ -438,6 +477,15 @@
 	oncancel={cancelPendingDelete}
 />
 
+<ConfirmDialog
+	open={pendingAutoLemmaForm !== null}
+	title="Auto-fill missing lemmas?"
+	message="This will add in missing root forms and translations for this sentence. If anything changes, the sentence will be queued for proofread."
+	confirmLabel="Auto-fill missing lemmas"
+	onconfirm={confirmPendingAutoLemma}
+	oncancel={cancelPendingAutoLemma}
+/>
+
 <style>
 	.entry-head-row {
 		align-items: center;
@@ -447,8 +495,35 @@
 		margin-bottom: 8px;
 	}
 
-	.sentence-delete-form {
+	.sentence-admin-actions {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		justify-content: flex-end;
+	}
+	.sentence-action-form {
 		margin: 0;
+	}
+	.entry-label-row {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+	.proofread-badge {
+		background: var(--accent-soft);
+		border-radius: 999px;
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
+		padding: 5px 8px;
+		text-decoration: none;
+		text-transform: uppercase;
+	}
+	.proofread-badge:hover {
+		text-decoration: underline;
 	}
 
 	.sentence-display {
@@ -470,18 +545,6 @@
 
 	.editable-sentence-shell {
 		cursor: text;
-	}
-
-	.sentence-english-button {
-		background: transparent;
-		border: 0;
-		color: inherit;
-		cursor: text;
-		font: inherit;
-		margin: 0;
-		padding: 0;
-		text-align: left;
-		width: 100%;
 	}
 
 	.inline-edit-button:hover,
@@ -511,10 +574,6 @@
 	.sentence-display-input {
 		font-family: var(--font-display);
 		font-size: 28px;
-	}
-
-	.sentence-english-input {
-		font-size: 15px;
 	}
 
 	.inline-sentence-input:focus {

@@ -129,6 +129,14 @@
 				Cleanup
 			</a>
 			<a
+				href="/admin/proofread"
+				role="menuitem"
+				class:active={isActive('/admin/proofread')}
+				onclick={onSelect}
+			>
+				Lemma proofread
+			</a>
+			<a
 				href="/dictionary/record-audio"
 				role="menuitem"
 				class:active={isActive('/dictionary/record-audio')}

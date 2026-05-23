@@ -562,6 +562,9 @@
 									<a class="en sentence-card-link" href={`/corpus/${sentence.id}`}>
 										<SentenceTimeText text={sentence.english} />
 									</a>
+									{#if sentence.needsLemmaProofread}
+										<a class="proofread-badge" href="/admin/proofread">Needs proofread</a>
+									{/if}
 									{#if sentence.notes?.trim()}
 										<NotesIndicator notes={sentence.notes} />
 									{/if}
@@ -584,6 +587,22 @@
 		font-size: 13px;
 	}
 	.record-missing-link:hover {
+		text-decoration: underline;
+	}
+	.proofread-badge {
+		background: var(--accent-soft);
+		border-radius: 999px;
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 700;
+		line-height: 1;
+		padding: 5px 8px;
+		position: relative;
+		text-decoration: none;
+		text-transform: uppercase;
+		z-index: 1;
+	}
+	.proofread-badge:hover {
 		text-decoration: underline;
 	}
 

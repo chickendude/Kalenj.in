@@ -202,6 +202,8 @@ model ExampleSentence {
   english           String
   notes             String?
   isUnique          Boolean                @default(false)
+  needsLemmaProofread Boolean               @default(false)
+  lemmaProofreadAt  DateTime?
   imageUrl          String?
   audioUrl          String?
   audioRecordedById String?
@@ -215,6 +217,7 @@ model ExampleSentence {
   lessonWords       LessonWord[]
 
   @@index([kalenjin])
+  @@index([needsLemmaProofread])
   @@index([kalenjin(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_kalenjin_trgm_idx")
   @@index([english(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_english_trgm_idx")
 }

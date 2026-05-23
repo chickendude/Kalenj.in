@@ -164,6 +164,28 @@ async function removeObservedLinksForToken(tx: Prisma.TransactionClient, token: 
 	}
 }
 
+async function removeUnusedSentenceWordLinks(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	wordIds: Array<string | null | undefined>
+) {
+	for (const wordId of [...new Set(wordIds.filter((id): id is string => Boolean(id)))]) {
+		const remainingLink = await tx.exampleSentenceToken.findFirst({
+			where: {
+				exampleSentenceId: sentenceId,
+				OR: [{ wordId }, { segments: { some: { wordId } } }]
+			},
+			select: { id: true }
+		});
+
+		if (!remainingLink) {
+			await tx.wordSentence.deleteMany({
+				where: { wordId, exampleSentenceId: sentenceId }
+			});
+		}
+	}
+}
+
 function hasLexicalSegments(token: EditableToken): boolean {
 	return (token.segments ?? []).length > 0;
 }
@@ -323,6 +345,7 @@ async function applySurface(
 
 async function applyUnsplit(
 	tx: Prisma.TransactionClient,
+	sentenceId: string,
 	tokens: EditableToken[],
 	tokenId: string
 ) {
@@ -335,16 +358,23 @@ async function applyUnsplit(
 		await removeObservedWordForm(tx, segment);
 	}
 	await tx.exampleSentenceTokenSegment.deleteMany({ where: { tokenId } });
+	await removeUnusedSentenceWordLinks(
+		tx,
+		sentenceId,
+		(token.segments ?? []).map((segment) => segment.wordId)
+	);
 }
 
 async function applySegments(
 	tx: Prisma.TransactionClient,
+	sentenceId: string,
 	tokens: EditableToken[],
 	tokenId: string,
 	splitPoints: number[]
 ) {
 	const segments = planTokenLexicalSegments(tokens, tokenId, splitPoints);
 	const token = tokens.find((token) => token.id === tokenId);
+	const oldWordIds = token ? observedLinksForToken(token).map((link) => link.wordId) : [];
 
 	if (token) {
 		await removeObservedLinksForToken(tx, token);
@@ -367,6 +397,7 @@ async function applySegments(
 			normalizedForm: segment.normalizedForm
 		});
 	}
+	await removeUnusedSentenceWordLinks(tx, sentenceId, oldWordIds);
 }
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
@@ -405,11 +436,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				? payload.splitPoints.filter((value) => Number.isInteger(value))
 				: [];
 
-			await prisma.$transaction((tx) => applySegments(tx, tokens, tokenId, splitPoints));
+			await prisma.$transaction((tx) => applySegments(tx, sentenceId, tokens, tokenId, splitPoints));
 		} else if (action === 'unsplit') {
 			const tokenId = clean(payload.tokenId);
 
-			await prisma.$transaction((tx) => applyUnsplit(tx, tokens, tokenId));
+			await prisma.$transaction((tx) => applyUnsplit(tx, sentenceId, tokens, tokenId));
 		} else if (action === 'surface') {
 			const tokenId = clean(payload.tokenId);
 			const surfaceForm = clean(payload.surfaceForm);

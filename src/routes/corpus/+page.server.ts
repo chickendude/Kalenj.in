@@ -6,6 +6,7 @@ import {
 	type BulkSentenceReviewRow
 } from '$lib/bulk-sentences';
 import { prisma } from '$lib/server/prisma';
+import { createExampleSentenceWithAutoLemma } from '$lib/server/auto-lemma';
 import {
 	buildCorpusSentenceSearchWhere,
 	findKalenjinCorpusSentenceIds,
@@ -137,17 +138,11 @@ export const actions: Actions = {
 			});
 		}
 
-		const sentence = await prisma.exampleSentence.create({
-			data: {
-				kalenjin,
-				english,
-				notes: notes || null,
-				tokens: {
-					createMany: {
-						data: tokenData
-					}
-				}
-			}
+		const sentence = await createExampleSentenceWithAutoLemma(prisma, {
+			kalenjin,
+			english,
+			notes: notes || null,
+			tokenData
 		});
 
 		redirect(303, `/corpus/${sentence.id}`);
@@ -216,16 +211,10 @@ export const actions: Actions = {
 
 		await prisma.$transaction(async (tx) => {
 			for (const sentence of sentencesToCreate) {
-				await tx.exampleSentence.create({
-					data: {
-						kalenjin: sentence.kalenjin,
-						english: sentence.english,
-						tokens: {
-							createMany: {
-								data: sentence.tokenData
-							}
-						}
-					}
+				await createExampleSentenceWithAutoLemma(tx, {
+					kalenjin: sentence.kalenjin,
+					english: sentence.english,
+					tokenData: sentence.tokenData
 				});
 			}
 		});

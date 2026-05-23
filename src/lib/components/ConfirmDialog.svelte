@@ -29,11 +29,19 @@
 		return () => window.clearTimeout(timeout);
 	});
 
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Escape') {
+	$effect(() => {
+		if (!open) return;
+		function handleWindowKeydown(event: KeyboardEvent) {
+			if (event.key !== 'Escape') return;
 			event.preventDefault();
 			oncancel();
-		} else if (event.key === 'Enter') {
+		}
+		window.addEventListener('keydown', handleWindowKeydown);
+		return () => window.removeEventListener('keydown', handleWindowKeydown);
+	});
+
+	function handleKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter') {
 			event.preventDefault();
 			onconfirm();
 		}

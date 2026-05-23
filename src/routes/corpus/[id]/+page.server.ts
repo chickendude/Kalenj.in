@@ -2,6 +2,7 @@ import { error, fail, redirect } from '@sveltejs/kit';
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { combinePluralFormVariants } from '$lib/plural-form-variants';
+import { autoLemmatizeMissingExampleSentenceWords } from '$lib/server/auto-lemma';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
@@ -20,6 +21,36 @@ function readText(formData: FormData, key: string): string {
 function readOptionalText(formData: FormData, key: string): string | null {
 	const value = readText(formData, key);
 	return value.length > 0 ? value : null;
+}
+
+function autoLemmaSentenceMessage(summary: {
+	scannedSentences: number;
+	updatedSentences: number;
+	linkedWords: number;
+	translatedWords: number;
+}): string {
+	if (summary.scannedSentences === 0) {
+		return 'No missing lemma or context translation fields found in this sentence.';
+	}
+	if (summary.linkedWords === 0 && summary.translatedWords === 0) {
+		return 'No automatic lemma matches found for this sentence.';
+	}
+	if (summary.linkedWords === 0) {
+		return `Filled ${summary.translatedWords} context translation${
+			summary.translatedWords === 1 ? '' : 's'
+		}; sentence queued for proofread.`;
+	}
+	if (summary.translatedWords === 0) {
+		return `Linked ${summary.linkedWords} missing word${
+			summary.linkedWords === 1 ? '' : 's'
+		}; sentence queued for proofread.`;
+	}
+
+	return `Linked ${summary.linkedWords} missing word${
+		summary.linkedWords === 1 ? '' : 's'
+	} and filled ${summary.translatedWords} context translation${
+		summary.translatedWords === 1 ? '' : 's'
+	}; sentence queued for proofread.`;
 }
 
 async function ensureSentenceToken(sentenceId: string, tokenId: string) {
@@ -421,6 +452,14 @@ export const actions: Actions = {
 		}
 
 		return { updateSentenceImageSuccess: true };
+	},
+	autoLemmatizeSentence: async ({ params, locals }) => {
+		requireEditor(locals);
+		const summary = await autoLemmatizeMissingExampleSentenceWords(prisma, {
+			sentenceId: params.id
+		});
+
+		return { autoLemmaSuccess: autoLemmaSentenceMessage(summary) };
 	},
 	deleteSentence: async ({ params, locals }) => {
 		requireEditor(locals);

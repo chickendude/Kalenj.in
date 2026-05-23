@@ -8,13 +8,12 @@
 	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
+	import TokenSearchPanel from '$lib/components/TokenSearchPanel.svelte';
+	import TokenSplitter from '$lib/components/TokenSplitter.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
 	import {
-		activeSegmentIndex,
-		computeSplitParts,
 		normalizeSearchQuery,
-		partIndexForChar,
 		serializeSpellings,
 		stripSurroundingPunctuation
 	} from '$lib/token-annotations';
@@ -86,13 +85,6 @@
 				spellingNormalized?: string;
 			}>;
 		} | null;
-	};
-
-	type SearchResult = {
-		id: string;
-		kalenjin: string;
-		translations: string;
-		notes?: string | null;
 	};
 
 	type TokenDraft = {
@@ -177,11 +169,6 @@
 
 	let openTokenId = $state<string | null>(null);
 	let activeSegmentId = $state<string | null>(null);
-	let searchQuery = $state('');
-	let searchResults = $state<SearchResult[]>([]);
-	let searchLoading = $state(false);
-	let searchError = $state<string | null>(null);
-	let searchResultCache = $state<Record<string, SearchResult[]>>({});
 	let saveState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	let createState = $state<Record<string, 'idle' | 'saving' | 'saved' | 'error'>>({});
 	let drafts = $state<Record<string, TokenDraft>>({});
@@ -189,7 +176,6 @@
 	let meaningInputs = $state<Record<string, HTMLInputElement | null>>({});
 	let localTokens = $state<SentenceToken[]>([]);
 	let lastIncomingSignature = $state('');
-	let searchInput = $state<HTMLInputElement | null>(null);
 	let modalElement = $state<HTMLDivElement | null>(null);
 	let shortcutsOpen = $state(false);
 	let shortcutsWrap = $state<HTMLDivElement | null>(null);
@@ -205,7 +191,6 @@
 		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Alt', '→'] },
 		{ label: 'Close picker', keys: ['Esc'] }
 	];
-	let focusedTokenId = $state<string | null>(null);
 	let draggedTokenId = $state<string | null>(null);
 	let pendingMerge = $state<MergePrompt | null>(null);
 	let editingSurfaceTokenId = $state<string | null>(null);
@@ -213,7 +198,6 @@
 	let surfaceEditInput = $state<HTMLInputElement | null>(null);
 	let groupActionError = $state<string | null>(null);
 	let splitMarkers = $state<Record<string, number[]>>({});
-	let hoveredSplitMarker = $state<number | null>(null);
 	let posOtherOpen = $state(false);
 	let posOtherWrap = $state<HTMLDivElement | null>(null);
 	const autoSaveTimers = new Map<string, number>();
@@ -321,88 +305,6 @@
 	});
 
 	$effect(() => {
-		if (!openTokenId) {
-			focusedTokenId = null;
-			searchResults = [];
-			searchLoading = false;
-			searchError = null;
-			return;
-		}
-
-		const currentQuery = searchQuery.trim();
-		if (!currentQuery) {
-			searchResults = [];
-			searchLoading = false;
-			searchError = null;
-			return;
-		}
-
-		if (Object.prototype.hasOwnProperty.call(searchResultCache, currentQuery)) {
-			searchResults = searchResultCache[currentQuery];
-			searchLoading = false;
-			searchError = null;
-			return;
-		}
-
-		const controller = new AbortController();
-		const timeout = window.setTimeout(async () => {
-			searchLoading = true;
-			searchError = null;
-
-			try {
-				const response = await fetch(
-					`${searchEndpoint}?q=${encodeURIComponent(currentQuery)}`,
-					{ signal: controller.signal }
-				);
-
-				if (!response.ok) {
-					throw new Error('Search failed.');
-				}
-
-				const payload = (await response.json()) as { results?: SearchResult[] };
-				searchResults = payload.results ?? [];
-				searchResultCache = {
-					...searchResultCache,
-					[currentQuery]: searchResults
-				};
-			} catch (error) {
-				if (controller.signal.aborted) {
-					return;
-				}
-
-				console.error(error);
-				searchResults = [];
-				searchError = 'Could not search right now.';
-			} finally {
-				if (!controller.signal.aborted) {
-					searchLoading = false;
-				}
-			}
-		}, 150);
-
-		return () => {
-			controller.abort();
-			window.clearTimeout(timeout);
-		};
-	});
-
-	$effect(() => {
-		if (!openTokenId || focusedTokenId === openTokenId) {
-			return;
-		}
-
-		const focusTimeout = window.setTimeout(() => {
-			searchInput?.focus();
-			searchInput?.select();
-			focusedTokenId = openTokenId;
-		}, 0);
-
-		return () => {
-			window.clearTimeout(focusTimeout);
-		};
-	});
-
-	$effect(() => {
 		if (!editingSurfaceTokenId) {
 			return;
 		}
@@ -498,11 +400,7 @@
 		openTokenId = token.id;
 		const segment = token.segments?.find((entry) => entry.id === segmentId) ?? null;
 		activeSegmentId = segment?.id ?? null;
-		searchQuery = normalizeSearchQuery(segment?.word?.kalenjin ?? segment?.surfaceForm ?? token.word?.kalenjin ?? token.surfaceForm);
-		searchResults = [];
-		searchError = null;
 		groupActionError = null;
-		hoveredSplitMarker = null;
 		posOtherOpen = false;
 	}
 
@@ -542,7 +440,6 @@
 		openTokenId = null;
 		activeSegmentId = null;
 		groupActionError = null;
-		hoveredSplitMarker = null;
 		focusMeaningInput(tokenId);
 	}
 
@@ -604,9 +501,8 @@
 		onTokensChange?.(localTokens);
 	}
 
-	function handleSearchInput(tokenId: string, value: string) {
+	function handleSearchQueryChange(tokenId: string, value: string) {
 		const normalizedValue = normalizeSearchQuery(value);
-		searchQuery = normalizedValue;
 
 		drafts[tokenId] = {
 			...drafts[tokenId],
@@ -760,7 +656,6 @@
 		// Optimistic UI update so the click feels instantaneous while the
 		// server persists the new split.
 		splitMarkers[tokenId] = nextMarkers;
-		hoveredSplitMarker = null;
 
 		try {
 			if (nextMarkers.length === 0) {
@@ -818,36 +713,12 @@
 			const nextSplitMarkers = { ...splitMarkers };
 			delete nextSplitMarkers[originalTokenId];
 			splitMarkers = nextSplitMarkers;
-			hoveredSplitMarker = null;
 			activeSegmentId = null;
 		} catch (unsplitError) {
 			groupActionError =
 				unsplitError instanceof Error ? unsplitError.message : 'Could not unsplit this word.';
 			throw unsplitError;
 		}
-	}
-
-	function splitPreview(surface: string, tokenId: string): string {
-		const boundaries = [...splitMarkersFor(tokenId)];
-		if (
-			hoveredSplitMarker !== null &&
-			hoveredSplitMarker > 0 &&
-			hoveredSplitMarker < surface.length &&
-			!boundaries.includes(hoveredSplitMarker)
-		) {
-			boundaries.push(hoveredSplitMarker);
-		}
-
-		const points = boundaries.sort((a, b) => a - b);
-		let output = '';
-		for (let index = 0; index < surface.length; index += 1) {
-			output += surface[index];
-			if (points.includes(index + 1)) {
-				output += '|';
-			}
-		}
-
-		return output;
 	}
 
 	function nextSplitSegment(currentSegmentId: string | null): TokenSegment | null {
@@ -884,7 +755,6 @@
 			const nextSplitMarkers = { ...splitMarkers };
 			delete nextSplitMarkers[originalTokenId];
 			splitMarkers = nextSplitMarkers;
-			hoveredSplitMarker = null;
 			editingSurfaceTokenId = null;
 			surfaceDraft = '';
 			const updatedToken = nextTokens.find((token) => token.id === originalTokenId);
@@ -1244,9 +1114,7 @@
 
 	{#if activeToken && activeGroup}
 		{@const pendingSplits = splitMarkersFor(activeToken.id)}
-		{@const previewParts = computeSplitParts(activeToken.surfaceForm, pendingSplits)}
 		{@const hasCommittedSegments = splitTabSegments.length > 1}
-		{@const activeSegIdx = activeSegmentIndex(activeToken, activeSegment)}
 		{@const activeSurfaceTrim = (activeSurface ?? '').trim()}
 		{@const createLemmaValue =
 			drafts[activeDraftKey]?.createLemma ?? activeSurface ?? ''}
@@ -1260,10 +1128,6 @@
 		{@const currentPosNeedsPlural = currentPos === 'NOUN' || currentPos === 'ADJECTIVE'}
 		{@const pluralFormValue = drafts[activeDraftKey]?.createPluralForm ?? ''}
 		{@const isPluralOnlyValue = drafts[activeDraftKey]?.createIsPluralOnly ?? false}
-		{@const splittableSurface = activeToken.surfaceForm.replace(
-			/[^\p{L}\p{M}\p{N}]+$/u,
-			''
-		)}
 		<div
 			class="modal-backdrop"
 			role="button"
@@ -1376,156 +1240,43 @@
 					</div>
 				</div>
 
-				<!-- Splitter: character-level split control -->
-				{#if splittableSurface.length > 1}
-					<div class="splitter-block">
-						<div class="splitter-row-head">
-							<span class="splitter-label">Word parts</span>
-							<span class="splitter-hint">
-								{#if hasCommittedSegments}
-									Linking {splitTabSegments.length} parts separately — click a split to remove
-									it.
-								{:else}
-									Click a letter to split after it (e.g. ka|mama → ka + mama).
-								{/if}
-							</span>
-							{#if hasCommittedSegments}
-								<button
-									type="button"
-									class="btn ghost sm splitter-clear"
-									onclick={() => void unsplitActiveGroup()}
-								>
-									Undo splits
-								</button>
-							{/if}
-						</div>
-						<div class="splitter" role="group" aria-label={`Split ${splittableSurface}`}>
-							{#each Array.from(splittableSurface) as ch, i}
-								{@const partIdx = partIndexForChar(i, pendingSplits)}
-								{@const isLast = i === splittableSurface.length - 1}
-								{@const hasSplitAfter = !isLast && pendingSplits.includes(i + 1)}
-								<button
-									type="button"
-									class={`splitter-char part-tint-${partIdx % 4}`}
-									class:has-split-after={hasSplitAfter}
-									data-active={activeSegIdx >= 0 && partIdx === activeSegIdx ? 'true' : 'false'}
-									aria-label={isLast
-										? `Letter ${ch}`
-										: hasSplitAfter
-											? `Remove split after "${ch}"`
-											: `Split after "${ch}"`}
-									disabled={isLast}
-									onclick={() =>
-										void applySplitClick(
-											activeToken.id,
-											i + 1,
-											activeToken.surfaceForm
-										)}
-								>
-									{ch}
-								</button>
-								{#if hasSplitAfter}
-									<span class="splitter-split-marker" aria-hidden="true"></span>
-								{/if}
-							{/each}
-						</div>
-
-						{#if hasCommittedSegments}
-							<div class="part-tabs" role="tablist">
-								{#each splitTabSegments as seg, segIdx}
-									<button
-										type="button"
-										role="tab"
-										aria-selected={seg.id === activeSegment?.id}
-										class={`part-tab part-tint-${segIdx % 4}`}
-										class:active={seg.id === activeSegment?.id}
-										onclick={() => activatePickerToken(activeToken, seg.id)}
-									>
-										<span class="part-tab-num">Part {segIdx + 1}</span>
-										<span class="part-tab-word">{seg.surfaceForm}</span>
-										{#if seg.word}
-											<span class="part-tab-mark">●</span>
-										{/if}
-									</button>
-								{/each}
-							</div>
-						{:else if previewParts.length > 1}
-							<div class="part-tabs part-tabs-preview" aria-label="Preview of split parts">
-								{#each previewParts as p, i}
-									<div class={`part-tab part-tint-${i % 4}`}>
-										<span class="part-tab-num">Part {i + 1}</span>
-										<span class="part-tab-word">{p.text}</span>
-									</div>
-								{/each}
-							</div>
-						{/if}
-					</div>
-				{/if}
+				<TokenSplitter
+					surface={activeToken.surfaceForm}
+					splits={pendingSplits}
+					segments={splitTabSegments}
+					activeSegmentId={activeSegment?.id ?? null}
+					onSplitClick={(boundary) =>
+						void applySplitClick(activeToken.id, boundary, activeToken.surfaceForm)}
+					onUnsplit={() => void unsplitActiveGroup()}
+					onSelectSegment={(segmentId) => activatePickerToken(activeToken, segmentId)}
+				/>
 
 				{#if groupActionError}
 					<p class="status-text error-text">{groupActionError}</p>
 				{/if}
 
-				<!-- Search + horizontal hit rail -->
-				<div class="lemma-search-block">
-					<input
-						bind:this={searchInput}
-						class="input lemma-search-input"
-						value={searchQuery}
-						placeholder={hasCommittedSegments
-							? `Search lemmas for "${activeSurfaceTrim}"…`
-							: 'Search existing lemmas…'}
-						oninput={(event) =>
-							handleSearchInput(activeDraftKey, (event.currentTarget as HTMLInputElement).value)}
-					/>
-					<div class="lemma-hit-rail" role="list">
-						{#if searchError}
-							<div class="lemma-hit-empty error-text">{searchError}</div>
-						{:else if searchLoading}
-							<div class="lemma-hit-empty" aria-live="polite" aria-label="Searching">
-								<span class="loading-spinner" aria-hidden="true"></span>
-							</div>
-						{:else if searchResults.length === 0}
-							<div class="lemma-hit-empty">
-								{#if searchQuery.trim()}
-									No lemmas match "{searchQuery}".
-								{:else}
-									Type to search existing lemmas.
-								{/if}
-							</div>
-						{:else}
-							{#each searchResults as result}
-								<form
-									method="POST"
-									action={updateAction}
-									class="lemma-hit-form"
-									use:enhance={enhanceUpdateForm(activeToken.id)}
-								>
-									<input type="hidden" name={entityIdField} value={entityId} />
-									<input type="hidden" name="tokenId" value={activeToken.id} />
-									{#if activeSegment}
-										<input type="hidden" name="segmentId" value={activeSegment.id} />
-									{/if}
-									<input type="hidden" name="wordId" value={result.id} />
-									<input
-										type="hidden"
-										name="inContextTranslation"
-										value={drafts[activeToken.id]?.inContextTranslation ?? ''}
-									/>
-									<button
-										type="submit"
-										class="lemma-hit"
-										class:active={activeWordId === result.id}
-										title={`${result.kalenjin} — ${stripWordLinks(result.translations)}`}
-									>
-										<span class="lemma-hit-word">{result.kalenjin}</span>
-										<span class="lemma-hit-gloss">{stripWordLinks(result.translations)}</span>
-									</button>
-								</form>
-							{/each}
-						{/if}
-					</div>
-				</div>
+				<TokenSearchPanel
+					initialQuery={normalizeSearchQuery(
+						activeSegment?.word?.kalenjin ??
+							activeSegment?.surfaceForm ??
+							activeToken.word?.kalenjin ??
+							activeToken.surfaceForm
+					)}
+					focusKey={`${activeToken.id}|${activeSegment?.id ?? ''}`}
+					placeholder={hasCommittedSegments
+						? `Search lemmas for "${activeSurfaceTrim}"…`
+						: 'Search existing lemmas…'}
+					activeWordId={activeWordId}
+					activeTokenId={activeToken.id}
+					activeSegmentId={activeSegment?.id ?? null}
+					inContextTranslation={drafts[activeToken.id]?.inContextTranslation ?? ''}
+					{entityId}
+					{entityIdField}
+					{updateAction}
+					{searchEndpoint}
+					onQueryChange={(value) => handleSearchQueryChange(activeDraftKey, value)}
+					onPickEnhance={enhanceUpdateForm(activeToken.id)}
+				/>
 
 				<!-- Mode switch row -->
 				<div class="lemma-mode-row">
@@ -2203,265 +1954,6 @@
 		font-size: 11px;
 	}
 
-	/* Splitter */
-	.splitter-block {
-		background: color-mix(in oklch, var(--surface) 50%, var(--bg-raised));
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		margin-bottom: 18px;
-		padding: 14px 16px 12px;
-	}
-	.splitter-row-head {
-		align-items: center;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
-		margin-bottom: 12px;
-	}
-	.splitter-label {
-		color: var(--ink-mute);
-		font-size: 11px;
-		font-weight: 600;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-	.splitter-hint {
-		color: var(--ink-soft);
-		flex: 1;
-		font-size: 12px;
-		min-width: 0;
-	}
-	.splitter-hint :global(b) {
-		color: var(--ink);
-		font-weight: 600;
-	}
-	.splitter-clear {
-		margin-left: auto;
-	}
-	.splitter {
-		align-items: stretch;
-		background: var(--bg-raised);
-		border: 1px solid var(--line-soft);
-		border-radius: var(--radius);
-		display: flex;
-		gap: 2px;
-		overflow-x: auto;
-		padding: 8px 6px;
-	}
-	.splitter-char {
-		background: color-mix(in oklch, var(--bg-raised) 80%, transparent);
-		border: 0;
-		border-right: 2px solid transparent;
-		border-radius: 4px;
-		color: var(--ink);
-		cursor: pointer;
-		font-family: var(--font-display);
-		font-size: 28px;
-		font-weight: 500;
-		letter-spacing: 0;
-		min-width: 32px;
-		padding: 6px 10px;
-		text-align: center;
-		transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease,
-			transform 0.05s ease;
-	}
-	.splitter .splitter-char:not(:disabled):hover {
-		background: color-mix(in oklch, var(--accent) 32%, var(--bg-raised));
-		border-right-color: var(--accent);
-		color: var(--brand-ink);
-	}
-	.splitter-char:not(:disabled):active {
-		transform: translateY(1px);
-	}
-	.splitter-char:disabled {
-		cursor: default;
-	}
-	.splitter-char[data-active='true'] {
-		color: var(--brand-ink);
-	}
-	.splitter-split-marker {
-		align-self: stretch;
-		background-color: transparent;
-		background-image: repeating-linear-gradient(
-			to bottom,
-			var(--accent) 0 4px,
-			transparent 4px 7px
-		);
-		border-radius: 2px;
-		box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 18%, transparent);
-		margin: 4px 4px;
-		width: 3px;
-	}
-
-	/* Part tints */
-	.part-tint-0 { --part-c: var(--brand); }
-	.part-tint-1 { --part-c: var(--accent); }
-	.part-tint-2 { --part-c: oklch(0.5 0.08 220); }
-	.part-tint-3 { --part-c: oklch(0.48 0.1 300); }
-	.splitter .splitter-char.part-tint-0 {
-		background: color-mix(in oklch, var(--brand) 10%, var(--bg-raised));
-	}
-	.splitter .splitter-char.part-tint-1 {
-		background: color-mix(in oklch, var(--accent) 10%, var(--bg-raised));
-	}
-	.splitter .splitter-char.part-tint-2 {
-		background: color-mix(in oklch, oklch(0.5 0.08 220) 10%, var(--bg-raised));
-	}
-	.splitter .splitter-char.part-tint-3 {
-		background: color-mix(in oklch, oklch(0.48 0.1 300) 10%, var(--bg-raised));
-	}
-	.splitter .splitter-char[data-active='true'].part-tint-0 {
-		background: color-mix(in oklch, var(--brand) 22%, var(--bg-raised));
-	}
-	.splitter .splitter-char[data-active='true'].part-tint-1 {
-		background: color-mix(in oklch, var(--accent) 22%, var(--bg-raised));
-	}
-	.splitter .splitter-char[data-active='true'].part-tint-2 {
-		background: color-mix(in oklch, oklch(0.5 0.08 220) 22%, var(--bg-raised));
-	}
-	.splitter .splitter-char[data-active='true'].part-tint-3 {
-		background: color-mix(in oklch, oklch(0.48 0.1 300) 22%, var(--bg-raised));
-	}
-
-	.part-tabs {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-		margin-top: 10px;
-	}
-	.part-tab {
-		align-items: baseline;
-		background: var(--bg-raised);
-		border: 1px solid var(--line);
-		border-bottom-color: var(--line);
-		border-bottom-width: 3px;
-		border-radius: var(--radius) var(--radius) 0 0;
-		cursor: pointer;
-		display: inline-flex;
-		font: inherit;
-		gap: 8px;
-		padding: 8px 12px 7px;
-	}
-	.part-tabs-preview .part-tab {
-		cursor: default;
-		opacity: 0.85;
-	}
-	.part-tab .part-tab-num {
-		color: var(--ink-mute);
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-	}
-	.part-tab .part-tab-word {
-		color: var(--ink);
-		font-family: var(--font-display);
-		font-size: 16px;
-		font-weight: 500;
-	}
-	.part-tab .part-tab-mark {
-		color: var(--part-c, var(--brand));
-		font-size: 10px;
-	}
-	.part-tab:hover {
-		border-color: var(--ink-mute);
-	}
-	.part-tab.active {
-		background: var(--bg-raised);
-		border-bottom-color: var(--part-c, var(--brand));
-	}
-	.part-tab.active .part-tab-word {
-		color: var(--brand-ink);
-	}
-	.part-tab.active .part-tab-num {
-		color: var(--part-c, var(--brand));
-	}
-
-	/* Search + horizontal hit rail */
-	.lemma-search-block {
-		margin-bottom: 16px;
-	}
-	.lemma-search-input {
-		font-family: var(--font-display);
-		font-size: 17px;
-		width: 100%;
-	}
-	.lemma-hit-rail {
-		display: flex;
-		gap: 8px;
-		overflow-x: auto;
-		padding: 10px 2px 8px;
-		scrollbar-width: thin;
-	}
-	.lemma-hit-rail::-webkit-scrollbar { height: 8px; }
-	.lemma-hit-rail::-webkit-scrollbar-thumb {
-		background: var(--line);
-		border-radius: 4px;
-	}
-	.lemma-hit-form {
-		flex: 0 0 auto;
-		margin: 0;
-	}
-	.lemma-hit {
-		background: var(--bg-raised);
-		border: 1px solid var(--line);
-		border-radius: var(--radius);
-		cursor: pointer;
-		display: flex;
-		flex: 0 0 auto;
-		flex-direction: column;
-		font: inherit;
-		gap: 2px;
-		min-width: 140px;
-		padding: 10px 14px;
-		text-align: left;
-		transition: border-color 0.12s, background 0.12s;
-	}
-	.lemma-hit:hover {
-		background: var(--surface);
-		border-color: var(--ink-mute);
-	}
-	.lemma-hit.active {
-		background: var(--accent-soft);
-		border-color: var(--brand);
-		box-shadow: inset 0 0 0 1px var(--brand);
-	}
-	.lemma-hit-word {
-		color: var(--ink);
-		font-family: var(--font-display);
-		font-size: 17px;
-		font-weight: 500;
-		letter-spacing: -0.005em;
-	}
-	.lemma-hit-gloss {
-		color: var(--ink-soft);
-		font-size: 12px;
-		max-width: 200px;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-	.lemma-hit-empty {
-		color: var(--ink-mute);
-		flex: 1;
-		font-size: 13px;
-		font-style: italic;
-		padding: 14px 10px;
-	}
-	.loading-spinner {
-		animation: spin 720ms linear infinite;
-		border: 2px solid var(--info-soft);
-		border-radius: 999px;
-		border-top-color: var(--info);
-		display: inline-block;
-		height: 18px;
-		vertical-align: middle;
-		width: 18px;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
-	}
-
 	/* Mode switch row */
 	.lemma-mode-row {
 		align-items: flex-end;
@@ -2609,13 +2101,6 @@
 	.plural-only-toggle input {
 		accent-color: var(--brand);
 	}
-	.field-label {
-		color: var(--ink);
-		display: block;
-		font-size: 12px;
-		font-weight: 500;
-		margin-bottom: 4px;
-	}
 	.pos-pills {
 		display: flex;
 		flex-wrap: nowrap;
@@ -2718,25 +2203,6 @@
 		opacity: 0.45;
 	}
 
-	/* Merge confirm dialog — kept as a compact paper card */
-	.picker-modal {
-		background: var(--paper);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-lg);
-		box-shadow: var(--shadow-md);
-		display: grid;
-		gap: 0.75rem;
-		padding: 1rem;
-		width: min(480px, calc(100vw - 2rem));
-	}
-	.inline-actions {
-		align-items: center;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.5rem;
-		justify-content: flex-end;
-	}
-
 	.status-text {
 		color: var(--ink-soft);
 		margin: 0;
@@ -2751,11 +2217,6 @@
 	input,
 	button {
 		font: inherit;
-	}
-	.secondary-button {
-		background: var(--paper);
-		border: 1px solid var(--border-strong);
-		padding: 0.4rem 0.75rem;
 	}
 
 	@media (max-width: 720px) {
@@ -2772,11 +2233,6 @@
 		}
 		.lemma-modal-title {
 			font-size: 20px;
-		}
-		.splitter-char {
-			font-size: 24px;
-			min-width: 28px;
-			padding: 4px 8px;
 		}
 		.lemma-mode-row {
 			align-items: stretch;

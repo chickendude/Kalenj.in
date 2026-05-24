@@ -1243,7 +1243,6 @@
 					onDraftChange={(field, value) => updateDraft(activeDraftKey, field, value)}
 					onCreateEnhance={enhanceCreateForm(activeToken.id)}
 					onClearEnhance={enhanceUpdateForm(activeToken.id, {
-						closeOnSuccess: !activeSegment,
 						invalidateOnSuccess: true
 					})}
 					onCancel={() => closePicker()}

@@ -84,3 +84,5 @@ export function enhance(form: HTMLFormElement, submit?: SubmitFn) {
 		}
 	};
 }
+
+export async function applyAction(): Promise<void> {}

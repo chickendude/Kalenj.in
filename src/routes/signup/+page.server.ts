@@ -65,10 +65,24 @@ export const actions: Actions = {
 			data: { username, email, displayName, role: 'USER', passwordHash }
 		});
 
-		await sendVerificationEmail(
-			{ id: user.id, email, displayName: user.displayName, username: user.username },
-			url.origin
-		);
+		try {
+			await sendVerificationEmail(
+				{ id: user.id, email, displayName: user.displayName, username: user.username },
+				url.origin
+			);
+		} catch (err) {
+			// Delivery failed (Resend down, ORIGIN unset in prod, etc.). Roll the
+			// account back so the username/email aren't permanently locked and the
+			// user can retry. EmailVerificationToken FK has onDelete: Cascade, so a
+			// freshly-issued token row is cleaned up too.
+			await prisma.user.delete({ where: { id: user.id } }).catch(() => {});
+			console.error('[signup] verification email send failed; rolled back user', err);
+			return fail(500, {
+				...formEcho,
+				error:
+					"We couldn't send your verification email just now. Please try again in a moment."
+			});
+		}
 
 		throw redirect(303, `/verify-email/sent?email=${encodeURIComponent(email)}`);
 	}

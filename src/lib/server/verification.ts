@@ -1,4 +1,6 @@
 import { randomBytes } from 'node:crypto';
+import { dev } from '$app/environment';
+import { env } from '$env/dynamic/private';
 import { prisma } from './prisma';
 import { sendEmail } from './email';
 
@@ -7,11 +9,27 @@ const RESEND_COOLDOWN_MS = 60 * 1000;
 const RESEND_DAILY_CAP = 5;
 const RATE_LIMIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * Build verification links from a trusted public origin. ORIGIN env var (also
+ * used by @sveltejs/adapter-node for CSRF) is the source of truth in
+ * production — otherwise a forged Host header could point recipients at an
+ * attacker-controlled domain. In dev we fall back to the request's own origin
+ * so local iteration keeps working without extra setup.
+ */
+function publicOrigin(requestOrigin: string): string {
+	const configured = env.ORIGIN?.trim();
+	if (configured) return configured.replace(/\/+$/, '');
+	if (dev) return requestOrigin;
+	throw new Error(
+		'ORIGIN env var must be set in production so verification links use a trusted public origin.'
+	);
+}
+
 function generateToken(): string {
 	return randomBytes(32).toString('hex');
 }
 
-export async function createVerificationToken(userId: string): Promise<string> {
+async function createVerificationToken(userId: string): Promise<string> {
 	const id = generateToken();
 	const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
 	await prisma.emailVerificationToken.create({ data: { id, userId, expiresAt } });
@@ -34,7 +52,7 @@ export async function consumeVerificationToken(token: string): Promise<ConsumedT
 	return { ok: true, userId: row.userId };
 }
 
-export function buildVerifyUrl(origin: string, token: string): string {
+function buildVerifyUrl(origin: string, token: string): string {
 	return `${origin}/verify-email?token=${encodeURIComponent(token)}`;
 }
 
@@ -60,8 +78,11 @@ export type SendVerificationResult =
  */
 export async function sendVerificationEmail(
 	user: { id: string; email: string; displayName: string | null; username: string },
-	origin: string
+	requestOrigin: string
 ): Promise<SendVerificationResult> {
+	// Resolve the trusted public origin before any DB writes so a missing
+	// ORIGIN env in prod fails fast — *before* we issue a token.
+	const origin = publicOrigin(requestOrigin);
 	const now = Date.now();
 	const windowStart = new Date(now - RATE_LIMIT_WINDOW_MS);
 

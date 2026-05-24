@@ -12,18 +12,21 @@ const mocks = vi.hoisted(() => {
 	const email = {
 		sendEmail: vi.fn()
 	};
-	return { prisma, email };
+	const envState: { ORIGIN?: string } = {};
+	const environment = { dev: true };
+	return { prisma, email, envState, environment };
 });
 
 vi.mock('$lib/server/prisma', () => ({ prisma: mocks.prisma }));
 vi.mock('./email', () => ({ sendEmail: mocks.email.sendEmail }));
+vi.mock('$app/environment', () => mocks.environment);
+vi.mock('$env/dynamic/private', () => ({
+	get env() {
+		return mocks.envState;
+	}
+}));
 
-const {
-	buildVerifyUrl,
-	consumeVerificationToken,
-	createVerificationToken,
-	sendVerificationEmail
-} = await import('./verification');
+const { consumeVerificationToken, sendVerificationEmail } = await import('./verification');
 
 const TEST_USER = {
 	id: 'u1',
@@ -38,34 +41,8 @@ beforeEach(() => {
 	mocks.prisma.emailVerificationToken.findMany.mockReset();
 	mocks.prisma.emailVerificationToken.delete.mockReset();
 	mocks.email.sendEmail.mockReset();
-});
-
-describe('createVerificationToken', () => {
-	it('persists a token row with a 24h expiry and returns its id', async () => {
-		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
-
-		const before = Date.now();
-		const id = await createVerificationToken('u1');
-		const after = Date.now();
-
-		expect(id).toMatch(/^[0-9a-f]{64}$/);
-		expect(mocks.prisma.emailVerificationToken.create).toHaveBeenCalledTimes(1);
-		const data = mocks.prisma.emailVerificationToken.create.mock.calls[0][0].data;
-		expect(data.id).toBe(id);
-		expect(data.userId).toBe('u1');
-		const ttlMs = data.expiresAt.getTime() - before;
-		expect(ttlMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 1000);
-		expect(data.expiresAt.getTime() - after).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
-	});
-
-	it('issues a distinct id every call (no collisions)', async () => {
-		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
-
-		const a = await createVerificationToken('u1');
-		const b = await createVerificationToken('u1');
-
-		expect(a).not.toBe(b);
-	});
+	mocks.envState.ORIGIN = undefined;
+	mocks.environment.dev = true;
 });
 
 describe('consumeVerificationToken', () => {
@@ -126,20 +103,6 @@ describe('consumeVerificationToken', () => {
 		expect(mocks.prisma.emailVerificationToken.delete).toHaveBeenCalledWith({
 			where: { id: 'tok-good' }
 		});
-	});
-});
-
-describe('buildVerifyUrl', () => {
-	it('appends the token to the origin', () => {
-		expect(buildVerifyUrl('https://kalenj.in', 'abc')).toBe(
-			'https://kalenj.in/verify-email?token=abc'
-		);
-	});
-
-	it('url-encodes the token', () => {
-		expect(buildVerifyUrl('https://kalenj.in', 'a/b c')).toBe(
-			'https://kalenj.in/verify-email?token=a%2Fb%20c'
-		);
 	});
 });
 
@@ -237,5 +200,85 @@ describe('sendVerificationEmail', () => {
 		// 24h ± small skew for execution time
 		expect(windowMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000 - 2000);
 		expect(windowMs).toBeLessThanOrEqual(24 * 60 * 60 * 1000 + 2000);
+	});
+
+	it('persists a 64-hex token with a 24h expiry', async () => {
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockResolvedValue(undefined);
+
+		const before = Date.now();
+		await sendVerificationEmail(TEST_USER, 'https://kalenj.in');
+		const after = Date.now();
+
+		expect(mocks.prisma.emailVerificationToken.create).toHaveBeenCalledTimes(1);
+		const data = mocks.prisma.emailVerificationToken.create.mock.calls[0][0].data;
+		expect(data.id).toMatch(/^[0-9a-f]{64}$/);
+		expect(data.userId).toBe(TEST_USER.id);
+		expect(data.expiresAt.getTime() - before).toBeGreaterThanOrEqual(
+			24 * 60 * 60 * 1000 - 1000
+		);
+		expect(data.expiresAt.getTime() - after).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+	});
+
+	it('issues a distinct token on every call', async () => {
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockResolvedValue(undefined);
+
+		await sendVerificationEmail(TEST_USER, 'https://kalenj.in');
+		await sendVerificationEmail(TEST_USER, 'https://kalenj.in');
+
+		const a = mocks.prisma.emailVerificationToken.create.mock.calls[0][0].data.id;
+		const b = mocks.prisma.emailVerificationToken.create.mock.calls[1][0].data.id;
+		expect(a).not.toBe(b);
+	});
+
+	it('uses ORIGIN env var for the verify link instead of the request origin', async () => {
+		mocks.envState.ORIGIN = 'https://kalenj.in/';
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockResolvedValue(undefined);
+
+		await sendVerificationEmail(TEST_USER, 'http://attacker.example.com');
+
+		const body = mocks.email.sendEmail.mock.calls[0][0].text as string;
+		expect(body).toContain('https://kalenj.in/verify-email?token=');
+		expect(body).not.toContain('attacker.example.com');
+	});
+
+	it('falls back to the request origin in dev when ORIGIN is unset', async () => {
+		mocks.environment.dev = true;
+		mocks.envState.ORIGIN = undefined;
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockResolvedValue(undefined);
+
+		await sendVerificationEmail(TEST_USER, 'http://localhost:5174');
+
+		const body = mocks.email.sendEmail.mock.calls[0][0].text as string;
+		expect(body).toContain('http://localhost:5174/verify-email?token=');
+	});
+
+	it('refuses to send in prod when ORIGIN env is unset (fail-closed)', async () => {
+		mocks.environment.dev = false;
+		mocks.envState.ORIGIN = undefined;
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+
+		await expect(
+			sendVerificationEmail(TEST_USER, 'https://attacker.example.com')
+		).rejects.toThrow(/ORIGIN env var must be set/);
+		expect(mocks.prisma.emailVerificationToken.create).not.toHaveBeenCalled();
+		expect(mocks.email.sendEmail).not.toHaveBeenCalled();
+	});
+
+	it('propagates send errors so the caller can roll back the user row', async () => {
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockRejectedValue(new Error('Resend down'));
+
+		await expect(sendVerificationEmail(TEST_USER, 'https://kalenj.in')).rejects.toThrow(
+			'Resend down'
+		);
 	});
 });

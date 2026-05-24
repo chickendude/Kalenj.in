@@ -21,7 +21,13 @@ export default defineConfig({
 	webServer: {
 		command: `npx vite dev --host 127.0.0.1 --port ${PORT} --strictPort`,
 		url: `${BASE_URL}/login`,
-		reuseExistingServer: !process.env.CI,
+		// Always spin up our own dev server. `reuseExistingServer` is tempting for
+		// iteration speed but would also reuse a server you started via
+		// `npm run dev` — which would have your real RESEND_API_KEY in scope and
+		// happily mail every signup the suite drives. The env override + the
+		// PLAYWRIGHT_E2E guard in email.ts only take effect on a server Playwright
+		// spawned itself, so we never reuse.
+		reuseExistingServer: false,
 		stdout: 'pipe',
 		stderr: 'pipe',
 		timeout: 120_000,

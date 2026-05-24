@@ -113,13 +113,25 @@ export async function sendVerificationEmail(
 	const token = await createVerificationToken(user.id);
 	const link = buildVerifyUrl(origin, token);
 	const name = user.displayName ?? user.username;
-	await sendEmail({
-		to: user.email,
-		subject: 'Verify your Kalenj.in email',
-		text:
-			`Hi ${name},\n\n` +
-			`Confirm your email address by opening this link within 24 hours:\n${link}\n\n` +
-			`If you didn't create an account on Kalenj.in, you can ignore this message.`
-	});
+	try {
+		await sendEmail({
+			to: user.email,
+			subject: 'Verify your Kalenj.in email',
+			text:
+				`Hi ${name},\n\n` +
+				`Confirm your email address by opening this link within 24 hours:\n${link}\n\n` +
+				`If you didn't create an account on Kalenj.in, you can ignore this message.`
+		});
+	} catch (err) {
+		// Delivery failed (Resend outage, network, etc.). Roll the token back so
+		// the user's 60s cooldown and 5-per-day cap aren't burned by attempts that
+		// never actually reached their inbox. We rethrow so callers (signup) still
+		// get to roll back the user row; the resend action swallows it on top of
+		// this so account existence isn't leaked.
+		await prisma.emailVerificationToken
+			.delete({ where: { id: token } })
+			.catch(() => {});
+		throw err;
+	}
 	return { ok: true };
 }

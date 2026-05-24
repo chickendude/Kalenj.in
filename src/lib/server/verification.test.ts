@@ -275,10 +275,53 @@ describe('sendVerificationEmail', () => {
 	it('propagates send errors so the caller can roll back the user row', async () => {
 		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
 		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.prisma.emailVerificationToken.delete.mockResolvedValue(undefined);
 		mocks.email.sendEmail.mockRejectedValue(new Error('Resend down'));
 
 		await expect(sendVerificationEmail(TEST_USER, 'https://kalenj.in')).rejects.toThrow(
 			'Resend down'
 		);
+	});
+
+	it('deletes the just-issued token when send fails so the budget isnt burned', async () => {
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.prisma.emailVerificationToken.delete.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockRejectedValue(new Error('Resend exploded'));
+
+		await expect(sendVerificationEmail(TEST_USER, 'https://kalenj.in')).rejects.toThrow();
+
+		expect(mocks.prisma.emailVerificationToken.create).toHaveBeenCalledTimes(1);
+		const createdId = mocks.prisma.emailVerificationToken.create.mock.calls[0][0].data.id;
+		expect(mocks.prisma.emailVerificationToken.delete).toHaveBeenCalledTimes(1);
+		expect(mocks.prisma.emailVerificationToken.delete).toHaveBeenCalledWith({
+			where: { id: createdId }
+		});
+	});
+
+	it('swallows a token-delete failure during rollback (best-effort cleanup)', async () => {
+		// If even the rollback delete fails, we still want the send error to
+		// propagate so the caller (signup) can roll the user back.
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.prisma.emailVerificationToken.delete.mockRejectedValue(
+			new Error('race: already gone')
+		);
+		mocks.email.sendEmail.mockRejectedValue(new Error('Resend exploded'));
+
+		await expect(sendVerificationEmail(TEST_USER, 'https://kalenj.in')).rejects.toThrow(
+			'Resend exploded'
+		);
+		expect(mocks.prisma.emailVerificationToken.delete).toHaveBeenCalledTimes(1);
+	});
+
+	it('does not touch token.delete on the happy path', async () => {
+		mocks.prisma.emailVerificationToken.findMany.mockResolvedValue([]);
+		mocks.prisma.emailVerificationToken.create.mockResolvedValue(undefined);
+		mocks.email.sendEmail.mockResolvedValue(undefined);
+
+		await sendVerificationEmail(TEST_USER, 'https://kalenj.in');
+
+		expect(mocks.prisma.emailVerificationToken.delete).not.toHaveBeenCalled();
 	});
 });

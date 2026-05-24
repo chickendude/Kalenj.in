@@ -1,3 +1,3 @@
 <svelte:head>
-	<title>Redirecting</title>
+	<title>Admin</title>
 </svelte:head>

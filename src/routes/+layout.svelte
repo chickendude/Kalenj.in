@@ -5,15 +5,26 @@
 	import { initTheme, theme, toggleTheme } from '$lib/stores/theme';
 	import Toast from '$lib/components/Toast.svelte';
 	import NavSearch from '$lib/components/NavSearch.svelte';
+	import {
+		DEFAULT_ADMIN_TAB,
+		fallbackAdminTabForRole,
+		getRememberedAdminTabPath,
+		isAdminTabAllowed,
+		isAdminTabPath,
+		normalizeAdminTabHref,
+		rememberAdminTabPath
+	} from '$lib/admin-tabs';
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
 
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 	const year = new Date().getFullYear();
+	let adminHref = $state(DEFAULT_ADMIN_TAB);
 
 	onMount(() => {
 		initTheme();
+		setAdminHref(getRememberedAdminTabPath());
 	});
 
 	const navItems = $derived.by(() => {
@@ -37,6 +48,20 @@
 		}
 
 		return page.url.pathname === href || page.url.pathname.startsWith(`${href}/`);
+	}
+
+	function isAdminActive(): boolean {
+		return (
+			page.url.pathname === '/admin' ||
+			page.url.pathname.startsWith('/admin/') ||
+			isAdminTabPath(page.url.pathname)
+		);
+	}
+
+	function setAdminHref(href: string) {
+		adminHref = isAdminTabAllowed(href, data.user?.role)
+			? href
+			: fallbackAdminTabForRole(data.user?.role);
 	}
 
 	let userMenuOpen = $state(false);
@@ -64,6 +89,15 @@
 		toggleTheme();
 		closeSideMenu();
 	}
+
+	$effect(() => {
+		const activeAdminTab = normalizeAdminTabHref(`${page.url.pathname}${page.url.search}`);
+		if (!activeAdminTab) return;
+		setAdminHref(activeAdminTab);
+		if (isAdminTabAllowed(activeAdminTab, data.user?.role)) {
+			rememberAdminTabPath(activeAdminTab);
+		}
+	});
 
 	$effect(() => {
 		if (!userMenuOpen) return;
@@ -118,59 +152,9 @@
 		</a>
 		{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
 			<a
-				href="/admin/word-of-day"
+				href={adminHref}
 				role="menuitem"
-				class:active={isActive('/admin/word-of-day')}
-				onclick={onSelect}
-			>
-				Word of the day
-			</a>
-			<a
-				href="/admin/cleanup"
-				role="menuitem"
-				class:active={isActive('/admin/cleanup')}
-				onclick={onSelect}
-			>
-				Cleanup
-			</a>
-			<a
-				href="/admin/proofread"
-				role="menuitem"
-				class:active={isActive('/admin/proofread')}
-				onclick={onSelect}
-			>
-				Lemma proofread
-			</a>
-			<a
-				href="/dictionary/record-audio"
-				role="menuitem"
-				class:active={isActive('/dictionary/record-audio')}
-				onclick={onSelect}
-			>
-				Record word audio
-			</a>
-			<a
-				href="/corpus/record-audio"
-				role="menuitem"
-				class:active={isActive('/corpus/record-audio')}
-				onclick={onSelect}
-			>
-				Record sentence audio
-			</a>
-			<a
-				href="/corpus/duplicates"
-				role="menuitem"
-				class:active={isActive('/corpus/duplicates')}
-				onclick={onSelect}
-			>
-				Check duplicates
-			</a>
-		{/if}
-		{#if data.user.role === 'ADMIN'}
-			<a
-				href="/admin/users"
-				role="menuitem"
-				class:active={isActive('/admin/users')}
+				class:active={isAdminActive()}
 				onclick={onSelect}
 			>
 				Admin

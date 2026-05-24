@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import HomeWordOfDay from '$lib/components/home/HomeWordOfDay.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
@@ -57,10 +57,12 @@
 						<time class="wod-archive-date mono" datetime={entry.date.toISOString().slice(0, 10)}>
 							{shortFmt.format(entry.date)}
 						</time>
-						<span class="wod-archive-word">{entry.word.kalenjin}</span>
-						{#if entry.word.partOfSpeech}
-							<span class="pos-chip tiny">{PART_OF_SPEECH_LABELS[entry.word.partOfSpeech]}</span>
-						{/if}
+						<span class="wod-archive-word-wrap">
+							<span class="wod-archive-word">{entry.word.kalenjin}</span>
+							{#if entry.word.partOfSpeech}
+								<PartOfSpeechInline value={entry.word.partOfSpeech} size="tiny" />
+							{/if}
+						</span>
 						<span class="wod-archive-gloss">{firstTranslation(stripWordLinks(entry.word.translations))}</span>
 					</a>
 				</li>

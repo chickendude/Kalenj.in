@@ -19,13 +19,7 @@
 	<title>Cleanup · Admin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Cleanup</h1>
-		<p>Records that need attention from contributors. Lists show up to {data.listLimit} most recent.</p>
-	</div>
-</div>
+<h1 class="sr-only">Cleanup</h1>
 
 <section class="form-card cleanup-section">
 	<header class="cleanup-section-head">
@@ -190,6 +184,10 @@
 		padding-bottom: 14px;
 		border-bottom: 1px solid var(--line-soft);
 	}
+	.cleanup-section-head > div {
+		flex: 1 1 auto;
+		min-width: 0;
+	}
 	.cleanup-section-head h2 {
 		font-family: var(--font-display);
 		font-size: 18px;
@@ -200,7 +198,6 @@
 		margin: 0;
 		font-size: 13px;
 		color: var(--ink-mute);
-		max-width: 60ch;
 	}
 	.cleanup-count {
 		font-family: var(--font-display);

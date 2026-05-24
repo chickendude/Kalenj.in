@@ -580,7 +580,7 @@
 	<div class="result-meta">
 		<div class="result-count">{data.words.length} of {data.totalCount} entries</div>
 		{#if page.data.user?.role === 'ADMIN' || page.data.user?.role === 'MANAGER'}
-			<a class="record-missing-link" href="/dictionary/record-audio">Record missing audio →</a>
+			<a class="record-missing-link" href="/admin/word-audio">Record missing audio →</a>
 		{/if}
 	</div>
 

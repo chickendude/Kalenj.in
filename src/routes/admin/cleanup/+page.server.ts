@@ -91,7 +91,6 @@ export const load: PageServerLoad = async ({ locals }) => {
 	}));
 
 	return {
-		listLimit: LIST_LIMIT,
 		incompleteSentences: {
 			total: incompleteSentencesCount,
 			items: incompleteSentencesShaped

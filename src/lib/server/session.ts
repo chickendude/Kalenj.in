@@ -24,7 +24,7 @@ export type ValidatedSession = {
 		id: string;
 		username: string;
 		displayName: string | null;
-		role: 'ADMIN' | 'MANAGER';
+		role: 'ADMIN' | 'MANAGER' | 'USER';
 		themePreference: 'light' | 'dark' | 'auto';
 	};
 	renewed: boolean;
@@ -54,7 +54,7 @@ export async function validateSession(token: string): Promise<ValidatedSession |
 			id: session.user.id,
 			username: session.user.username,
 			displayName: session.user.displayName,
-			role: session.user.role as 'ADMIN' | 'MANAGER',
+			role: session.user.role as 'ADMIN' | 'MANAGER' | 'USER',
 			themePreference: normalizeThemePreference(session.user.themePreference)
 		},
 		renewed

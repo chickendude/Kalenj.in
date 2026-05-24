@@ -179,8 +179,9 @@
 		<form method="POST" action="/logout">
 			<button type="submit" role="menuitem" class="user-menu-item">Sign out</button>
 		</form>
-	{:else if page.url.pathname !== '/login'}
+	{:else if page.url.pathname !== '/login' && !page.url.pathname.startsWith('/signup') && !page.url.pathname.startsWith('/verify-email')}
 		<a href="/login" role="menuitem" onclick={onSelect}>Sign in</a>
+		<a href="/signup" role="menuitem" onclick={onSelect}>Sign up</a>
 	{/if}
 {/snippet}
 
@@ -319,8 +320,9 @@
 						</div>
 					{/if}
 				</div>
-			{:else if page.url.pathname !== '/login'}
+			{:else if page.url.pathname !== '/login' && !page.url.pathname.startsWith('/signup') && !page.url.pathname.startsWith('/verify-email')}
 				<a href="/login">Sign in</a>
+				<a href="/signup">Sign up</a>
 			{/if}
 		</div>
 		<div class="side-menu mobile-only" bind:this={sideMenuRoot}>
@@ -390,7 +392,7 @@
 	{@render children()}
 </main>
 
-{#if page.url.pathname !== '/login'}
+{#if page.url.pathname !== '/login' && !page.url.pathname.startsWith('/signup') && !page.url.pathname.startsWith('/verify-email')}
 	<footer class="site-foot mono">
 		<div class="site-foot-inner">
 			<p class="site-foot-lede">

@@ -1,10 +1,10 @@
 import { error } from '@sveltejs/kit';
 
-type Role = 'ADMIN' | 'MANAGER';
+type Role = 'ADMIN' | 'MANAGER' | 'USER';
 
 type LocalsLike = { user: App.Locals['user'] };
 
-function requireUser(locals: LocalsLike): NonNullable<App.Locals['user']> {
+export function requireUser(locals: LocalsLike): NonNullable<App.Locals['user']> {
 	if (!locals.user) throw error(404, 'Not Found');
 	return locals.user;
 }

@@ -28,13 +28,32 @@ export const actions: Actions = {
 		);
 
 		if (!username || !password) {
-			return fail(400, { username, error: 'Enter a username and password.' });
+			return fail(400, {
+				username,
+				email: '',
+				needsVerification: false,
+				error: 'Enter a username and password.'
+			});
 		}
 
 		const user = await prisma.user.findUnique({ where: { username } });
 		const ok = user ? await verifyPassword(user.passwordHash, password) : false;
 		if (!user || !ok) {
-			return fail(400, { username, error: 'Invalid credentials.' });
+			return fail(400, {
+				username,
+				email: '',
+				needsVerification: false,
+				error: 'Invalid credentials.'
+			});
+		}
+
+		if (user.email && !user.emailVerifiedAt) {
+			return fail(403, {
+				username,
+				email: user.email,
+				needsVerification: true,
+				error: 'Verify your email before signing in.'
+			});
 		}
 
 		const session = await createSession(user.id);

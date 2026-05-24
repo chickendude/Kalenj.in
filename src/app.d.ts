@@ -8,7 +8,7 @@ declare global {
 				id: string;
 				username: string;
 				displayName: string | null;
-				role: 'ADMIN' | 'MANAGER';
+				role: 'ADMIN' | 'MANAGER' | 'USER';
 				themePreference: 'light' | 'dark' | 'auto';
 			} | null;
 			sessionToken: string | null;

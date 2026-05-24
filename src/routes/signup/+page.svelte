@@ -9,25 +9,17 @@
 </script>
 
 <svelte:head>
-	<title>Sign in · Kalenjin</title>
+	<title>Create account · Kalenjin</title>
 </svelte:head>
 
 <div class="auth-shell">
 	<div class="auth-card">
-		<h1>Sign in</h1>
+		<h1>Create account</h1>
 		<p class="auth-sub">
-			New here? <a href="/signup">Create an account</a>.
+			Already have an account? <a href="/login">Sign in</a>.
 		</p>
 
 		<FormErrorFeedback error={form?.error} />
-
-		{#if form?.needsVerification && form?.email}
-			<p class="auth-sub">
-				<a href="/verify-email/sent?email={encodeURIComponent(form.email)}">
-					Resend verification email
-				</a>
-			</p>
-		{/if}
 
 		<form method="POST" use:enhance class="auth-form">
 			<input type="hidden" name="redirectTo" value={data.redirectTo} />
@@ -42,6 +34,32 @@
 					required
 					value={form?.username ?? ''}
 				/>
+				<p class="field-hint">2–40 characters: letters, digits, _ . -</p>
+			</div>
+
+			<div class="field">
+				<label for="email">Email</label>
+				<input
+					id="email"
+					name="email"
+					type="email"
+					class="input"
+					autocomplete="email"
+					required
+					value={form?.email ?? ''}
+				/>
+				<p class="field-hint">We'll send a verification link to confirm it's yours.</p>
+			</div>
+
+			<div class="field">
+				<label for="displayName">Display name <span class="optional">(optional)</span></label>
+				<input
+					id="displayName"
+					name="displayName"
+					class="input"
+					autocomplete="nickname"
+					value={form?.displayName ?? ''}
+				/>
 			</div>
 
 			<div class="field">
@@ -52,8 +70,9 @@
 						name="password"
 						type={showPassword ? 'text' : 'password'}
 						class="input"
-						autocomplete="current-password"
+						autocomplete="new-password"
 						required
+						minlength={12}
 					/>
 					<button
 						type="button"
@@ -96,10 +115,24 @@
 						{/if}
 					</button>
 				</div>
+				<p class="field-hint">At least 12 characters.</p>
+			</div>
+
+			<div class="field">
+				<label for="confirmPassword">Confirm password</label>
+				<input
+					id="confirmPassword"
+					name="confirmPassword"
+					type={showPassword ? 'text' : 'password'}
+					class="input"
+					autocomplete="new-password"
+					required
+					minlength={12}
+				/>
 			</div>
 
 			<div class="actions">
-				<button type="submit" class="btn">Sign in</button>
+				<button type="submit" class="btn">Create account</button>
 			</div>
 		</form>
 	</div>
@@ -139,5 +172,14 @@
 	.password-toggle:focus-visible {
 		outline: 2px solid var(--brand);
 		outline-offset: 2px;
+	}
+	.field-hint {
+		margin: 4px 0 0;
+		font-size: 0.85rem;
+		color: var(--ink-mute);
+	}
+	.optional {
+		color: var(--ink-mute);
+		font-weight: normal;
 	}
 </style>

@@ -54,11 +54,14 @@ enum VocabularyLessonType {
 enum UserRole {
   ADMIN
   MANAGER
+  USER
 }
 
 model User {
   id                 String            @id @default(cuid())
   username           String            @unique
+  email              String?           @unique
+  emailVerifiedAt    DateTime?
   displayName        String?
   passwordHash       String
   role               UserRole
@@ -66,12 +69,24 @@ model User {
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
   sessions           Session[]
+  emailVerificationTokens EmailVerificationToken[]
   recordedWordAudio  Word[]            @relation("WordAudioRecorder")
   recordedWordPluralAudio Word[]       @relation("WordPluralAudioRecorder")
   recordedSentenceAudio ExampleSentence[] @relation("ExampleSentenceAudioRecorder")
 }
 
 model Session {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model EmailVerificationToken {
   id        String   @id
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

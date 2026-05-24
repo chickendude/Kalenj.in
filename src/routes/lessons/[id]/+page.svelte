@@ -515,7 +515,28 @@
 		};
 	}
 
-	function enhanceDeleteWordForm() {
+	let confirmedDeleteWordId = $state<string | null>(null);
+
+	function enhanceDeleteWordForm({
+		formElement,
+		formData,
+		cancel
+	}: {
+		formElement: HTMLFormElement;
+		formData: FormData;
+		cancel: () => void;
+	}) {
+		const wordId = String(formData.get('id') ?? '');
+		if (confirmedDeleteWordId !== wordId) {
+			cancel();
+			pendingDelete = {
+				kind: 'word',
+				form: formElement,
+				wordLabel: formElement.dataset.wordLabel ?? ''
+			};
+			return;
+		}
+		confirmedDeleteWordId = null;
 		return async ({
 			result,
 			update
@@ -527,18 +548,6 @@
 			if (result.type !== 'success' && result.type !== 'failure') {
 				await applyAction(result);
 			}
-		};
-	}
-
-	function requestDeleteWord(event: SubmitEvent, wordLabel: string) {
-		if (pendingDelete?.kind === 'word' && pendingDelete.form === event.currentTarget) {
-			return;
-		}
-		event.preventDefault();
-		pendingDelete = {
-			kind: 'word',
-			form: event.currentTarget as HTMLFormElement,
-			wordLabel
 		};
 	}
 
@@ -559,9 +568,15 @@
 
 	function confirmPendingDelete() {
 		if (!pendingDelete) return;
-		const form = pendingDelete.form;
+		const { form, kind } = pendingDelete;
 		pendingDelete = null;
-		form.requestSubmit();
+		if (kind === 'word') {
+			const wordId = String(new FormData(form).get('id') ?? '');
+			confirmedDeleteWordId = wordId;
+			form.requestSubmit();
+		} else {
+			form.submit();
+		}
 	}
 
 	function handleLessonWordDragStart(event: DragEvent, lessonWordId: string) {
@@ -928,12 +943,8 @@
 									method="POST"
 									action="?/deleteWord"
 									class="inline-delete"
+									data-word-label={getWordLocal(lessonWord).kalenjin || lessonWord.kalenjin}
 									use:enhance={enhanceDeleteWordForm}
-									onsubmit={(event) =>
-										requestDeleteWord(
-											event,
-											getWordLocal(lessonWord).kalenjin || lessonWord.kalenjin
-										)}
 								>
 									<input type="hidden" name="id" value={lessonWord.id} />
 									<button type="submit" class="btn ghost btn-sm">Delete</button>

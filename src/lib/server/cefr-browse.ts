@@ -2,7 +2,7 @@ import { prisma } from '$lib/server/prisma';
 import { parsePositiveInteger } from '$lib/server/course-form';
 import type { CefrLevel } from '@prisma/client';
 
-const CEFR_PAGE_SIZE = 100;
+const CEFR_PAGE_SIZE = 25;
 const CEFR_RANDOM_SAMPLE_SIZE = 10;
 const CEFR_SORT_OPTIONS = ['alpha-asc', 'alpha-desc'] as const;
 export type CefrSortOption = (typeof CEFR_SORT_OPTIONS)[number];
@@ -92,14 +92,10 @@ export async function loadCefrBrowse(
 
 	const levelTargets = await fetchTargets(level, sort);
 
-	const posTokenCounts = new Map<string, number>();
-	const targetsWithPos = levelTargets.map((target) => {
-		const tokens = extractPosTokens(target.english);
-		for (const token of tokens) {
-			posTokenCounts.set(token, (posTokenCounts.get(token) ?? 0) + 1);
-		}
-		return { target, posTokens: tokens };
-	});
+	const targetsWithPos = levelTargets.map((target) => ({
+		target,
+		posTokens: extractPosTokens(target.english)
+	}));
 
 	const totalCount = levelTargets.length;
 	const coveredCount = levelTargets.filter((t) => t.coveredByLessonWord).length;
@@ -107,19 +103,36 @@ export async function loadCefrBrowse(
 	const posFilterSet = new Set(posFilters);
 	const queryLower = query.toLowerCase();
 
+	function matchesCoverageAndQuery({
+		target
+	}: {
+		target: (typeof targetsWithPos)[number]['target'];
+	}): boolean {
+		if (queryLower && !target.english.toLowerCase().includes(queryLower)) {
+			return false;
+		}
+		if (coverageFilter === 'covered' && !target.coveredByLessonWord) {
+			return false;
+		}
+		if (coverageFilter === 'uncovered' && target.coveredByLessonWord) {
+			return false;
+		}
+		return true;
+	}
+
+	// Count POS tokens within the current coverage + query slice so the chips
+	// reflect what is actually selectable in the visible list. POS filter is
+	// intentionally NOT applied here so each chip still shows its own count.
+	const posTokenCounts = new Map<string, number>();
+	for (const entry of targetsWithPos) {
+		if (!matchesCoverageAndQuery(entry)) continue;
+		for (const token of entry.posTokens) {
+			posTokenCounts.set(token, (posTokenCounts.get(token) ?? 0) + 1);
+		}
+	}
+
 	const filteredTargets = targetsWithPos
-		.filter(({ target }) => {
-			if (queryLower && !target.english.toLowerCase().includes(queryLower)) {
-				return false;
-			}
-			if (coverageFilter === 'covered' && !target.coveredByLessonWord) {
-				return false;
-			}
-			if (coverageFilter === 'uncovered' && target.coveredByLessonWord) {
-				return false;
-			}
-			return true;
-		})
+		.filter(matchesCoverageAndQuery)
 		.filter(({ posTokens }) => {
 			if (posFilterSet.size === 0) {
 				return true;

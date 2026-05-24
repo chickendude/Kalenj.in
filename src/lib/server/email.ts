@@ -3,7 +3,12 @@ import { env } from '$env/dynamic/private';
 
 const apiKey = env.RESEND_API_KEY ?? '';
 const fromAddress = env.MAIL_FROM ?? 'Kalenj.in <noreply@kalenj.in>';
-const client = apiKey ? new Resend(apiKey) : null;
+
+// Belt-and-suspenders: even if RESEND_API_KEY leaks into the test dev server,
+// refuse to instantiate the real Resend client when PLAYWRIGHT_E2E=1. The
+// playwright-e2e.config.ts webServer always sets this flag.
+const blockedForTests = process.env.PLAYWRIGHT_E2E === '1';
+const client = apiKey && !blockedForTests ? new Resend(apiKey) : null;
 
 export type SendEmailInput = {
 	to: string;

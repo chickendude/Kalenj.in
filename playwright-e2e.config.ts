@@ -24,6 +24,15 @@ export default defineConfig({
 		reuseExistingServer: !process.env.CI,
 		stdout: 'pipe',
 		stderr: 'pipe',
-		timeout: 120_000
+		timeout: 120_000,
+		// CRITICAL: never let the test dev server reach the real Resend account,
+		// even if .env has RESEND_API_KEY set. Without these overrides each E2E
+		// run would burn ~7-8 sends against the daily quota.
+		env: {
+			...process.env,
+			RESEND_API_KEY: '',
+			MAIL_FROM: '',
+			PLAYWRIGHT_E2E: '1'
+		}
 	}
 });

@@ -20,6 +20,7 @@
 		page?: number;
 		coverage?: 'all' | 'covered' | 'uncovered';
 		pos?: string[];
+		random?: number | null;
 	};
 
 	let {
@@ -35,6 +36,7 @@
 		filteredCount,
 		totalCount,
 		coveredCount,
+		isRandom = false,
 		buildUrl,
 		replaceAction = null,
 		replaceEnglishList = '',
@@ -54,6 +56,7 @@
 		filteredCount: number;
 		totalCount: number;
 		coveredCount: number;
+		isRandom?: boolean;
 		buildUrl: (changes: BuildUrlInput) => string;
 		replaceAction?: string | null;
 		replaceEnglishList?: string;
@@ -124,6 +127,10 @@
 
 	async function goToPage(nextPage: number) {
 		await navigateTo(buildUrl({ page: nextPage }));
+	}
+
+	async function pickRandomTen() {
+		await navigateTo(buildUrl({ random: Date.now(), page: 1 }));
 	}
 </script>
 
@@ -271,12 +278,27 @@
 		</div>
 	</div>
 
-	<p class="cefr-results-summary">
-		Showing {targets.length} of {filteredCount}
-		{#if query}
-			for “{query}”
-		{/if}
-	</p>
+	<div class="cefr-results-row">
+		<p class="cefr-results-summary">
+			{#if isRandom}
+				Random {targets.length} of {filteredCount}
+			{:else}
+				Showing {targets.length} of {filteredCount}
+			{/if}
+			{#if query}
+				for “{query}”
+			{/if}
+		</p>
+		<button
+			type="button"
+			class="cefr-chip"
+			class:active={isRandom}
+			onclick={pickRandomTen}
+			title="Pick 10 random targets from the current filter"
+		>
+			{isRandom ? 'Re-roll 10' : 'Random 10'}
+		</button>
+	</div>
 
 	{#if targets.length === 0}
 		<p class="cefr-empty">No targets found.</p>
@@ -303,7 +325,7 @@
 			{/each}
 		</ul>
 
-		{#if totalPages > 1}
+		{#if !isRandom && totalPages > 1}
 			<nav class="cefr-pagination">
 				{#if page > 1}
 					<a
@@ -459,10 +481,18 @@
 		gap: 8px;
 	}
 
+	.cefr-results-row {
+		align-items: center;
+		display: flex;
+		gap: 8px;
+		justify-content: space-between;
+		margin: 0 0 10px;
+	}
+
 	.cefr-results-summary {
 		color: var(--ink-soft);
 		font-size: 12px;
-		margin: 0 0 10px;
+		margin: 0;
 	}
 
 	.cefr-empty {

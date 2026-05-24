@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { enhance } from '$app/forms';
+	import { applyAction, enhance } from '$app/forms';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionResult } from '@sveltejs/kit';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
@@ -26,6 +26,7 @@
 		page?: number;
 		coverage?: 'all' | 'covered' | 'uncovered';
 		pos?: string[];
+		random?: number | null;
 	};
 
 	function buildLessonCefrUrl(changes: CefrUrlChanges = {}): string {
@@ -39,8 +40,10 @@
 		if (query) params.set('q', query);
 		if (sort !== 'alpha-asc') params.set('sort', sort);
 		if (page > 1) params.set('page', String(page));
-		if (coverage !== 'all') params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+		if (coverage === 'covered') params.set('covered', 'yes');
+		else if (coverage === 'all') params.set('covered', 'all');
 		if (pos.length > 0) params.set('pos', pos.join(','));
+		if (changes.random) params.set('random', String(changes.random));
 
 		const qs = params.toString();
 		return qs ? `/lessons/${data.lesson.id}?${qs}` : `/lessons/${data.lesson.id}`;
@@ -381,15 +384,39 @@
 		};
 	}
 
-	function requestDeleteWord(event: SubmitEvent, wordLabel: string) {
-		if (pendingDelete?.kind === 'word' && pendingDelete.form === event.currentTarget) {
+	let confirmedDeleteWordId = $state<string | null>(null);
+
+	function enhanceDeleteWordForm({
+		formElement,
+		formData,
+		cancel
+	}: {
+		formElement: HTMLFormElement;
+		formData: FormData;
+		cancel: () => void;
+	}) {
+		const wordId = String(formData.get('id') ?? '');
+		if (confirmedDeleteWordId !== wordId) {
+			cancel();
+			pendingDelete = {
+				kind: 'word',
+				form: formElement,
+				wordLabel: formElement.dataset.wordLabel ?? ''
+			};
 			return;
 		}
-		event.preventDefault();
-		pendingDelete = {
-			kind: 'word',
-			form: event.currentTarget as HTMLFormElement,
-			wordLabel
+		confirmedDeleteWordId = null;
+		return async ({
+			result,
+			update
+		}: {
+			result: EnhancedSubmitResult;
+			update: EnhancedUpdate;
+		}) => {
+			await update({ reset: false, invalidateAll: true });
+			if (result.type !== 'success' && result.type !== 'failure') {
+				await applyAction(result);
+			}
 		};
 	}
 
@@ -410,9 +437,15 @@
 
 	function confirmPendingDelete() {
 		if (!pendingDelete) return;
-		const form = pendingDelete.form;
+		const { form, kind } = pendingDelete;
 		pendingDelete = null;
-		form.submit();
+		if (kind === 'word') {
+			const wordId = String(new FormData(form).get('id') ?? '');
+			confirmedDeleteWordId = wordId;
+			form.requestSubmit();
+		} else {
+			form.submit();
+		}
 	}
 
 	function handleLessonWordDragStart(event: DragEvent, lessonWordId: string) {
@@ -544,6 +577,7 @@
 					filteredCount={data.cefrBrowse.filteredCount}
 					totalCount={data.cefrBrowse.totalCount}
 					coveredCount={data.cefrBrowse.coveredCount}
+					isRandom={data.cefrBrowse.isRandom}
 					buildUrl={buildLessonCefrUrl}
 					collapsible
 					bind:expanded={vocabPanelsOpen}
@@ -778,11 +812,8 @@
 									method="POST"
 									action="?/deleteWord"
 									class="inline-delete"
-									onsubmit={(event) =>
-										requestDeleteWord(
-											event,
-											getWordLocal(lessonWord).kalenjin || lessonWord.kalenjin
-										)}
+									data-word-label={getWordLocal(lessonWord).kalenjin || lessonWord.kalenjin}
+									use:enhance={enhanceDeleteWordForm}
 								>
 									<input type="hidden" name="id" value={lessonWord.id} />
 									<button type="submit" class="btn ghost btn-sm">Delete</button>

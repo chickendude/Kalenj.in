@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import LemmaSearchPicker from './LemmaSearchPicker.svelte';
 	import type { ActionResult } from '@sveltejs/kit';
@@ -11,6 +12,7 @@
 			kalenjin: string;
 			translations: string;
 			partOfSpeech?: PartOfSpeech | string | null;
+			otherLessons?: { id: string; title: string }[];
 		} | null;
 		mode: 'search' | 'create';
 		draftKalenjin: string;
@@ -72,6 +74,47 @@
 
 	let addWordState = $state<AddWordPickerState>(emptyAddWordState());
 
+	let pendingDuplicateWord = $state<{
+		form: HTMLFormElement;
+		kalenjin: string;
+		lessons: { id: string; title: string }[];
+	} | null>(null);
+	let confirmedDuplicateWordId = $state<string | null>(null);
+
+	$effect(() => {
+		const selectedId = addWordState.selectedWord?.id ?? null;
+		if (confirmedDuplicateWordId && confirmedDuplicateWordId !== selectedId) {
+			confirmedDuplicateWordId = null;
+		}
+	});
+
+	function handleAddWordSubmit(event: SubmitEvent) {
+		const selected = addWordState.selectedWord;
+		if (!selected || !selected.otherLessons?.length) return;
+		if (confirmedDuplicateWordId === selected.id) return;
+		event.preventDefault();
+		pendingDuplicateWord = {
+			form: event.currentTarget as HTMLFormElement,
+			kalenjin: selected.kalenjin,
+			lessons: selected.otherLessons
+		};
+	}
+
+	function confirmPendingDuplicate() {
+		if (!pendingDuplicateWord) return;
+		const selected = addWordState.selectedWord;
+		const form = pendingDuplicateWord.form;
+		pendingDuplicateWord = null;
+		if (selected) {
+			confirmedDuplicateWordId = selected.id;
+		}
+		form.requestSubmit();
+	}
+
+	function cancelPendingDuplicate() {
+		pendingDuplicateWord = null;
+	}
+
 	function enhanceAddWordForm() {
 		return async ({
 			result,
@@ -107,6 +150,7 @@
 		class="add-word-form"
 		enctype="multipart/form-data"
 		use:enhance={enhanceAddWordForm}
+		onsubmit={handleAddWordSubmit}
 	>
 		<input type="hidden" name="lessonId" value={lessonId} />
 
@@ -162,15 +206,42 @@
 			<p class="error-text">{addWordState.error}</p>
 		{/if}
 
+		{#if addWordState.selectedWord?.otherLessons?.length}
+			<div class="duplicate-warning" role="status">
+				<strong>Already in another lesson.</strong>
+				<span>
+					"{addWordState.selectedWord.kalenjin}" is taught in
+					{#each addWordState.selectedWord.otherLessons as lesson, index}
+						<a href={`/lessons/${lesson.id}`} target="_blank" rel="noopener">{lesson.title}</a>{#if index < addWordState.selectedWord.otherLessons.length - 1}, {/if}
+					{/each}.
+				</span>
+			</div>
+		{/if}
+
 		<div class="add-word-actions">
 			<button type="submit" class="btn">
-				{addWordState.selectedWord
-					? `Add "${addWordState.selectedWord.kalenjin}" to lesson`
-					: 'Create lesson word'}
+				{#if addWordState.selectedWord && addWordState.selectedWord.otherLessons?.length && confirmedDuplicateWordId !== addWordState.selectedWord.id}
+					Add "{addWordState.selectedWord.kalenjin}" anyway
+				{:else if addWordState.selectedWord}
+					Add "{addWordState.selectedWord.kalenjin}" to lesson
+				{:else}
+					Create lesson word
+				{/if}
 			</button>
 		</div>
 	</form>
 </section>
+
+<ConfirmDialog
+	open={pendingDuplicateWord !== null}
+	title="Word already in another lesson"
+	message={pendingDuplicateWord
+		? `"${pendingDuplicateWord.kalenjin}" is already taught in ${pendingDuplicateWord.lessons.map((l) => `"${l.title}"`).join(', ')}. Add it to this lesson anyway?`
+		: ''}
+	confirmLabel="Add anyway"
+	onconfirm={confirmPendingDuplicate}
+	oncancel={cancelPendingDuplicate}
+/>
 
 <style>
 	.card {
@@ -209,6 +280,21 @@
 	.add-word-actions {
 		display: flex;
 		justify-content: flex-end;
+	}
+
+	.duplicate-warning {
+		background: color-mix(in oklch, var(--warning, oklch(0.85 0.18 80)) 18%, var(--bg-raised));
+		border: 1px solid color-mix(in oklch, var(--warning, oklch(0.85 0.18 80)) 45%, var(--line));
+		border-radius: var(--radius);
+		color: var(--ink);
+		display: grid;
+		font-size: 13px;
+		gap: 4px;
+		padding: 10px 14px;
+	}
+
+	.duplicate-warning a {
+		color: var(--brand);
 	}
 
 	.add-word-images {

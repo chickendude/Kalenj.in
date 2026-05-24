@@ -8,6 +8,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech?: PartOfSpeech | string | null;
+		otherLessons?: { id: string; title: string }[];
 	};
 
 	let {

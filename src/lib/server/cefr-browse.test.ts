@@ -39,12 +39,26 @@ describe('loadCefrBrowse', () => {
 			target('big (adjective)', true)
 		]);
 
-		const data = await load({});
+		const data = await load({ covered: 'all' });
 
 		expect(data.totalCount).toBe(3);
 		expect(data.coveredCount).toBe(2);
 		expect(data.targets).toHaveLength(3);
 		expect(data.page).toBe(1);
+	});
+
+	it('defaults to the uncovered coverage filter when no param is supplied', async () => {
+		mocks.prisma.cefrEnglishTarget.findMany.mockResolvedValue([
+			target('a', true),
+			target('b', false),
+			target('c', true)
+		]);
+
+		const data = await load({});
+
+		expect(data.coverageFilter).toBe('uncovered');
+		expect(data.filteredCount).toBe(1);
+		expect(data.targets.map((t) => t.english)).toEqual(['b']);
 	});
 
 	it('filters by case-insensitive query', async () => {

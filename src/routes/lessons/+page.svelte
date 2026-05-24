@@ -92,6 +92,7 @@
 		page?: number;
 		coverage?: 'all' | 'covered' | 'uncovered';
 		pos?: string[];
+		random?: number | null;
 	};
 
 	function buildLessonsUrl(changes: BuildUrlChanges = {}): string {
@@ -117,12 +118,18 @@
 			params.set('page', String(page));
 		}
 
-		if (coverage !== 'all') {
-			params.set('covered', coverage === 'covered' ? 'yes' : 'no');
+		if (coverage === 'covered') {
+			params.set('covered', 'yes');
+		} else if (coverage === 'all') {
+			params.set('covered', 'all');
 		}
 
 		if (pos.length > 0) {
 			params.set('pos', pos.join(','));
+		}
+
+		if (changes.random) {
+			params.set('random', String(changes.random));
 		}
 
 		return `/lessons?${params.toString()}`;
@@ -390,6 +397,7 @@
 				filteredCount={data.cefrBrowse.filteredCount}
 				totalCount={selectedLevelSummary?.cefrTotalCount ?? data.cefrBrowse.totalCount}
 				coveredCount={selectedLevelSummary?.cefrCoveredCount ?? data.cefrBrowse.coveredCount}
+				isRandom={data.cefrBrowse.isRandom}
 				buildUrl={buildLessonsUrl}
 				replaceAction="?/replaceCefrTargets"
 				replaceEnglishList={formValues.englishList ?? ''}

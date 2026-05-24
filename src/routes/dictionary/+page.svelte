@@ -314,7 +314,6 @@
 		addWordIntent = intent;
 		saveAddWordIntent(intent);
 		addWordActionMenuOpen = false;
-		if (!addWordSubmitting) addWordFormEl?.requestSubmit();
 	}
 
 	$effect(() => {
@@ -348,6 +347,17 @@
 			closeAddWord();
 		}
 	}
+
+	$effect(() => {
+		if (!addWordOpen) return;
+		function onWindowKeydown(event: KeyboardEvent) {
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			closeAddWord();
+		}
+		window.addEventListener('keydown', onWindowKeydown);
+		return () => window.removeEventListener('keydown', onWindowKeydown);
+	});
 
 	$effect(() => {
 		if (!addWordOpen) return;

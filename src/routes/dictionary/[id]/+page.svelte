@@ -294,49 +294,49 @@
 						audioUrl={data.word.audioUrl}
 						label={`Play pronunciation of ${kalenjinValue}`}
 					/>
-					<div class="entry-title-pills">
-						{#if partOfSpeechValue}
-							<PartOfSpeechInline value={partOfSpeechValue} />
-						{/if}
-						{#if isSwahiliLoan}
-							<SwahiliLoanIndicator />
-						{/if}
-						{#if showPlural}
-							{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
-							{@const primaryPlural = pluralVariants.pluralForm}
-							{@const altPlurals = pluralVariants.alternativePluralForms}
-							<span class="plural-chip">
-								<span class="plural-label">Plural</span>
-								<span class="plural-value">{primaryPlural}</span>
-								{#if data.word.pluralAudioUrl}
-									<AudioPlayButton
-										audioUrl={data.word.pluralAudioUrl}
-										size="sm"
-										label={`Play plural pronunciation of ${primaryPlural}`}
-									/>
-								{/if}
-								{#if altPlurals}
-									<span class="plural-value plural-value-alt">, {altPlurals}</span>
-								{/if}
-							</span>
-						{:else if showPluralOnly}
-							<WordPill text="pl" tooltip="Plural-only" lowercase />
-						{/if}
-					</div>
+					{#if partOfSpeechValue || isSwahiliLoan || showPlural || showPluralOnly}
+						<div class="entry-title-pills">
+							{#if partOfSpeechValue}
+								<PartOfSpeechInline value={partOfSpeechValue} />
+							{/if}
+							{#if isSwahiliLoan}
+								<SwahiliLoanIndicator />
+							{/if}
+							{#if showPlural}
+								{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
+								{@const primaryPlural = pluralVariants.pluralForm}
+								{@const altPlurals = pluralVariants.alternativePluralForms}
+								<span class="plural-chip">
+									<span class="plural-label">Plural</span>
+									<span class="plural-value">{primaryPlural}</span>
+									{#if data.word.pluralAudioUrl}
+										<AudioPlayButton
+											audioUrl={data.word.pluralAudioUrl}
+											size="sm"
+											label={`Play plural pronunciation of ${primaryPlural}`}
+										/>
+									{/if}
+									{#if altPlurals}
+										<span class="plural-value plural-value-alt">, {altPlurals}</span>
+									{/if}
+								</span>
+							{:else if showPluralOnly}
+								<WordPill text="pl" tooltip="Plural-only" lowercase abbreviation />
+							{/if}
+						</div>
+					{/if}
 				</div>
 				{#if altSpellingsList.length > 0}
-					<div class="entry-meta">
-						<button
-							type="button"
-							class="alt-spellings-toggle"
-							aria-expanded={altSpellingsOpen}
-							aria-controls="alt-spellings-panel"
-							onclick={() => (altSpellingsOpen = !altSpellingsOpen)}
-						>
-							Also spelled ({altSpellingsList.length})
-							<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
-						</button>
-					</div>
+					<button
+						type="button"
+						class="alt-spellings-toggle"
+						aria-expanded={altSpellingsOpen}
+						aria-controls="alt-spellings-panel"
+						onclick={() => (altSpellingsOpen = !altSpellingsOpen)}
+					>
+						Also spelled ({altSpellingsList.length})
+						<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
+					</button>
 				{/if}
 				{#if altSpellingsOpen && altSpellingsList.length > 0}
 					<div id="alt-spellings-panel" class="alt-spellings-panel">

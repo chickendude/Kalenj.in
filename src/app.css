@@ -2,7 +2,7 @@
 
 @font-face {
   font-family: "Kalenjin Display Fallback";
-  src: local("Georgia");
+  src: local("Georgia"), local("DejaVu Serif"), local("Liberation Serif"), local("Times New Roman");
   size-adjust: 95.25%;
   ascent-override: 95%;
   descent-override: 25%;

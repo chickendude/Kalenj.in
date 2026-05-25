@@ -25,7 +25,7 @@
 		checked?: boolean;
 	} = $props();
 
-	const label = $derived(`${text} - ${tooltip}`);
+	const label = $derived(`${text}, ${tooltip}`);
 </script>
 
 <Tooltip label={tooltip}>

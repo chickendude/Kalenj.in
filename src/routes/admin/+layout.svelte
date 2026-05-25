@@ -6,6 +6,9 @@
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 </script>
 
-<AdminTabs showUsers={data.user?.role === 'ADMIN'} />
+<AdminTabs
+	showUsers={data.user?.role === 'ADMIN'}
+	counts={{ '/admin/suggestions': data.pendingSuggestionCount }}
+/>
 
 {@render children()}

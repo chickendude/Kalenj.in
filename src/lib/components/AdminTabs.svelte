@@ -2,7 +2,10 @@
 	import { page } from '$app/state';
 	import { ADMIN_TABS } from '$lib/admin-tabs';
 
-	let { showUsers = false }: { showUsers?: boolean } = $props();
+	let {
+		showUsers = false,
+		counts = {}
+	}: { showUsers?: boolean; counts?: Record<string, number> } = $props();
 
 	const visibleTabs = $derived(ADMIN_TABS.filter((tab) => !tab.adminOnly || showUsers));
 
@@ -14,12 +17,13 @@
 
 <nav class="admin-tabs" aria-label="Admin tools">
 	{#each visibleTabs as tab (tab.href)}
+		{@const count = counts[tab.href]}
 		<a
 			href={tab.href}
 			class:active={isActive(tab.href)}
 			aria-current={isActive(tab.href) ? 'page' : undefined}
 		>
-			{tab.label}
+			{tab.label}{#if count && count > 0}<span class="tab-count" aria-label={`${count} pending`}>({count})</span>{/if}
 		</a>
 	{/each}
 </nav>
@@ -78,6 +82,16 @@
 		border-color: var(--line);
 		border-bottom-color: var(--bg);
 		color: var(--ink);
+	}
+
+	.tab-count {
+		margin-left: 4px;
+		font-weight: 500;
+		color: var(--ink-mute);
+	}
+
+	.admin-tabs a.active .tab-count {
+		color: var(--accent);
 	}
 
 	@media (max-width: 720px) {

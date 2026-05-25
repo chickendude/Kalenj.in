@@ -41,6 +41,9 @@
 		];
 		if (data.user) {
 			items.push({ href: '/lessons', label: 'Lessons' });
+			if (data.user.role === 'USER') {
+				items.push({ href: '/suggest', label: 'Contribute' });
+			}
 		}
 		return items;
 	});

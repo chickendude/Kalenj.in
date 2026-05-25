@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { page, navigating } from '$app/state';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import favicon from '$lib/assets/favicon.svg';
 	import { initTheme, theme, toggleTheme } from '$lib/stores/theme';
+	import { createEditMode } from '$lib/stores/editMode.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import NavSearch from '$lib/components/NavSearch.svelte';
 	import {
@@ -21,6 +22,12 @@
 	let { data, children }: { data: LayoutData; children: Snippet } = $props();
 	const year = new Date().getFullYear();
 	let adminHref = $state(DEFAULT_ADMIN_TAB);
+
+	// Per-request edit-mode context, hydrated from the server-rendered cookie
+	// value so the first paint matches the user's stored preference (no flash).
+	// Only the initial value is read; subsequent toggles flow through the
+	// context's setter (which also writes the cookie).
+	createEditMode(untrack(() => data.editMode));
 
 	onMount(() => {
 		initTheme();

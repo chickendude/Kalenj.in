@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { invalidateAll } from '$app/navigation';
+	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 
 	type Props = {
@@ -53,7 +55,9 @@
 		}
 
 		try {
-			mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			mediaStream = await navigator.mediaDevices.getUserMedia({
+				audio: { echoCancellation: true, noiseSuppression: true }
+			});
 		} catch (err) {
 			errorMessage =
 				err instanceof DOMException && err.name === 'NotAllowedError'
@@ -200,42 +204,91 @@
 
 <div class="audio-recorder">
 	{#if currentAudioUrl && mode === 'idle'}
-		<audio controls src={currentAudioUrl} preload="none"></audio>
 		<div class="audio-actions">
-			<button type="button" class="btn-sm" onclick={startRecording} disabled={isSaving || isRemoving}>
-				Re-record
-			</button>
-			<button
-				type="button"
-				class="btn-sm ghost"
-				onclick={() => fileInput?.click()}
-				disabled={isSaving || isRemoving}
-			>
-				Replace with file
-			</button>
-			<button
-				type="button"
-				class="btn-sm danger"
-				onclick={() => (confirmRemove = true)}
-				disabled={isSaving || isRemoving}
-			>
-				Remove
-			</button>
+			<AudioPlayButton audioUrl={currentAudioUrl} label="Play recorded audio" />
+			<Tooltip label="Re-record">
+				<button
+					type="button"
+					class="icon-btn"
+					onclick={startRecording}
+					disabled={isSaving || isRemoving}
+					aria-label="Re-record"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+						<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+						<line x1="12" y1="19" x2="12" y2="23" />
+						<line x1="8" y1="23" x2="16" y2="23" />
+					</svg>
+				</button>
+			</Tooltip>
+			<Tooltip label="Replace with file">
+				<button
+					type="button"
+					class="icon-btn"
+					onclick={() => fileInput?.click()}
+					disabled={isSaving || isRemoving}
+					aria-label="Replace with file"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+						<polyline points="17 8 12 3 7 8" />
+						<line x1="12" y1="3" x2="12" y2="15" />
+					</svg>
+				</button>
+			</Tooltip>
+			<Tooltip label="Remove audio">
+				<button
+					type="button"
+					class="icon-btn danger"
+					onclick={() => (confirmRemove = true)}
+					disabled={isSaving || isRemoving}
+					aria-label="Remove audio"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<polyline points="3 6 5 6 21 6" />
+						<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+						<path d="M10 11v6" />
+						<path d="M14 11v6" />
+						<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+					</svg>
+				</button>
+			</Tooltip>
 		</div>
 	{:else if mode === 'idle'}
 		<p class="audio-empty">No audio yet.</p>
 		<div class="audio-actions">
-			<button type="button" class="btn-sm" onclick={startRecording} disabled={isSaving}>
-				Record
-			</button>
-			<button
-				type="button"
-				class="btn-sm ghost"
-				onclick={() => fileInput?.click()}
-				disabled={isSaving}
-			>
-				Upload file
-			</button>
+			<Tooltip label="Record">
+				<button
+					type="button"
+					class="icon-btn"
+					onclick={startRecording}
+					disabled={isSaving}
+					aria-label="Record"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
+						<path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+						<line x1="12" y1="19" x2="12" y2="23" />
+						<line x1="8" y1="23" x2="16" y2="23" />
+					</svg>
+				</button>
+			</Tooltip>
+			<Tooltip label="Upload file">
+				<button
+					type="button"
+					class="icon-btn"
+					onclick={() => fileInput?.click()}
+					disabled={isSaving}
+					aria-label="Upload file"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+						<polyline points="17 8 12 3 7 8" />
+						<line x1="12" y1="3" x2="12" y2="15" />
+					</svg>
+				</button>
+			</Tooltip>
 		</div>
 	{:else if mode === 'recording'}
 		<div class="audio-recording-indicator" role="status" aria-live="polite">
@@ -301,6 +354,7 @@
 		width: 100%;
 	}
 	.audio-actions {
+		align-items: center;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 8px;
@@ -341,5 +395,41 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.audio-dot { animation: none; }
+	}
+	.icon-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		height: 36px;
+		justify-content: center;
+		padding: 0;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 36px;
+	}
+	.icon-btn:hover:not(:disabled) {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--on-brand, white);
+	}
+	.icon-btn:focus-visible {
+		outline: 2px solid var(--brand);
+		outline-offset: 2px;
+	}
+	.icon-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+	.icon-btn.danger {
+		color: #b91c1c;
+	}
+	.icon-btn.danger:hover:not(:disabled) {
+		background: #b91c1c;
+		border-color: #b91c1c;
+		color: white;
 	}
 </style>

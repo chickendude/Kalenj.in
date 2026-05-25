@@ -13,7 +13,7 @@
 
 	const LABELS: Record<ExampleSentenceStatus, string> = {
 		NEEDS_PROOFREAD: 'Needs proofread',
-		IN_CORPUS: 'In corpus',
+		IN_CORPUS: 'Proofread',
 		STORY_ONLY: 'Story only'
 	};
 

@@ -3,16 +3,20 @@
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import EditModeToggle from '$lib/components/EditModeToggle.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
 	import { invalidateAll } from '$app/navigation';
+	import { untrack } from 'svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
 	import { renderMarkdown } from '$lib/markdown';
+	import { getEditMode } from '$lib/stores/editMode.svelte';
 
 	let { data, form } = $props();
 
@@ -32,7 +36,7 @@
 		if (form?.setSentenceStatusSuccess) {
 			const labels = {
 				NEEDS_PROOFREAD: 'Needs proofread',
-				IN_CORPUS: 'In corpus',
+				IN_CORPUS: 'Proofread',
 				STORY_ONLY: 'Story only'
 			} as const;
 			toast.success(`Status set to "${labels[form.status]}".`);
@@ -46,8 +50,10 @@
 	type InlineSentenceField = 'kalenjin' | 'notes';
 	type SentenceInlineField = InlineSentenceField | 'english';
 
-	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
-	const canSeeStoryLinks = $derived(data.user?.role === 'ADMIN');
+	const editModeCtx = getEditMode();
+	const isStaff = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
+	const canEdit = $derived(isStaff && editModeCtx.value);
+	const canSeeStoryLinks = $derived(data.user?.role === 'ADMIN' && editModeCtx.value);
 
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
 	let autoLemmaForm = $state<HTMLFormElement | null>(null);
@@ -60,9 +66,13 @@
 	let inlineSentenceEditorHeight = $state<number | null>(null);
 	let kalenjinDisplayShell = $state<HTMLDivElement | null>(null);
 	let notesDisplayShell = $state<HTMLDivElement | null>(null);
-	let sentenceKalenjin = $state('');
-	let sentenceEnglish = $state('');
-	let sentenceNotes = $state('');
+	// Seed from the loaded data so SSR renders the actual sentence/translation
+	// from the first paint — otherwise the page reflows on hydration when the
+	// effect below copies the values in. The effect handles subsequent updates
+	// when `data.sentence` changes (e.g., after a save + invalidate).
+	let sentenceKalenjin = $state(untrack(() => data.sentence.kalenjin));
+	let sentenceEnglish = $state(untrack(() => data.sentence.english));
+	let sentenceNotes = $state(untrack(() => data.sentence.notes ?? ''));
 
 	let sentenceTokens = $state<SentenceToken[]>([]);
 	const displayedSentenceTokens = $derived(
@@ -286,8 +296,8 @@
 				{/if}
 			</div>
 		</div>
-		{#if canEdit}
-			<div class="sentence-admin-actions">
+		<div class="sentence-admin-actions">
+			{#if canEdit}
 				<form
 					bind:this={autoLemmaForm}
 					method="POST"
@@ -296,9 +306,21 @@
 					use:enhance={() => async ({ update }) => update({ reset: false })}
 					onsubmit={requestAutoLemma}
 				>
-					<button type="button" class="btn-sm ghost" onclick={openAutoLemmaDialog}>
-						Auto-fill missing lemmas
-					</button>
+					<Tooltip label="Auto-fill missing lemmas">
+						<button
+							type="button"
+							class="icon-action-btn"
+							onclick={openAutoLemmaDialog}
+							aria-label="Auto-fill missing lemmas"
+						>
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<path d="m19 11-8-8-8.6 8.6a2 2 0 0 0 0 2.8l5.2 5.2a2 2 0 0 0 2.8 0L19 11Z" />
+								<path d="m5 2 5 5" />
+								<path d="M2 13h15" />
+								<path d="M22 20a2 2 0 1 1-4 0c0-1.6 1.7-2.4 2-4 .3 1.6 2 2.4 2 4Z" />
+							</svg>
+						</button>
+					</Tooltip>
 				</form>
 				<form
 					method="POST"
@@ -306,10 +328,29 @@
 					class="sentence-action-form"
 					onsubmit={requestDeleteSentence}
 				>
-					<button type="submit" class="btn-sm danger">Delete sentence</button>
+					<Tooltip label="Delete sentence">
+						<button
+							type="submit"
+							class="icon-action-btn danger"
+							aria-label="Delete sentence"
+						>
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+								<polyline points="3 6 5 6 21 6" />
+								<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+								<path d="M10 11v6" />
+								<path d="M14 11v6" />
+								<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+							</svg>
+						</button>
+					</Tooltip>
 				</form>
-			</div>
-		{/if}
+			{/if}
+			{#if isStaff}
+				<div class="edit-toggle-slot">
+					<EditModeToggle />
+				</div>
+			{/if}
+		</div>
 	</div>
 
 	<div class="entry-head">
@@ -467,7 +508,7 @@
 		</form>
 	{/if}
 
-	{#if data.user}
+	{#if canEdit}
 		<h2 class="section-title">Token mapping</h2>
 		<p class="hint">Click a word below to link a lemma, edit meaning, or split and combine words.</p>
 
@@ -539,6 +580,49 @@
 	}
 	.sentence-action-form {
 		margin: 0;
+	}
+	.icon-action-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		height: 32px;
+		justify-content: center;
+		padding: 0;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 32px;
+	}
+	.icon-action-btn:hover:not(:disabled) {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--on-brand, white);
+	}
+	.icon-action-btn:focus-visible {
+		outline: 2px solid var(--brand);
+		outline-offset: 2px;
+	}
+	.icon-action-btn:disabled {
+		cursor: not-allowed;
+		opacity: 0.5;
+	}
+	.icon-action-btn.danger {
+		color: #b91c1c;
+	}
+	.icon-action-btn.danger:hover:not(:disabled) {
+		background: #b91c1c;
+		border-color: #b91c1c;
+		color: white;
+	}
+	/* Visually separate the edit-mode toggle from the destructive icon so it's
+	   harder to misclick. */
+	.edit-toggle-slot {
+		align-items: center;
+		display: inline-flex;
+		margin-left: 12px;
 	}
 	.entry-label-row {
 		align-items: center;

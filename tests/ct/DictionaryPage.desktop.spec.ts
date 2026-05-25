@@ -17,7 +17,8 @@ const data = {
 	missing: '' as const,
 	words: [],
 	totalCount: 0,
-	user: editorUser
+	user: editorUser,
+	editMode: true
 };
 
 async function stubDictionaryRequests(page: Page, postUrls: string[] = []) {

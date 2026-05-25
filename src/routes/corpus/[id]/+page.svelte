@@ -333,6 +333,11 @@
 					aria-label="Edit original sentence"
 					onclick={() => beginInlineSentenceEdit('kalenjin')}
 					onkeydown={(event) => {
+						// Only handle key events targeted at the shell itself, so
+						// Space/Enter on the wrapped AudioPlayButton (or token
+						// buttons) keeps its native click behavior instead of
+						// being hijacked into starting an edit.
+						if (event.target !== event.currentTarget) return;
 						if (event.key === 'Enter' || event.key === ' ') {
 							event.preventDefault();
 							beginInlineSentenceEdit('kalenjin');

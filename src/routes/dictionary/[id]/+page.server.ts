@@ -20,6 +20,7 @@ type RelatedWordSummary = {
 	kalenjin: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
+	isSwahiliLoan: boolean;
 };
 
 function readText(formData: FormData, key: string): string {
@@ -62,14 +63,26 @@ export const load: PageServerLoad = async ({ params }) => {
 			relatedWords: {
 				include: {
 					relatedWord: {
-						select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+						select: {
+							id: true,
+							kalenjin: true,
+							translations: true,
+							partOfSpeech: true,
+							isSwahiliLoan: true
+						}
 					}
 				}
 			},
 			relatedToWords: {
 				include: {
 					word: {
-						select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+						select: {
+							id: true,
+							kalenjin: true,
+							translations: true,
+							partOfSpeech: true,
+							isSwahiliLoan: true
+						}
 					}
 				}
 			}

@@ -47,7 +47,8 @@
 		position: absolute;
 		text-align: center;
 		transition: opacity 0.12s ease-out;
-		white-space: nowrap;
+		white-space: normal;
+		overflow-wrap: anywhere;
 		width: max-content;
 		z-index: 50;
 	}

@@ -1,4 +1,6 @@
 <script lang="ts">
+	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
+
 	type SearchResult = {
 		id: string;
 		[key: string]: unknown;
@@ -104,6 +106,9 @@
 							rel="noopener"
 						>
 							<span class="dup-primary">{getString(result[primaryKey])}</span>
+							{#if result.isSwahiliLoan === true}
+								<SwahiliLoanIndicator compact />
+							{/if}
 							<span class="dup-sep" aria-hidden="true">—</span>
 							<span class="dup-secondary">{getString(result[secondaryKey])}</span>
 						</a>

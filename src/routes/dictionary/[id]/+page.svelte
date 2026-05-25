@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
@@ -30,6 +29,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
+		isSwahiliLoan: boolean;
 	};
 	const POS_LABELS = PART_OF_SPEECH_LABELS;
 	const values = $derived(form?.values ?? data.word);
@@ -39,7 +39,8 @@
 	const editMode = $derived(isStaff && editModeCtx.value);
 
 	let imageExpanded = $state(false);
-	let liveImageUrl = $state<string | null>(untrack(() => data.word.imageUrl));
+	let liveImageUrl = $state<string | null>(null);
+	let imageDirty = $state(false);
 	let kalenjinValue = $state('');
 	let translationsValue = $state('');
 	let notesValue = $state('');
@@ -95,6 +96,9 @@
 		presentOkwek = data.word.presentOkwek ?? '';
 		presentIchek = data.word.presentIchek ?? '';
 	});
+	$effect(() => {
+		if (!imageDirty) liveImageUrl = data.word.imageUrl;
+	});
 
 	const translations = $derived(parseTranslationList(translationsValue));
 	const altSpellingsList = $derived(
@@ -117,7 +121,7 @@
 			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
 			isPluralOnly !== data.word.isPluralOnly ||
 			isSwahiliLoan !== data.word.isSwahiliLoan ||
-			liveImageUrl !== data.word.imageUrl ||
+			imageDirty ||
 			presentAnee !== (data.word.presentAnee ?? '') ||
 			presentInyee !== (data.word.presentInyee ?? '') ||
 			presentInee !== (data.word.presentInee ?? '') ||
@@ -150,6 +154,9 @@
 					(value) => value.trim().length > 0
 				))
 	);
+	function displayPresent(localValue: string, savedValue: string | null): string {
+		return localValue || savedValue || '—';
+	}
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
 	);
@@ -335,31 +342,31 @@
 
 			{#if showConjugations}
 				<h2 class="section-title">Present tense</h2>
-					<div class="conjugation-grid">
-						<div class="conj-cell">
-							<span class="conj-verb">{presentAnee || '—'}</span>
-							<span class="conj-pronoun">anee</span>
-						</div>
-						<div class="conj-cell">
-							<span class="conj-verb">{presentEchek || '—'}</span>
-							<span class="conj-pronoun">echek</span>
-						</div>
-						<div class="conj-cell">
-							<span class="conj-verb">{presentInyee || '—'}</span>
-							<span class="conj-pronoun">inyee</span>
-						</div>
-						<div class="conj-cell">
-							<span class="conj-verb">{presentOkwek || '—'}</span>
-							<span class="conj-pronoun">okwek</span>
-						</div>
-						<div class="conj-cell">
-							<span class="conj-verb">{presentInee || '—'}</span>
-							<span class="conj-pronoun">inee</span>
-						</div>
-						<div class="conj-cell">
-							<span class="conj-verb">{presentIchek || '—'}</span>
-							<span class="conj-pronoun">ichek</span>
-						</div>
+				<div class="conjugation-grid">
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentAnee, data.word.presentAnee)}</span>
+						<span class="conj-pronoun">anee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentEchek, data.word.presentEchek)}</span>
+						<span class="conj-pronoun">echek</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentInyee, data.word.presentInyee)}</span>
+						<span class="conj-pronoun">inyee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentOkwek, data.word.presentOkwek)}</span>
+						<span class="conj-pronoun">okwek</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentInee, data.word.presentInee)}</span>
+						<span class="conj-pronoun">inee</span>
+					</div>
+					<div class="conj-cell">
+						<span class="conj-verb">{displayPresent(presentIchek, data.word.presentIchek)}</span>
+						<span class="conj-pronoun">ichek</span>
+					</div>
 				</div>
 			{/if}
 
@@ -379,6 +386,9 @@
 								<span class="related-word-title">{link.word.kalenjin}</span>
 								{#if link.word.partOfSpeech}
 									<PartOfSpeechInline value={link.word.partOfSpeech} size="tiny" />
+								{/if}
+								{#if link.word.isSwahiliLoan}
+									<SwahiliLoanIndicator compact />
 								{/if}
 							</span>
 							<span class="related-word-gloss">{firstTranslation(link.word.translations)}</span>
@@ -625,6 +635,7 @@
 								currentUrl={data.word.imageUrl}
 								idPrefix="word-edit-image"
 								bind:effectiveUrl={liveImageUrl}
+								bind:dirty={imageDirty}
 							/>
 						</div>
 						<div style="display: flex; gap: 8px; margin-top: 4px;">
@@ -698,6 +709,9 @@
 											<button type="submit" class="related-search-button">
 												<span>
 													<strong>{result.kalenjin}</strong>
+													{#if result.isSwahiliLoan}
+														<SwahiliLoanIndicator compact />
+													{/if}
 													<small>{firstTranslation(result.translations)}</small>
 												</span>
 												<span class="related-add-label">Add</span>

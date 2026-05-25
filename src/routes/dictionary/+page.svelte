@@ -185,6 +185,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
+		isSwahiliLoan: boolean;
 	};
 
 	let addWordRelated = $state<DictionarySearchResult[]>([]);
@@ -767,6 +768,9 @@
 										>
 											<span>
 												<strong>{result.kalenjin}</strong>
+												{#if result.isSwahiliLoan}
+													<SwahiliLoanIndicator compact />
+												{/if}
 												<small>{relatedGloss(result.translations)}</small>
 											</span>
 											<span class="add-word-related-add">Add</span>

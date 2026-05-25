@@ -140,7 +140,7 @@ export async function createOrUpdateLinkedWord(
 			pluralForm,
 			pluralFormNormalized,
 			isPluralOnly,
-			isSwahiliLoan: input.isSwahiliLoan === true,
+			...isSwahiliLoanPatch,
 			...presentTense,
 			imageUrl: input.imageUrl ?? null,
 			spellings: spellings.length ? { createMany: { data: spellings } } : undefined

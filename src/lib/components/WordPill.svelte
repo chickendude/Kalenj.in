@@ -25,7 +25,7 @@
 		checked?: boolean;
 	} = $props();
 
-	const label = $derived(`${text}, ${tooltip}`);
+	const label = $derived(tooltip);
 </script>
 
 <Tooltip label={tooltip}>
@@ -41,20 +41,24 @@
 			<span aria-hidden="true">{text}</span>
 		</label>
 	{:else if abbreviation}
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<abbr
 			class="word-pill"
 			class:tiny={size === 'tiny'}
 			class:accent={tone === 'accent'}
 			class:lowercase
 			aria-label={label}
+			tabindex="0"
 		>{text}</abbr>
 	{:else}
+		<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 		<span
 			class="word-pill"
 			class:tiny={size === 'tiny'}
 			class:accent={tone === 'accent'}
 			class:lowercase
 			aria-label={label}
+			tabindex="0"
 		>{text}</span>
 	{/if}
 </Tooltip>
@@ -105,7 +109,7 @@
 	}
 
 	.word-pill:focus-visible,
-	label.word-pill:focus-within {
+	label.word-pill:has(input:focus-visible) {
 		outline: 2px solid var(--brand);
 		outline-offset: 2px;
 	}

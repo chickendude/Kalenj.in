@@ -14,4 +14,13 @@
 	const tooltip = 'Mark this word as borrowed from Swahili.';
 </script>
 
-<WordPill text="sw" {tooltip} {name} {form} bind:checked toggle lowercase />
+<WordPill
+	text="sw"
+	{tooltip}
+	tone={checked ? 'accent' : 'neutral'}
+	{name}
+	{form}
+	bind:checked
+	toggle
+	lowercase
+/>

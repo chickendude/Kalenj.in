@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 
 	let {
 		name = 'image',
@@ -7,7 +7,8 @@
 		currentUrl = null,
 		label = 'Image',
 		idPrefix = 'image',
-		effectiveUrl = $bindable(null)
+		effectiveUrl = $bindable(null),
+		dirty = $bindable(false)
 	}: {
 		name?: string;
 		removeName?: string;
@@ -15,6 +16,7 @@
 		label?: string;
 		idPrefix?: string;
 		effectiveUrl?: string | null;
+		dirty?: boolean;
 	} = $props();
 
 	const ACCEPTED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
@@ -23,6 +25,7 @@
 	let dropzone: HTMLDivElement | null = $state(null);
 	let previewUrl: string | null = $state(null);
 	let remove = $state(false);
+	let previousCurrentUrl = $state<string | null>(untrack(() => currentUrl));
 	let dragActive = $state(false);
 	let pasteTarget = $state(false);
 
@@ -99,7 +102,16 @@
 
 	const shownUrl = $derived(previewUrl ?? (remove ? null : currentUrl));
 	$effect(() => {
+		if (currentUrl === previousCurrentUrl) return;
+		clearFile();
+		remove = false;
+		previousCurrentUrl = currentUrl;
+	});
+	$effect(() => {
 		effectiveUrl = shownUrl;
+	});
+	$effect(() => {
+		dirty = Boolean(previewUrl || remove);
 	});
 </script>
 

@@ -33,6 +33,7 @@ export function buildWordSelect() {
 		partOfSpeech: true,
 		pluralForm: true,
 		isPluralOnly: true,
+		isSwahiliLoan: true,
 		presentAnee: true,
 		presentInyee: true,
 		presentInee: true,
@@ -60,6 +61,7 @@ export type LemmaWordInput = {
 	partOfSpeech?: PartOfSpeech | null;
 	pluralForm?: string | null;
 	isPluralOnly?: boolean;
+	isSwahiliLoan?: boolean;
 	presentTense?: PresentTenseConjugations | null;
 	/** `undefined` leaves the image untouched, a string sets a new URL, `null` clears it. */
 	imageUrl?: string | null;
@@ -101,6 +103,8 @@ export async function createOrUpdateLinkedWord(
 	const isPluralOnlyPatch = isPluralOnlyProvided || !canHavePlural
 		? { isPluralOnly }
 		: {};
+	const isSwahiliLoanPatch =
+		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
 
 	if (input.wordId) {
 		return tx.word.update({
@@ -114,6 +118,7 @@ export async function createOrUpdateLinkedWord(
 				pluralForm,
 				pluralFormNormalized,
 				...isPluralOnlyPatch,
+				...isSwahiliLoanPatch,
 				...presentTense,
 				...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
 				spellings: {
@@ -135,6 +140,7 @@ export async function createOrUpdateLinkedWord(
 			pluralForm,
 			pluralFormNormalized,
 			isPluralOnly,
+			...isSwahiliLoanPatch,
 			...presentTense,
 			imageUrl: input.imageUrl ?? null,
 			spellings: spellings.length ? { createMany: { data: spellings } } : undefined

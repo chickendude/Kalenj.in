@@ -12,6 +12,8 @@
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import DuplicateSuggestions from '$lib/components/DuplicateSuggestions.svelte';
+	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
+	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
 	import {
 		ADD_WORD_INTENT_LABELS,
 		readAddWordIntent,
@@ -46,6 +48,7 @@
 	const hasActiveFilters = $derived(
 		data.language !== 'kalenjin' || Boolean(data.pos) || Boolean(data.missing)
 	);
+	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 	let searchQuery = $state(initialQuery);
 	let filtersOpen = $state(untrack(() => hasActiveFilters));
 	let lastNavTarget = initialQuery;
@@ -162,6 +165,7 @@
 	let addWordPartOfSpeech = $state<PartOfSpeech | ''>('');
 	let addWordPluralForm = $state('');
 	let addWordIsPluralOnly = $state(false);
+	let addWordIsSwahiliLoan = $state(false);
 	let addWordAlternativePluralForms = $state('');
 	let addWordPresentAnee = $state('');
 	let addWordPresentInyee = $state('');
@@ -181,6 +185,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
+		isSwahiliLoan: boolean;
 	};
 
 	let addWordRelated = $state<DictionarySearchResult[]>([]);
@@ -272,6 +277,7 @@
 		if (!keepPartOfSpeech) addWordPartOfSpeech = '';
 		addWordPluralForm = '';
 		addWordIsPluralOnly = false;
+		addWordIsSwahiliLoan = false;
 		addWordAlternativePluralForms = '';
 		addWordPresentAnee = '';
 		addWordPresentInyee = '';
@@ -429,7 +435,7 @@
 						<polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
 					</svg>
 				</button>
-				{#if data.user}
+				{#if canEdit}
 					<button
 						type="button"
 						class="btn-sm ghost icon-btn"
@@ -610,6 +616,9 @@
 									{#if word.partOfSpeech}
 										<PartOfSpeechInline value={word.partOfSpeech} size="tiny" />
 									{/if}
+									{#if word.isSwahiliLoan}
+										<SwahiliLoanIndicator compact />
+									{/if}
 								</span>
 							</div>
 						</td>
@@ -703,6 +712,9 @@
 					alternativeSpellingsHint="comma, separated"
 					linkable
 				/>
+				<div class="add-word-origin">
+					<SwahiliLoanToggle bind:checked={addWordIsSwahiliLoan} />
+				</div>
 				<ImageUploadField name="image" idPrefix="dict-add-word-image" />
 				<DuplicateSuggestions
 					searchEndpoint="/dictionary/search?lang=kalenjin"
@@ -756,6 +768,9 @@
 										>
 											<span>
 												<strong>{result.kalenjin}</strong>
+												{#if result.isSwahiliLoan}
+													<SwahiliLoanIndicator compact />
+												{/if}
 												<small>{relatedGloss(result.translations)}</small>
 											</span>
 											<span class="add-word-related-add">Add</span>
@@ -884,6 +899,12 @@
 	.add-word-form {
 		display: grid;
 		gap: 0.75rem;
+	}
+
+	.add-word-origin {
+		display: flex;
+		justify-content: flex-start;
+		margin-top: -2px;
 	}
 
 	.add-word-error {

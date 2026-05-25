@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { buildWordSelect, readPresentTenseFromFormData } from './lemma-words';
+import { describe, expect, it, vi } from 'vitest';
+import { buildWordSelect, createOrUpdateLinkedWord, readPresentTenseFromFormData } from './lemma-words';
 
 describe('buildWordSelect', () => {
 	it('selects the core word columns plus ordered spellings', () => {
@@ -12,6 +12,7 @@ describe('buildWordSelect', () => {
 			partOfSpeech: true,
 			pluralForm: true,
 			isPluralOnly: true,
+			isSwahiliLoan: true,
 			imageUrl: true
 		});
 		// all six present-tense columns
@@ -27,6 +28,60 @@ describe('buildWordSelect', () => {
 		}
 		expect(select.spellings.orderBy).toEqual([{ spelling: 'asc' }]);
 		expect(select.spellings.select).toMatchObject({ id: true, spelling: true });
+	});
+});
+
+describe('createOrUpdateLinkedWord', () => {
+	it('stores the Swahili loan flag on create', async () => {
+		const create = vi.fn().mockResolvedValue({ id: 'word-1' });
+		const tx = { word: { create } };
+
+		await createOrUpdateLinkedWord(tx as never, {
+			kalenjin: 'meza',
+			translations: 'table',
+			isSwahiliLoan: true
+		});
+
+		expect(create).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ isSwahiliLoan: true })
+			})
+		);
+	});
+
+	it('clears the Swahili loan flag when updating without it checked', async () => {
+		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
+		const tx = { word: { update } };
+
+		await createOrUpdateLinkedWord(tx as never, {
+			wordId: 'word-1',
+			kalenjin: 'meza',
+			translations: 'table',
+			isSwahiliLoan: false
+		});
+
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.objectContaining({ isSwahiliLoan: false })
+			})
+		);
+	});
+
+	it('leaves the Swahili loan flag untouched on update when omitted', async () => {
+		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
+		const tx = { word: { update } };
+
+		await createOrUpdateLinkedWord(tx as never, {
+			wordId: 'word-1',
+			kalenjin: 'meza',
+			translations: 'table'
+		});
+
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.not.objectContaining({ isSwahiliLoan: expect.any(Boolean) })
+			})
+		);
 	});
 });
 

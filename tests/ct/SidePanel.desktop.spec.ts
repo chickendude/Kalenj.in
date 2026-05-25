@@ -6,7 +6,7 @@ test('renders the title as an h3 inside the side-card wrapper', async ({ mount, 
 
 	const heading = page.getByRole('heading', { level: 3, name: 'Pronunciation' });
 	await expect(heading).toBeVisible();
-	await expect(page.locator('.side-card > h3')).toHaveText('Pronunciation');
+	await expect(page.locator('.side-card > .side-card-head > h3')).toHaveText('Pronunciation');
 });
 
 test('renders the slot content beside the heading', async ({ mount, page }) => {

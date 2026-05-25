@@ -10,6 +10,9 @@
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
+	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
+	import WordPill from '$lib/components/WordPill.svelte';
 	import { getEditMode } from '$lib/stores/editMode.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
@@ -18,6 +21,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
+	import { untrack } from 'svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	let { data, form } = $props();
@@ -27,6 +31,7 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
+		isSwahiliLoan: boolean;
 	};
 	const POS_LABELS = PART_OF_SPEECH_LABELS;
 	const values = $derived(form?.values ?? data.word);
@@ -36,21 +41,48 @@
 	const editMode = $derived(isStaff && editModeCtx.value);
 
 	let imageExpanded = $state(false);
-	let liveImageUrl = $state<string | null>(null);
-	let kalenjinValue = $state('');
-	let translationsValue = $state('');
-	let notesValue = $state('');
-	let partOfSpeechValue = $state<PartOfSpeech | ''>('');
-	let altSpellingsValue = $state('');
-	let pluralFormValue = $state('');
-	let isPluralOnly = $state(false);
-	let alternativePluralFormsValue = $state('');
-	let presentAnee = $state('');
-	let presentInyee = $state('');
-	let presentInee = $state('');
-	let presentEchek = $state('');
-	let presentOkwek = $state('');
-	let presentIchek = $state('');
+	let liveImageUrl = $state<string | null>(untrack(() => data.word.imageUrl));
+	let imageDirty = $state(false);
+	let kalenjinValue = $state(untrack(() => values.kalenjin ?? ''));
+	let translationsValue = $state(untrack(() => values.translations ?? ''));
+	let notesValue = $state(untrack(() => values.notes ?? ''));
+	let partOfSpeechValue = $state<PartOfSpeech | ''>(
+		untrack(() => (values.partOfSpeech ?? '') as PartOfSpeech | '')
+	);
+	let altSpellingsValue = $state(
+		untrack(
+			() =>
+				form?.values?.alternativeSpellings ??
+				data.word.spellings.map((spelling) => spelling.spelling).join(', ')
+		)
+	);
+	let pluralFormValue = $state(
+		untrack(
+			() =>
+				splitPluralFormVariants((values as { pluralForm?: string | null }).pluralForm ?? '')
+					.pluralForm
+		)
+	);
+	let isPluralOnly = $state(
+		untrack(() => Boolean((values as { isPluralOnly?: boolean }).isPluralOnly))
+	);
+	let isSwahiliLoan = $state(
+		untrack(() => Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan))
+	);
+	let alternativePluralFormsValue = $state(
+		untrack(() => {
+			const { alternativePluralForms } = splitPluralFormVariants(
+				(values as { pluralForm?: string | null }).pluralForm ?? ''
+			);
+			return (form?.values?.alternativePluralForms ?? alternativePluralForms) as string;
+		})
+	);
+	let presentAnee = $state(untrack(() => data.word.presentAnee ?? ''));
+	let presentInyee = $state(untrack(() => data.word.presentInyee ?? ''));
+	let presentInee = $state(untrack(() => data.word.presentInee ?? ''));
+	let presentEchek = $state(untrack(() => data.word.presentEchek ?? ''));
+	let presentOkwek = $state(untrack(() => data.word.presentOkwek ?? ''));
+	let presentIchek = $state(untrack(() => data.word.presentIchek ?? ''));
 
 	$effect(() => {
 		kalenjinValue = values.kalenjin ?? '';
@@ -81,12 +113,18 @@
 		isPluralOnly = Boolean((values as { isPluralOnly?: boolean }).isPluralOnly);
 	});
 	$effect(() => {
+		isSwahiliLoan = Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan);
+	});
+	$effect(() => {
 		presentAnee = data.word.presentAnee ?? '';
 		presentInyee = data.word.presentInyee ?? '';
 		presentInee = data.word.presentInee ?? '';
 		presentEchek = data.word.presentEchek ?? '';
 		presentOkwek = data.word.presentOkwek ?? '';
 		presentIchek = data.word.presentIchek ?? '';
+	});
+	$effect(() => {
+		if (!imageDirty) liveImageUrl = data.word.imageUrl;
 	});
 
 	const translations = $derived(parseTranslationList(translationsValue));
@@ -95,6 +133,28 @@
 			.split(',')
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0)
+	);
+	const savedPluralForms = $derived(splitPluralFormVariants(data.word.pluralForm ?? ''));
+	const savedAlternativeSpellings = $derived(
+		data.word.spellings.map((spelling) => spelling.spelling).join(', ')
+	);
+	const editEntryDirty = $derived(
+		kalenjinValue !== data.word.kalenjin ||
+			translationsValue !== data.word.translations ||
+			notesValue !== (data.word.notes ?? '') ||
+			partOfSpeechValue !== (data.word.partOfSpeech ?? '') ||
+			altSpellingsValue !== savedAlternativeSpellings ||
+			pluralFormValue !== savedPluralForms.pluralForm ||
+			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
+			isPluralOnly !== data.word.isPluralOnly ||
+			isSwahiliLoan !== data.word.isSwahiliLoan ||
+			imageDirty ||
+			presentAnee !== (data.word.presentAnee ?? '') ||
+			presentInyee !== (data.word.presentInyee ?? '') ||
+			presentInee !== (data.word.presentInee ?? '') ||
+			presentEchek !== (data.word.presentEchek ?? '') ||
+			presentOkwek !== (data.word.presentOkwek ?? '') ||
+			presentIchek !== (data.word.presentIchek ?? '')
 	);
 	let altSpellingsOpen = $state(false);
 
@@ -107,14 +167,23 @@
 			data.word.isPluralOnly
 	);
 	const showConjugations = $derived(
-		data.word.partOfSpeech === 'VERB' &&
-			(Boolean(data.word.presentAnee) ||
-				Boolean(data.word.presentInyee) ||
-				Boolean(data.word.presentInee) ||
-				Boolean(data.word.presentEchek) ||
-				Boolean(data.word.presentOkwek) ||
-				Boolean(data.word.presentIchek))
+		(data.word.partOfSpeech === 'VERB' &&
+			[
+				data.word.presentAnee,
+				data.word.presentInyee,
+				data.word.presentInee,
+				data.word.presentEchek,
+				data.word.presentOkwek,
+				data.word.presentIchek
+			].some(Boolean)) ||
+			(partOfSpeechValue === 'VERB' &&
+				[presentAnee, presentInyee, presentInee, presentEchek, presentOkwek, presentIchek].some(
+					(value) => value.trim().length > 0
+				))
 	);
+	function displayPresent(localValue: string): string {
+		return localValue || '—';
+	}
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
 	);
@@ -225,47 +294,50 @@
 						audioUrl={data.word.audioUrl}
 						label={`Play pronunciation of ${kalenjinValue}`}
 					/>
-				</div>
-				<div class="entry-meta">
-					{#if partOfSpeechValue}
-						<PartOfSpeechInline value={partOfSpeechValue} />
-					{/if}
-					{#if showPlural}
-						{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
-						{@const primaryPlural = pluralVariants.pluralForm}
-						{@const altPlurals = pluralVariants.alternativePluralForms}
-						<span class="plural-chip">
-							<span class="plural-label">Plural</span>
-							<span class="plural-value">{primaryPlural}</span>
-							{#if data.word.pluralAudioUrl}
-								<AudioPlayButton
-									audioUrl={data.word.pluralAudioUrl}
-									size="sm"
-									label={`Play plural pronunciation of ${primaryPlural}`}
-								/>
+					{#if partOfSpeechValue || isSwahiliLoan || showPlural || showPluralOnly}
+						<div class="entry-title-pills">
+							{#if partOfSpeechValue}
+								<PartOfSpeechInline value={partOfSpeechValue} />
 							{/if}
-							{#if altPlurals}
-								<span class="plural-value plural-value-alt">, {altPlurals}</span>
+							{#if isSwahiliLoan}
+								<SwahiliLoanIndicator />
 							{/if}
-						</span>
-					{:else if showPluralOnly}
-						<span class="plural-chip">
-							<span class="plural-label">Plural-only</span>
-						</span>
-					{/if}
-					{#if altSpellingsList.length > 0}
-						<button
-							type="button"
-							class="alt-spellings-toggle"
-							aria-expanded={altSpellingsOpen}
-							aria-controls="alt-spellings-panel"
-							onclick={() => (altSpellingsOpen = !altSpellingsOpen)}
-						>
-							Also spelled ({altSpellingsList.length})
-							<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
-						</button>
+							{#if showPlural}
+								{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
+								{@const primaryPlural = pluralVariants.pluralForm}
+								{@const altPlurals = pluralVariants.alternativePluralForms}
+								<span class="plural-chip">
+									<span class="plural-label">Plural</span>
+									<span class="plural-value">{primaryPlural}</span>
+									{#if data.word.pluralAudioUrl}
+										<AudioPlayButton
+											audioUrl={data.word.pluralAudioUrl}
+											size="sm"
+											label={`Play plural pronunciation of ${primaryPlural}`}
+										/>
+									{/if}
+									{#if altPlurals}
+										<span class="plural-value plural-value-alt">, {altPlurals}</span>
+									{/if}
+								</span>
+							{:else if showPluralOnly}
+								<WordPill text="pl" tooltip="Plural-only" lowercase abbreviation />
+							{/if}
+						</div>
 					{/if}
 				</div>
+				{#if altSpellingsList.length > 0}
+					<button
+						type="button"
+						class="alt-spellings-toggle"
+						aria-expanded={altSpellingsOpen}
+						aria-controls="alt-spellings-panel"
+						onclick={() => (altSpellingsOpen = !altSpellingsOpen)}
+					>
+						Also spelled ({altSpellingsList.length})
+						<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
+					</button>
+				{/if}
 				{#if altSpellingsOpen && altSpellingsList.length > 0}
 					<div id="alt-spellings-panel" class="alt-spellings-panel">
 						{altSpellingsList.join(', ')}
@@ -299,27 +371,27 @@
 				<h2 class="section-title">Present tense</h2>
 				<div class="conjugation-grid">
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentAnee ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentAnee)}</span>
 						<span class="conj-pronoun">anee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentEchek ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentEchek)}</span>
 						<span class="conj-pronoun">echek</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentInyee ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentInyee)}</span>
 						<span class="conj-pronoun">inyee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentOkwek ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentOkwek)}</span>
 						<span class="conj-pronoun">okwek</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentInee ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentInee)}</span>
 						<span class="conj-pronoun">inee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentIchek ?? '—'}</span>
+						<span class="conj-verb">{displayPresent(presentIchek)}</span>
 						<span class="conj-pronoun">ichek</span>
 					</div>
 				</div>
@@ -341,6 +413,9 @@
 								<span class="related-word-title">{link.word.kalenjin}</span>
 								{#if link.word.partOfSpeech}
 									<PartOfSpeechInline value={link.word.partOfSpeech} size="tiny" />
+								{/if}
+								{#if link.word.isSwahiliLoan}
+									<SwahiliLoanIndicator compact />
 								{/if}
 							</span>
 							<span class="related-word-gloss">{firstTranslation(link.word.translations)}</span>
@@ -393,10 +468,14 @@
 					</SidePanel>
 				{/if}
 
-				<SidePanel title="Edit entry">
+				<SidePanel title="Edit entry" extraClass={editEntryDirty ? 'side-card--dirty' : ''}>
+					{#snippet actions()}
+						<SwahiliLoanToggle form="word-edit-form" bind:checked={isSwahiliLoan} />
+					{/snippet}
 					<FormErrorFeedback error={form?.error} />
 
 					<form
+						id="word-edit-form"
 						method="POST"
 						action="?/update"
 						enctype="multipart/form-data"
@@ -406,15 +485,28 @@
 							};
 						}}
 					>
-						<div class="side-field">
-							<label for="kalenjin">Kalenjin</label>
-							<input
-								id="kalenjin"
-								name="kalenjin"
-								class="side-input"
-								required
-								bind:value={kalenjinValue}
-							/>
+						<div class="side-field-grid side-field-grid--word">
+							<div class="side-field">
+								<label for="kalenjin">Kalenjin</label>
+								<input
+									id="kalenjin"
+									name="kalenjin"
+									class="side-input"
+									required
+									bind:value={kalenjinValue}
+								/>
+							</div>
+							<div class="side-field">
+								<label for="alternativeSpellings">Alt. Spellings</label>
+								<input
+									id="alternativeSpellings"
+									name="alternativeSpellings"
+									type="text"
+									class="side-input"
+									placeholder="Comma-separated"
+									bind:value={altSpellingsValue}
+								/>
+							</div>
 						</div>
 						<div class="side-field">
 							<label for="translations">Translations</label>
@@ -425,17 +517,6 @@
 								required
 								placeholder="semicolon-separated"
 								bind:value={translationsValue}
-							/>
-						</div>
-						<div class="side-field">
-							<label for="alternativeSpellings">Alternative spellings</label>
-							<input
-								id="alternativeSpellings"
-								name="alternativeSpellings"
-								type="text"
-								class="side-input"
-								placeholder="Comma-separated"
-								bind:value={altSpellingsValue}
 							/>
 						</div>
 						<div class="side-field">
@@ -467,7 +548,7 @@
 									/>
 								</div>
 								<div class="side-field">
-									<label for="alternativePluralForms">Alternative plurals</label>
+									<label for="alternativePluralForms">Alt. Plurals</label>
 									<input
 										id="alternativePluralForms"
 										name="alternativePluralForms"
@@ -581,6 +662,7 @@
 								currentUrl={data.word.imageUrl}
 								idPrefix="word-edit-image"
 								bind:effectiveUrl={liveImageUrl}
+								bind:dirty={imageDirty}
 							/>
 						</div>
 						<div style="display: flex; gap: 8px; margin-top: 4px;">
@@ -654,6 +736,9 @@
 											<button type="submit" class="related-search-button">
 												<span>
 													<strong>{result.kalenjin}</strong>
+													{#if result.isSwahiliLoan}
+														<SwahiliLoanIndicator compact />
+													{/if}
 													<small>{firstTranslation(result.translations)}</small>
 												</span>
 												<span class="related-add-label">Add</span>
@@ -830,10 +915,19 @@
 		color: var(--ink-soft);
 		font-style: italic;
 	}
+	.entry-title-pills {
+		align-items: center;
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
 	.side-field-grid {
 		display: grid;
 		gap: 12px;
 		grid-template-columns: 1fr 1fr;
+	}
+	.side-field-grid--word .side-field {
+		margin-bottom: 0;
 	}
 	.notes-markdown :global(p) {
 		margin: 0 0 0.5em;

@@ -23,6 +23,7 @@ type SearchResult = {
 	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
+	isSwahiliLoan: boolean;
 };
 
 function toResult(word: {
@@ -31,13 +32,15 @@ function toResult(word: {
 	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
+	isSwahiliLoan: boolean;
 }): SearchResult {
 	return {
 		id: word.id,
 		kalenjin: word.kalenjin,
 		pluralForm: splitPluralFormVariants(word.pluralForm).pluralForm || null,
 		translations: word.translations,
-		partOfSpeech: word.partOfSpeech
+		partOfSpeech: word.partOfSpeech,
+		isSwahiliLoan: word.isSwahiliLoan
 	};
 }
 
@@ -69,7 +72,8 @@ export const GET: RequestHandler = async ({ url }) => {
 				kalenjin: true,
 				pluralForm: true,
 				translations: true,
-				partOfSpeech: true
+				partOfSpeech: true,
+				isSwahiliLoan: true
 			}
 		})
 	]);

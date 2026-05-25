@@ -16,6 +16,7 @@ export type KalenjinSearchWord = {
 	pluralForm: string | null;
 	pluralFormNormalized: string | null;
 	isPluralOnly: boolean;
+	isSwahiliLoan: boolean;
 	presentAnee: string | null;
 	presentInyee: string | null;
 	presentInee: string | null;

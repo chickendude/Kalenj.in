@@ -1599,6 +1599,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   color: var(--ink-mute);
   letter-spacing: 0.04em;
 }
+.wod-archive-word-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
 .wod-archive-word {
   font-family: var(--font-display);
   font-size: 20px;

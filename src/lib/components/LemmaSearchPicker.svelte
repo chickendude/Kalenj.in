@@ -8,7 +8,13 @@
 		kalenjin: string;
 		translations: string;
 		partOfSpeech?: PartOfSpeech | string | null;
-		otherLessons?: { id: string; title: string }[];
+		otherLessons?: {
+			id: string;
+			title: string;
+			level?: string;
+			lessonOrder?: number;
+			timing?: 'earlier' | 'later' | 'other';
+		}[];
 	};
 
 	let {
@@ -140,6 +146,12 @@
 		const key = value as PartOfSpeech;
 		return PART_OF_SPEECH_LABELS[key] ?? value;
 	}
+
+	function usageLabel(result: SearchResult): string | null {
+		const lessons = result.otherLessons ?? [];
+		if (lessons.some((lesson) => lesson.timing === 'earlier')) return 'Used earlier';
+		return null;
+	}
 </script>
 
 <div class="lemma-picker">
@@ -165,6 +177,9 @@
 						<span class="picker-selected-gloss">{selectedWord.translations}</span>
 						{#if posLabel(selectedWord.partOfSpeech)}
 							<span class="picker-selected-pos">{posLabel(selectedWord.partOfSpeech)}</span>
+						{/if}
+						{#if usageLabel(selectedWord)}
+							<span class="picker-used-pill">{usageLabel(selectedWord)}</span>
 						{/if}
 					</div>
 					<button type="button" class="picker-linkbtn" onclick={clearSelection}>Change</button>
@@ -195,6 +210,9 @@
 							>
 								<span class="picker-hit-word">{result.kalenjin}</span>
 								<span class="picker-hit-gloss">{result.translations}</span>
+								{#if usageLabel(result)}
+									<span class="picker-hit-used">{usageLabel(result)}</span>
+								{/if}
 							</button>
 						{/each}
 					{/if}
@@ -310,6 +328,9 @@
 		background: var(--surface);
 		border-color: var(--ink-mute);
 	}
+	.picker-hit:has(.picker-hit-used) {
+		border-color: color-mix(in oklch, var(--accent) 42%, var(--line));
+	}
 	.picker-hit-word {
 		color: var(--ink);
 		font-family: var(--font-display);
@@ -323,6 +344,12 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+	.picker-hit-used {
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 600;
+		margin-top: 2px;
 	}
 	.picker-hit-empty {
 		color: var(--ink-mute);
@@ -368,6 +395,14 @@
 		letter-spacing: 0.06em;
 		padding: 2px 8px;
 		text-transform: uppercase;
+	}
+	.picker-used-pill {
+		background: color-mix(in oklch, var(--accent) 16%, transparent);
+		border-radius: 999px;
+		color: var(--accent);
+		font-size: 11px;
+		font-weight: 700;
+		padding: 2px 8px;
 	}
 
 	.picker-actions {

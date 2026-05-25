@@ -30,6 +30,28 @@ import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server
 import { Prisma, type CefrLevel, type PartOfSpeech } from '@prisma/client';
 import type { Actions, PageServerLoad } from './$types';
 
+type EarlierLessonUsage = {
+	id: string;
+	title: string;
+	level: CefrLevel;
+	lessonOrder: number;
+	timing: 'earlier';
+};
+
+type LessonWithEarlierLessonUsages<
+	T extends {
+		sections: Array<{
+			words: Array<{ wordId: string | null }>;
+		}>;
+	}
+> = Omit<T, 'sections'> & {
+	sections: Array<
+		Omit<T['sections'][number], 'words'> & {
+			words: Array<T['sections'][number]['words'][number] & { otherLessons: EarlierLessonUsage[] }>;
+		}
+	>;
+};
+
 async function ensureCefrCoverage(lessonWordId: string, cefrTargetIds: string[]): Promise<void> {
 	const requestedIds = [...new Set(cefrTargetIds)];
 
@@ -236,8 +258,83 @@ async function ensureExampleSentenceTokenSegment(
 	};
 }
 
+export async function _attachEarlierLessonUsages<
+	T extends {
+		id: string;
+		level: CefrLevel;
+		lessonOrder: number;
+		sections: Array<{
+			words: Array<{ wordId: string | null }>;
+		}>;
+	}
+>(lesson: T): Promise<LessonWithEarlierLessonUsages<T>> {
+	const wordIds = [
+		...new Set(
+			lesson.sections.flatMap((section) =>
+				section.words.map((word) => word.wordId).filter((wordId): wordId is string => Boolean(wordId))
+			)
+		)
+	];
+
+	if (wordIds.length === 0) {
+		return {
+			...lesson,
+			sections: lesson.sections.map((section) => ({
+				...section,
+				words: section.words.map((word) => ({ ...word, otherLessons: [] }))
+			}))
+		} as LessonWithEarlierLessonUsages<T>;
+	}
+
+	const usages = await prisma.lessonWord.findMany({
+		where: {
+			wordId: { in: wordIds },
+			lessonSection: {
+				lessonId: { not: lesson.id },
+				lesson: {
+					level: lesson.level,
+					type: 'VOCABULARY',
+					lessonOrder: { lte: lesson.lessonOrder }
+				}
+			}
+		},
+		select: {
+			wordId: true,
+			lessonSection: {
+				select: {
+					lesson: {
+						select: { id: true, title: true, level: true, lessonOrder: true }
+					}
+				}
+			}
+		}
+	});
+
+	const earlierLessonsByWordId = new Map<string, EarlierLessonUsage[]>();
+	for (const usage of usages) {
+		if (!usage.wordId) continue;
+		const lessonUsage = usage.lessonSection.lesson;
+		const existing = earlierLessonsByWordId.get(usage.wordId) ?? [];
+		if (existing.some((entry) => entry.id === lessonUsage.id)) continue;
+		existing.push({ ...lessonUsage, timing: 'earlier' });
+		existing.sort((a, b) => a.lessonOrder - b.lessonOrder || a.title.localeCompare(b.title));
+		earlierLessonsByWordId.set(usage.wordId, existing);
+	}
+
+	return {
+		...lesson,
+		sections: lesson.sections.map((section) => ({
+			...section,
+			words: section.words.map((word) => ({
+				...word,
+				otherLessons: word.wordId ? (earlierLessonsByWordId.get(word.wordId) ?? []) : []
+			}))
+		}))
+	} as LessonWithEarlierLessonUsages<T>;
+}
+
 async function getLessonDetail(lessonId: string) {
-	return prisma.lesson.findUnique({
+	const lesson = await prisma.lesson.findUnique({
 		where: { id: lessonId },
 		include: {
 			story: {
@@ -321,6 +418,8 @@ async function getLessonDetail(lessonId: string) {
 			}
 		}
 	});
+
+	return lesson ? _attachEarlierLessonUsages(lesson) : null;
 }
 
 async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
@@ -332,13 +431,17 @@ async function backfillMissingStoryTokens(lessonId: string): Promise<void> {
 	if (lesson?.storyId) await backfillMissingStoryCorpusEntries(lesson.storyId);
 }
 
-// orderComparator: 'lt' for story pages (introduced *before* the story),
-//                  'lte' for vocab pages (introduced *up to and including* this lesson).
-async function buildWordCoverageEntries(
+type LessonOrderFilter = { gt?: number; lt?: number; lte?: number };
+
+export function _buildVocabCoverageLessonOrderFilter(nextStoryOrder: number): LessonOrderFilter {
+	return { lt: nextStoryOrder };
+}
+
+export async function _buildWordCoverageEntries(
 	storyId: string,
 	level: CefrLevel,
-	introducedUpToOrder: number,
-	orderComparator: 'lt' | 'lte'
+	lessonOrderFilter: LessonOrderFilter,
+	currentLesson?: { id: string; level: CefrLevel; lessonOrder: number }
 ) {
 	const [tokens, vocabLessonWords] = await Promise.all([
 		prisma.exampleSentenceToken.findMany({
@@ -368,7 +471,7 @@ async function buildWordCoverageEntries(
 					lesson: {
 						level,
 						type: 'VOCABULARY',
-						lessonOrder: { [orderComparator]: introducedUpToOrder }
+						lessonOrder: lessonOrderFilter
 					}
 				}
 			},
@@ -404,11 +507,60 @@ async function buildWordCoverageEntries(
 		});
 	}
 
+	const wordIds = [...wordMap.keys()];
+	const otherLessonsByWordId = new Map<
+		string,
+		{ id: string; title: string; level: string; lessonOrder: number; timing: 'earlier' | 'later' | 'other' }[]
+	>();
+	if (currentLesson && wordIds.length > 0) {
+		const usages = await prisma.lessonWord.findMany({
+			where: {
+				wordId: { in: wordIds },
+				lessonSection: {
+					lessonId: { not: currentLesson.id },
+					lesson: {
+						level: currentLesson.level,
+						type: 'VOCABULARY',
+						lessonOrder: { lte: currentLesson.lessonOrder }
+					}
+				}
+			},
+			select: {
+				wordId: true,
+				lessonSection: {
+					select: {
+						lesson: {
+							select: { id: true, title: true, level: true, lessonOrder: true }
+						}
+					}
+				}
+			}
+		});
+
+		for (const usage of usages) {
+			if (!usage.wordId) continue;
+			const lesson = usage.lessonSection.lesson;
+			if (lesson.level !== currentLesson.level || lesson.lessonOrder > currentLesson.lessonOrder) continue;
+			const existing = otherLessonsByWordId.get(usage.wordId) ?? [];
+			if (existing.some((entry) => entry.id === lesson.id)) continue;
+			existing.push({
+				id: lesson.id,
+				title: lesson.title,
+				level: lesson.level,
+				lessonOrder: lesson.lessonOrder,
+				timing: 'earlier'
+			});
+			existing.sort((a, b) => a.lessonOrder - b.lessonOrder || a.title.localeCompare(b.title));
+			otherLessonsByWordId.set(usage.wordId, existing);
+		}
+	}
+
 	return [...wordMap.values()]
 		.map((entry) => ({
 			word: entry.word,
 			introduced: entry.introduced,
-			sentences: [...entry.sentences.values()].sort((a, b) => a.sentenceOrder - b.sentenceOrder)
+			sentences: [...entry.sentences.values()].sort((a, b) => a.sentenceOrder - b.sentenceOrder),
+			otherLessons: otherLessonsByWordId.get(entry.word.id) ?? []
 		}))
 		.sort((a, b) => {
 			if (a.introduced !== b.introduced) return a.introduced ? 1 : -1;
@@ -426,10 +578,11 @@ async function getStoryWordCoverage(lesson: {
 		return null;
 	}
 
-	return buildWordCoverageEntries(lesson.storyId, lesson.level, lesson.lessonOrder, 'lt');
+	return _buildWordCoverageEntries(lesson.storyId, lesson.level, { lt: lesson.lessonOrder });
 }
 
-async function getVocabWordCoverage(lesson: {
+export async function _getVocabWordCoverage(lesson: {
+	id?: string;
 	type: string;
 	level: CefrLevel;
 	lessonOrder: number;
@@ -442,6 +595,7 @@ async function getVocabWordCoverage(lesson: {
 		where: {
 			level: lesson.level,
 			type: 'STORY',
+			storyId: { not: null },
 			lessonOrder: { gt: lesson.lessonOrder }
 		},
 		orderBy: { lessonOrder: 'asc' },
@@ -452,11 +606,11 @@ async function getVocabWordCoverage(lesson: {
 		return null;
 	}
 
-	const words = await buildWordCoverageEntries(
+	const words = await _buildWordCoverageEntries(
 		nextStoryLesson.storyId,
 		lesson.level,
-		lesson.lessonOrder,
-		'lte'
+		_buildVocabCoverageLessonOrderFilter(nextStoryLesson.lessonOrder),
+		lesson.id ? { id: lesson.id, level: lesson.level, lessonOrder: lesson.lessonOrder } : undefined
 	);
 
 	return {
@@ -491,7 +645,7 @@ export const load: PageServerLoad = async ({ params, url, locals }) => {
 
 	const [storyWordCoverage, vocabWordCoverage, cefrBrowse, levelLessons] = await Promise.all([
 		getStoryWordCoverage(lesson),
-		getVocabWordCoverage(lesson),
+		_getVocabWordCoverage(lesson),
 		loadCefrBrowse(url.searchParams, lesson.level),
 		prisma.lesson.findMany({
 			where: { level: lesson.level },

@@ -1,12 +1,20 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { stripWordLinks } from '$lib/word-links';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 
 	type CoverageEntry = {
 		word: { id: string; kalenjin: string; translations: string };
 		introduced: boolean;
 		sentences: { id: string; kalenjin: string; english: string; sentenceOrder: number }[];
+		otherLessons?: {
+			id: string;
+			title: string;
+			level?: string;
+			lessonOrder?: number;
+			timing?: 'earlier' | 'later' | 'other';
+		}[];
 	};
 
 	let {
@@ -25,6 +33,8 @@
 
 	let showAll = $state(false);
 	let addedWordIds = $state(new Set<string>());
+	let confirmedDuplicateWordId = $state<string | null>(null);
+	let pendingDuplicateWord = $state<{ form: HTMLFormElement; entry: CoverageEntry } | null>(null);
 
 	const uninstructedCount = $derived(entries.filter((e) => !e.introduced).length);
 	const visibleEntries = $derived(showAll ? entries : entries.filter((e) => !e.introduced));
@@ -36,14 +46,47 @@
 
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
 
-	function enhanceQuickAdd({ formData }: { formData: FormData }) {
+	function enhanceQuickAdd({
+		cancel,
+		formData,
+		formElement
+	}: {
+		cancel: () => void;
+		formData: FormData;
+		formElement: HTMLFormElement;
+	}) {
 		const submittedWordId = String(formData.get('wordId') ?? '');
+		const entry = entries.find((entry) => entry.word.id === submittedWordId);
+		const earlierLessons = entry?.otherLessons?.filter((lesson) => lesson.timing === 'earlier') ?? [];
+		if (entry && earlierLessons.length > 0 && confirmedDuplicateWordId !== submittedWordId) {
+			cancel();
+			pendingDuplicateWord = {
+				form: formElement,
+				entry: { ...entry, otherLessons: earlierLessons }
+			};
+			return;
+		}
+		confirmedDuplicateWordId = null;
 		return async ({ result, update }: { result: { type: string }; update: EnhancedUpdate }) => {
 			if (result.type === 'success' && submittedWordId) {
 				addedWordIds = new Set([...addedWordIds, submittedWordId]);
 				await update({ invalidateAll: true });
+			} else {
+				confirmedDuplicateWordId = null;
 			}
 		};
+	}
+
+	function confirmPendingDuplicate() {
+		if (!pendingDuplicateWord) return;
+		const { form, entry } = pendingDuplicateWord;
+		pendingDuplicateWord = null;
+		confirmedDuplicateWordId = entry.word.id;
+		form.requestSubmit();
+	}
+
+	function cancelPendingDuplicate() {
+		pendingDuplicateWord = null;
 	}
 </script>
 
@@ -78,7 +121,13 @@
 				{#each visibleEntries as entry (entry.word.id)}
 					<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
 						<div class="coverage-word">
-							<a href={`/dictionary/${entry.word.id}`} class="coverage-word-link">
+							<a
+								href={`/dictionary/${entry.word.id}`}
+								class="coverage-word-link"
+								class:coverage-word-link--usage-warning={entry.otherLessons?.some(
+									(lesson) => lesson.timing === 'earlier'
+								)}
+							>
 								{entry.word.kalenjin}
 							</a>
 							<span class="coverage-translations">{stripWordLinks(entry.word.translations)}</span>
@@ -92,9 +141,32 @@
 							{#if entry.introduced || addedWordIds.has(entry.word.id)}
 								<span class="status-introduced">✓ Introduced</span>
 							{:else if quickAddAction}
-								<form method="POST" action={quickAddAction} use:enhance={enhanceQuickAdd}>
+								{#if entry.otherLessons?.some((lesson) => lesson.timing === 'earlier')}
+									{@const earlierLessons = entry.otherLessons.filter(
+										(lesson) => lesson.timing === 'earlier'
+									)}
+									<div class="coverage-duplicate-warning">
+										<span>
+											Taught in
+											{#each earlierLessons as lesson, index}
+												<a href={`/lessons/${lesson.id}`} target="_blank" rel="noopener"
+													>{lesson.title}</a
+												>{#if index < earlierLessons.length - 1}, {/if}
+											{/each}.
+										</span>
+									</div>
+								{/if}
+								<form
+									method="POST"
+									action={quickAddAction}
+									use:enhance={enhanceQuickAdd}
+								>
 									<input type="hidden" name="wordId" value={entry.word.id} />
-									<button type="submit" class="add-button">+ Add to lesson</button>
+									<button type="submit" class="add-button">
+										{entry.otherLessons?.some((lesson) => lesson.timing === 'earlier') && confirmedDuplicateWordId !== entry.word.id
+											? '+ Add anyway'
+											: '+ Add to lesson'}
+									</button>
 								</form>
 							{:else}
 								<span class="status-missing">Not yet introduced</span>
@@ -109,6 +181,17 @@
 		{/if}
 	</section>
 {/if}
+
+<ConfirmDialog
+	open={pendingDuplicateWord !== null}
+	title="Word taught in another lesson"
+	message={pendingDuplicateWord
+		? `"${pendingDuplicateWord.entry.word.kalenjin}" is taught in ${(pendingDuplicateWord.entry.otherLessons ?? []).map((l) => `"${l.title}"`).join(', ')}. Add it to this lesson anyway?`
+		: ''}
+	confirmLabel="Add anyway"
+	onconfirm={confirmPendingDuplicate}
+	oncancel={cancelPendingDuplicate}
+/>
 
 <style>
 	.coverage-card {
@@ -198,11 +281,11 @@
 	}
 
 	.coverage-row {
-		align-items: center;
+		align-items: start;
 		border-top: 1px solid var(--line-soft);
 		display: grid;
 		gap: 1rem;
-		grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) auto;
+		grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) minmax(0, 180px);
 		padding: 12px 0;
 	}
 
@@ -232,6 +315,11 @@
 		color: var(--brand);
 	}
 
+	.coverage-word-link--usage-warning {
+		color: oklch(0.56 0.12 25);
+		font-weight: 700;
+	}
+
 	.coverage-translations {
 		color: var(--ink-soft);
 		font-size: 13px;
@@ -253,6 +341,20 @@
 	.coverage-status {
 		font-size: 13px;
 		white-space: nowrap;
+	}
+
+	.coverage-duplicate-warning {
+		color: oklch(0.45 0.15 25);
+		font-size: 13px;
+		font-weight: 600;
+		margin-bottom: 8px;
+		text-align: left;
+		white-space: normal;
+	}
+
+	.coverage-duplicate-warning a {
+		color: var(--brand);
+		font-weight: 600;
 	}
 
 	.status-introduced {

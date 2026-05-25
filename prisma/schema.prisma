@@ -113,6 +113,7 @@ model Word {
   pluralForm           String?
   pluralFormNormalized String?
   isPluralOnly         Boolean                       @default(false)
+  isSwahiliLoan        Boolean                       @default(false)
   presentAnee          String?
   presentInyee         String?
   presentInee          String?

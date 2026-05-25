@@ -9,6 +9,8 @@
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
+	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { parseTranslationList } from '$lib/translations';
@@ -38,6 +40,7 @@
 	let altSpellingsValue = $state('');
 	let pluralFormValue = $state('');
 	let isPluralOnly = $state(false);
+	let isSwahiliLoan = $state(false);
 	let alternativePluralFormsValue = $state('');
 	let presentAnee = $state('');
 	let presentInyee = $state('');
@@ -75,6 +78,9 @@
 		isPluralOnly = Boolean((values as { isPluralOnly?: boolean }).isPluralOnly);
 	});
 	$effect(() => {
+		isSwahiliLoan = Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan);
+	});
+	$effect(() => {
 		presentAnee = data.word.presentAnee ?? '';
 		presentInyee = data.word.presentInyee ?? '';
 		presentInee = data.word.presentInee ?? '';
@@ -90,6 +96,27 @@
 			.map((s) => s.trim())
 			.filter((s) => s.length > 0)
 	);
+	const savedPluralForms = $derived(splitPluralFormVariants(data.word.pluralForm ?? ''));
+	const savedAlternativeSpellings = $derived(
+		data.word.spellings.map((spelling) => spelling.spelling).join(', ')
+	);
+	const editEntryDirty = $derived(
+		kalenjinValue !== data.word.kalenjin ||
+			translationsValue !== data.word.translations ||
+			notesValue !== (data.word.notes ?? '') ||
+			partOfSpeechValue !== (data.word.partOfSpeech ?? '') ||
+			altSpellingsValue !== savedAlternativeSpellings ||
+			pluralFormValue !== savedPluralForms.pluralForm ||
+			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
+			isPluralOnly !== data.word.isPluralOnly ||
+			isSwahiliLoan !== data.word.isSwahiliLoan ||
+			presentAnee !== (data.word.presentAnee ?? '') ||
+			presentInyee !== (data.word.presentInyee ?? '') ||
+			presentInee !== (data.word.presentInee ?? '') ||
+			presentEchek !== (data.word.presentEchek ?? '') ||
+			presentOkwek !== (data.word.presentOkwek ?? '') ||
+			presentIchek !== (data.word.presentIchek ?? '')
+	);
 	let altSpellingsOpen = $state(false);
 
 	const showPlural = $derived(
@@ -101,18 +128,16 @@
 			data.word.isPluralOnly
 	);
 	const showConjugations = $derived(
-		data.word.partOfSpeech === 'VERB' &&
-			(Boolean(data.word.presentAnee) ||
-				Boolean(data.word.presentInyee) ||
-				Boolean(data.word.presentInee) ||
-				Boolean(data.word.presentEchek) ||
-				Boolean(data.word.presentOkwek) ||
-				Boolean(data.word.presentIchek))
+		partOfSpeechValue === 'VERB' &&
+			[presentAnee, presentInyee, presentInee, presentEchek, presentOkwek, presentIchek].some(
+				(value) => value.trim().length > 0
+			)
 	);
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
 	);
 	const needsConjugationInputs = $derived(partOfSpeechValue === 'VERB');
+	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 
 	let relatedQuery = $state('');
 	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
@@ -220,6 +245,9 @@
 					{#if partOfSpeechValue}
 						<PartOfSpeechInline value={partOfSpeechValue} />
 					{/if}
+					{#if isSwahiliLoan}
+						<SwahiliLoanIndicator />
+					{/if}
 					{#if showPlural}
 						{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
 						{@const primaryPlural = pluralVariants.pluralForm}
@@ -287,31 +315,31 @@
 
 			{#if showConjugations}
 				<h2 class="section-title">Present tense</h2>
-				<div class="conjugation-grid">
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentAnee ?? '—'}</span>
-						<span class="conj-pronoun">anee</span>
-					</div>
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentEchek ?? '—'}</span>
-						<span class="conj-pronoun">echek</span>
-					</div>
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentInyee ?? '—'}</span>
-						<span class="conj-pronoun">inyee</span>
-					</div>
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentOkwek ?? '—'}</span>
-						<span class="conj-pronoun">okwek</span>
-					</div>
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentInee ?? '—'}</span>
-						<span class="conj-pronoun">inee</span>
-					</div>
-					<div class="conj-cell">
-						<span class="conj-verb">{data.word.presentIchek ?? '—'}</span>
-						<span class="conj-pronoun">ichek</span>
-					</div>
+					<div class="conjugation-grid">
+						<div class="conj-cell">
+							<span class="conj-verb">{presentAnee || '—'}</span>
+							<span class="conj-pronoun">anee</span>
+						</div>
+						<div class="conj-cell">
+							<span class="conj-verb">{presentEchek || '—'}</span>
+							<span class="conj-pronoun">echek</span>
+						</div>
+						<div class="conj-cell">
+							<span class="conj-verb">{presentInyee || '—'}</span>
+							<span class="conj-pronoun">inyee</span>
+						</div>
+						<div class="conj-cell">
+							<span class="conj-verb">{presentOkwek || '—'}</span>
+							<span class="conj-pronoun">okwek</span>
+						</div>
+						<div class="conj-cell">
+							<span class="conj-verb">{presentInee || '—'}</span>
+							<span class="conj-pronoun">inee</span>
+						</div>
+						<div class="conj-cell">
+							<span class="conj-verb">{presentIchek || '—'}</span>
+							<span class="conj-pronoun">ichek</span>
+						</div>
 				</div>
 			{/if}
 
@@ -383,10 +411,15 @@
 					</SidePanel>
 				{/if}
 
-				<SidePanel title="Edit entry">
+				{#if canEdit}
+				<SidePanel title="Edit entry" extraClass={editEntryDirty ? 'side-card--dirty' : ''}>
+					{#snippet actions()}
+						<SwahiliLoanToggle form="word-edit-form" bind:checked={isSwahiliLoan} />
+					{/snippet}
 					<FormErrorFeedback error={form?.error} />
 
 					<form
+						id="word-edit-form"
 						method="POST"
 						action="?/update"
 						enctype="multipart/form-data"
@@ -396,15 +429,28 @@
 							};
 						}}
 					>
-						<div class="side-field">
-							<label for="kalenjin">Kalenjin</label>
-							<input
-								id="kalenjin"
-								name="kalenjin"
-								class="side-input"
-								required
-								bind:value={kalenjinValue}
-							/>
+						<div class="side-field-grid side-field-grid--word">
+							<div class="side-field">
+								<label for="kalenjin">Kalenjin</label>
+								<input
+									id="kalenjin"
+									name="kalenjin"
+									class="side-input"
+									required
+									bind:value={kalenjinValue}
+								/>
+							</div>
+							<div class="side-field">
+								<label for="alternativeSpellings">Alt. Spellings</label>
+								<input
+									id="alternativeSpellings"
+									name="alternativeSpellings"
+									type="text"
+									class="side-input"
+									placeholder="Comma-separated"
+									bind:value={altSpellingsValue}
+								/>
+							</div>
 						</div>
 						<div class="side-field">
 							<label for="translations">Translations</label>
@@ -415,17 +461,6 @@
 								required
 								placeholder="semicolon-separated"
 								bind:value={translationsValue}
-							/>
-						</div>
-						<div class="side-field">
-							<label for="alternativeSpellings">Alternative spellings</label>
-							<input
-								id="alternativeSpellings"
-								name="alternativeSpellings"
-								type="text"
-								class="side-input"
-								placeholder="Comma-separated"
-								bind:value={altSpellingsValue}
 							/>
 						</div>
 						<div class="side-field">
@@ -457,7 +492,7 @@
 									/>
 								</div>
 								<div class="side-field">
-									<label for="alternativePluralForms">Alternative plurals</label>
+									<label for="alternativePluralForms">Alt. Plurals</label>
 									<input
 										id="alternativePluralForms"
 										name="alternativePluralForms"
@@ -661,6 +696,7 @@
 						<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
 					</form>
 				</SidePanel>
+				{/if}
 			{/if}
 		</aside>
 	</div>
@@ -811,6 +847,14 @@
 		display: grid;
 		gap: 12px;
 		grid-template-columns: 1fr 1fr;
+	}
+	.side-field-grid--word .side-field {
+		margin-bottom: 0;
+	}
+	:global(.side-card--dirty) {
+		background: color-mix(in oklch, var(--accent) 7%, var(--bg-raised));
+		border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+		box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 22%, transparent);
 	}
 	.notes-markdown :global(p) {
 		margin: 0 0 0.5em;

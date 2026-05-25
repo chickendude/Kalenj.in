@@ -31,6 +31,7 @@ type DictionarySearchWord = {
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	audioUrl: string | null;
+	isSwahiliLoan: boolean;
 };
 
 function parseLanguage(value: string | null): SearchLanguage {
@@ -70,7 +71,14 @@ export const load: PageServerLoad = async ({ url }) => {
 		const pickedIds = candidates.slice(0, randomCount).map((c) => c.id);
 		const picked = await prisma.word.findMany({
 			where: { id: { in: pickedIds } },
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true }
+			select: {
+				id: true,
+				kalenjin: true,
+				translations: true,
+				partOfSpeech: true,
+				audioUrl: true,
+				isSwahiliLoan: true
+			}
 		});
 		const order = new Map(pickedIds.map((id, index) => [id, index]));
 		words = picked.sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
@@ -83,7 +91,14 @@ export const load: PageServerLoad = async ({ url }) => {
 				]
 			},
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-			select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
+			select: {
+				id: true,
+				kalenjin: true,
+				translations: true,
+				partOfSpeech: true,
+				audioUrl: true,
+				isSwahiliLoan: true
+			},
 			take: limit
 		});
 
@@ -105,7 +120,14 @@ export const load: PageServerLoad = async ({ url }) => {
 					]
 				},
 				orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
-				select: { id: true, kalenjin: true, translations: true, partOfSpeech: true, audioUrl: true },
+				select: {
+					id: true,
+					kalenjin: true,
+					translations: true,
+					partOfSpeech: true,
+					audioUrl: true,
+					isSwahiliLoan: true
+				},
 				take: limit
 			})
 		]);
@@ -148,6 +170,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 		const stayOpen = readText(formData, 'intent') === 'stay';
 		const relatedWordIds = [
@@ -167,6 +190,7 @@ export const actions: Actions = {
 			partOfSpeech: partOfSpeechRaw,
 			pluralForm: pluralFormRaw,
 			isPluralOnly: isPluralOnlyRaw === 'on',
+			isSwahiliLoan: isSwahiliLoanRaw === 'on',
 			alternativePluralForms
 		};
 
@@ -236,6 +260,7 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm,
 					isPluralOnly,
+					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
 					imageUrl
 				});

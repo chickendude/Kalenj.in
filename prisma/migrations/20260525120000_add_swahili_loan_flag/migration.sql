@@ -1,0 +1,1 @@
+ALTER TABLE "Word" ADD COLUMN "isSwahiliLoan" BOOLEAN NOT NULL DEFAULT false;

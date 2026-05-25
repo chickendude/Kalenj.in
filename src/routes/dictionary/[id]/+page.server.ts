@@ -115,6 +115,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 
 		const values = {
@@ -125,6 +126,7 @@ export const actions: Actions = {
 			partOfSpeech: partOfSpeechRaw,
 			pluralForm: pluralFormRaw,
 			isPluralOnly: isPluralOnlyRaw === 'on',
+			isSwahiliLoan: isSwahiliLoanRaw === 'on',
 			alternativePluralForms
 		};
 
@@ -184,6 +186,7 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm,
 					isPluralOnly,
+					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
 					imageUrl: newImageUrl
 				});

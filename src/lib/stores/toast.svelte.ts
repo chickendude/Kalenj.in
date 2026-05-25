@@ -1,4 +1,4 @@
-export type ToastVariant = 'default' | 'success';
+export type ToastVariant = 'default' | 'success' | 'error';
 
 let message = $state<string | null>(null);
 let variant = $state<ToastVariant>('default');
@@ -31,6 +31,9 @@ export const toast = {
 	},
 	success(msg: string, ms = 1800) {
 		this.show(msg, { ms, variant: 'success' });
+	},
+	error(msg: string, ms = 4500) {
+		this.show(msg, { ms, variant: 'error' });
 	},
 	dismiss() {
 		clearTimer();

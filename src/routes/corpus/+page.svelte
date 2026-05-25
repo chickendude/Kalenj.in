@@ -568,7 +568,7 @@
 									{#if canSeeStoryLinks}
 										<StoryLinksIndicator storyLinks={sentence.storyLinks} />
 									{/if}
-									{#if sentence.needsLemmaProofread}
+									{#if sentence.status === 'NEEDS_PROOFREAD'}
 										<ProofreadIndicator href="/admin/proofread" />
 									{/if}
 									{#if sentence.notes?.trim()}

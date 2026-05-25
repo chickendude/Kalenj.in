@@ -371,7 +371,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 		});
 		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
-			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
 		});
 	});
 
@@ -488,7 +488,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 		});
 		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
-			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
 		});
 	});
 

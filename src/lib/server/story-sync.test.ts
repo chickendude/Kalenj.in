@@ -181,7 +181,7 @@ describe('splitStorySentence', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: []
@@ -210,7 +210,7 @@ describe('splitStorySentence', () => {
 				audioUrl: 'audio.mp3',
 				audioRecordedById: 'user-1',
 				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: []
@@ -226,7 +226,7 @@ describe('splitStorySentence', () => {
 			data: {
 				kalenjin: 'One.',
 				english: 'Un.',
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null
 			}
 		});
@@ -239,7 +239,7 @@ describe('splitStorySentence', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null
 			},
 			select: { id: true }
@@ -269,7 +269,7 @@ describe('splitStorySentence', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [{ id: 'lesson-word-1' }],
 				tokens: []
@@ -298,7 +298,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: []
@@ -327,7 +327,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: [
@@ -354,7 +354,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: 'next-audio.mp3',
 				audioRecordedById: 'user-1',
 				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: [
@@ -381,7 +381,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: 'next-audio.mp3',
 				audioRecordedById: 'user-1',
 				audioRecordedAt: new Date('2026-01-01T00:00:00.000Z'),
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null
 			})
 		});
@@ -405,7 +405,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: [
@@ -432,7 +432,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: [
@@ -479,7 +479,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [{ id: 'lesson-word-1' }],
 				tokens: []
@@ -497,7 +497,7 @@ describe('mergeStorySentenceWithNext', () => {
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: null,
 				lessonWords: [],
 				tokens: []

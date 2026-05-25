@@ -31,7 +31,7 @@ async function loadWordOfTheDay() {
 export const load: PageServerLoad = async () => {
 	const [wordCount, sentenceCount, recentWords, recentSentences, wordOfDay] = await Promise.all([
 		prisma.word.count(),
-		prisma.exampleSentence.count(),
+		prisma.exampleSentence.count({ where: { status: { not: 'STORY_ONLY' } } }),
 		prisma.word.findMany({
 			orderBy: { createdAt: 'desc' },
 			take: 6,

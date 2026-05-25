@@ -1474,6 +1474,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   background: var(--success);
   color: var(--bg);
 }
+.wod-toast.wod-toast-error {
+  background: var(--danger, #b42318);
+  color: var(--bg);
+}
 .wod-toast-text { line-height: 1.3; }
 .wod-toast-close {
   background: none;

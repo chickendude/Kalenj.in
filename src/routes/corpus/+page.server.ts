@@ -90,7 +90,10 @@ function serializeSentenceForList(sentence: SentenceListRow, isAdmin: boolean) {
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const query = (url.searchParams.get('q') ?? '').trim();
 	const language = parseCorpusSearchLanguage(url.searchParams.get('lang'));
-	const nonEmpty: Prisma.ExampleSentenceWhereInput = { NOT: { kalenjin: '' } };
+	const nonEmpty: Prisma.ExampleSentenceWhereInput = {
+		NOT: { kalenjin: '' },
+		status: { not: 'STORY_ONLY' }
+	};
 	const isAdmin = locals.user?.role === 'ADMIN';
 	const include = isAdmin ? sentenceIncludeWithStory : sentenceIncludeBase;
 
@@ -100,7 +103,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		await backfillMissingStoryCorpusEntries();
 
 		const randomIds = await prisma.$queryRaw<Array<{ id: string }>>(
-			Prisma.sql`SELECT "id" FROM "ExampleSentence" WHERE "kalenjin" <> '' ORDER BY random() LIMIT 10`
+			Prisma.sql`SELECT "id" FROM "ExampleSentence" WHERE "kalenjin" <> '' AND "status" <> 'STORY_ONLY' ORDER BY random() LIMIT 10`
 		);
 		const [sentences, totalCount] = await Promise.all([
 			prisma.exampleSentence.findMany({

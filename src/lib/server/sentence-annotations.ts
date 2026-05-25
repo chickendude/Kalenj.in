@@ -76,7 +76,7 @@ export async function syncExampleSentenceTokens(
 	if (plan.autoLinkedCount > 0) {
 		await tx.exampleSentence.update({
 			where: { id: exampleSentenceId },
-			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
 		});
 	}
 }

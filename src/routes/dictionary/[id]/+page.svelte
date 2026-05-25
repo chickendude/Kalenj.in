@@ -181,8 +181,8 @@
 					(value) => value.trim().length > 0
 				))
 	);
-	function displayPresent(localValue: string, savedValue: string | null): string {
-		return localValue || savedValue || '—';
+	function displayPresent(localValue: string): string {
+		return localValue || '—';
 	}
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
@@ -371,27 +371,27 @@
 				<h2 class="section-title">Present tense</h2>
 				<div class="conjugation-grid">
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentAnee, data.word.presentAnee)}</span>
+						<span class="conj-verb">{displayPresent(presentAnee)}</span>
 						<span class="conj-pronoun">anee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentEchek, data.word.presentEchek)}</span>
+						<span class="conj-verb">{displayPresent(presentEchek)}</span>
 						<span class="conj-pronoun">echek</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentInyee, data.word.presentInyee)}</span>
+						<span class="conj-verb">{displayPresent(presentInyee)}</span>
 						<span class="conj-pronoun">inyee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentOkwek, data.word.presentOkwek)}</span>
+						<span class="conj-verb">{displayPresent(presentOkwek)}</span>
 						<span class="conj-pronoun">okwek</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentInee, data.word.presentInee)}</span>
+						<span class="conj-verb">{displayPresent(presentInee)}</span>
 						<span class="conj-pronoun">inee</span>
 					</div>
 					<div class="conj-cell">
-						<span class="conj-verb">{displayPresent(presentIchek, data.word.presentIchek)}</span>
+						<span class="conj-verb">{displayPresent(presentIchek)}</span>
 						<span class="conj-pronoun">ichek</span>
 					</div>
 				</div>

@@ -15,4 +15,4 @@
 	const fullLabel = $derived(PART_OF_SPEECH_LABELS[value].toLowerCase());
 </script>
 
-<WordPill text={abbreviation} tooltip={fullLabel} {size} lowercase />
+<WordPill text={abbreviation} tooltip={fullLabel} {size} lowercase abbreviation />

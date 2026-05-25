@@ -645,6 +645,11 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   padding: 20px;
   margin-bottom: 16px;
 }
+.side-card.side-card--dirty {
+  background: color-mix(in oklch, var(--accent) 7%, var(--bg-raised));
+  border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 22%, transparent);
+}
 .side-card h3 {
   margin: 0 0 14px;
   font-family: var(--font-body);

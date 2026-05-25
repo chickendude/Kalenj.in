@@ -66,6 +66,23 @@ describe('createOrUpdateLinkedWord', () => {
 			})
 		);
 	});
+
+	it('leaves the Swahili loan flag untouched on update when omitted', async () => {
+		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
+		const tx = { word: { update } };
+
+		await createOrUpdateLinkedWord(tx as never, {
+			wordId: 'word-1',
+			kalenjin: 'meza',
+			translations: 'table'
+		});
+
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.not.objectContaining({ isSwahiliLoan: expect.any(Boolean) })
+			})
+		);
+	});
 });
 
 describe('readPresentTenseFromFormData', () => {

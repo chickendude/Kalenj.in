@@ -103,6 +103,8 @@ export async function createOrUpdateLinkedWord(
 	const isPluralOnlyPatch = isPluralOnlyProvided || !canHavePlural
 		? { isPluralOnly }
 		: {};
+	const isSwahiliLoanPatch =
+		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
 
 	if (input.wordId) {
 		return tx.word.update({
@@ -116,7 +118,7 @@ export async function createOrUpdateLinkedWord(
 				pluralForm,
 				pluralFormNormalized,
 				...isPluralOnlyPatch,
-				isSwahiliLoan: input.isSwahiliLoan === true,
+				...isSwahiliLoanPatch,
 				...presentTense,
 				...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
 				spellings: {

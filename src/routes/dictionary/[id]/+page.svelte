@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
@@ -38,7 +39,7 @@
 	const editMode = $derived(isStaff && editModeCtx.value);
 
 	let imageExpanded = $state(false);
-	let liveImageUrl = $state<string | null>(null);
+	let liveImageUrl = $state<string | null>(untrack(() => data.word.imageUrl));
 	let kalenjinValue = $state('');
 	let translationsValue = $state('');
 	let notesValue = $state('');
@@ -116,6 +117,7 @@
 			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
 			isPluralOnly !== data.word.isPluralOnly ||
 			isSwahiliLoan !== data.word.isSwahiliLoan ||
+			liveImageUrl !== data.word.imageUrl ||
 			presentAnee !== (data.word.presentAnee ?? '') ||
 			presentInyee !== (data.word.presentInyee ?? '') ||
 			presentInee !== (data.word.presentInee ?? '') ||
@@ -134,16 +136,24 @@
 			data.word.isPluralOnly
 	);
 	const showConjugations = $derived(
-		partOfSpeechValue === 'VERB' &&
-			[presentAnee, presentInyee, presentInee, presentEchek, presentOkwek, presentIchek].some(
-				(value) => value.trim().length > 0
-			)
+		(data.word.partOfSpeech === 'VERB' &&
+			[
+				data.word.presentAnee,
+				data.word.presentInyee,
+				data.word.presentInee,
+				data.word.presentEchek,
+				data.word.presentOkwek,
+				data.word.presentIchek
+			].some(Boolean)) ||
+			(partOfSpeechValue === 'VERB' &&
+				[presentAnee, presentInyee, presentInee, presentEchek, presentOkwek, presentIchek].some(
+					(value) => value.trim().length > 0
+				))
 	);
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
 	);
 	const needsConjugationInputs = $derived(partOfSpeechValue === 'VERB');
-	const canEdit = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
 
 	let relatedQuery = $state('');
 	let relatedSearchResults = $state<DictionarySearchResult[] | null>(null);
@@ -421,7 +431,6 @@
 					</SidePanel>
 				{/if}
 
-				{#if canEdit}
 				<SidePanel title="Edit entry" extraClass={editEntryDirty ? 'side-card--dirty' : ''}>
 					{#snippet actions()}
 						<SwahiliLoanToggle form="word-edit-form" bind:checked={isSwahiliLoan} />
@@ -706,7 +715,6 @@
 						<button type="submit" class="btn-sm danger" style="width: 100%">Delete this entry</button>
 					</form>
 				</SidePanel>
-				{/if}
 		</aside>
 		{/if}
 	</div>
@@ -873,11 +881,6 @@
 	}
 	.side-field-grid--word .side-field {
 		margin-bottom: 0;
-	}
-	:global(.side-card--dirty) {
-		background: color-mix(in oklch, var(--accent) 7%, var(--bg-raised));
-		border-color: color-mix(in oklch, var(--accent) 45%, var(--line));
-		box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--accent) 22%, transparent);
 	}
 	.notes-markdown :global(p) {
 		margin: 0 0 0.5em;

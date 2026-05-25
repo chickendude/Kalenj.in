@@ -115,13 +115,10 @@
 </script>
 
 <svelte:head>
-	<title>Lemma proofread · Admin</title>
+	<title>Proofread · Admin</title>
 </svelte:head>
 
-<div class="proofread-head">
-	<div class="page-kicker">Lemma proofread</div>
-</div>
-
+<h1 class="sr-only">Proofread</h1>
 
 <nav class="proofread-tabs" aria-label="Lemma proofread filters">
 	{#each statusTabs as tab}
@@ -308,9 +305,6 @@
 />
 
 <style>
-	.proofread-head {
-		margin-bottom: 14px;
-	}
 	.proofread-sentence-actions {
 		align-items: center;
 		display: flex;
@@ -504,7 +498,6 @@
 	}
 
 	@media (max-width: 720px) {
-		.proofread-head,
 		.proofread-summary,
 		.proofread-sentence-head {
 			display: block;

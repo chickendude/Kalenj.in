@@ -532,7 +532,7 @@
 					{data.sentences.length} of {data.totalCount} sentence{data.totalCount === 1 ? '' : 's'}
 				</div>
 				{#if canEdit}
-					<a class="record-missing-link" href="/corpus/record-audio">Record missing audio →</a>
+					<a class="record-missing-link" href="/admin/sentence-audio">Record missing audio →</a>
 				{/if}
 			</div>
 

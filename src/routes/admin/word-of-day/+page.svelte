@@ -188,29 +188,20 @@
 	<title>Word of the day</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Schedule</div>
-		<h1>Word of the day</h1>
-		<p>
-			The schedule is generated a month in advance, avoiding repeats when possible. Override any
-			day below.
-		</p>
-	</div>
-	<div class="page-stat">
-		<b>{data.usedCount.toLocaleString()}</b>
-		of {data.wordCount.toLocaleString()} word{data.wordCount === 1 ? '' : 's'} used
-	</div>
-</div>
+<h1 class="sr-only">Word of the day</h1>
 
 <FormErrorFeedback error={form && 'assignError' in form ? form.assignError : null} />
 
 <section class="form-card wod-admin-actions">
-	<div>
+	<div class="wod-admin-copy">
 		<h2>Schedule</h2>
 		<p class="wod-admin-lede">
 			Showing {longFmt.format(data.rangeStart)} through {longFmt.format(data.rangeEnd)}.
 		</p>
+	</div>
+	<div class="wod-admin-stat">
+		<b>{data.usedCount.toLocaleString()}</b>
+		of {data.wordCount.toLocaleString()} word{data.wordCount === 1 ? '' : 's'} used
 	</div>
 	<form method="POST" action="?/regenerate" use:enhance>
 		<button type="submit" class="btn ghost">Fill missing days</button>
@@ -411,4 +402,3 @@
 		</div>
 	</div>
 {/if}
-

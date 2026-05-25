@@ -12,6 +12,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
 	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
+	import WordPill from '$lib/components/WordPill.svelte';
 	import { getEditMode } from '$lib/stores/editMode.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
@@ -20,6 +21,7 @@
 	import { renderMarkdown } from '$lib/markdown';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
+	import { untrack } from 'svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	let { data, form } = $props();
@@ -39,23 +41,48 @@
 	const editMode = $derived(isStaff && editModeCtx.value);
 
 	let imageExpanded = $state(false);
-	let liveImageUrl = $state<string | null>(null);
+	let liveImageUrl = $state<string | null>(untrack(() => data.word.imageUrl));
 	let imageDirty = $state(false);
-	let kalenjinValue = $state('');
-	let translationsValue = $state('');
-	let notesValue = $state('');
-	let partOfSpeechValue = $state<PartOfSpeech | ''>('');
-	let altSpellingsValue = $state('');
-	let pluralFormValue = $state('');
-	let isPluralOnly = $state(false);
-	let isSwahiliLoan = $state(false);
-	let alternativePluralFormsValue = $state('');
-	let presentAnee = $state('');
-	let presentInyee = $state('');
-	let presentInee = $state('');
-	let presentEchek = $state('');
-	let presentOkwek = $state('');
-	let presentIchek = $state('');
+	let kalenjinValue = $state(untrack(() => values.kalenjin ?? ''));
+	let translationsValue = $state(untrack(() => values.translations ?? ''));
+	let notesValue = $state(untrack(() => values.notes ?? ''));
+	let partOfSpeechValue = $state<PartOfSpeech | ''>(
+		untrack(() => (values.partOfSpeech ?? '') as PartOfSpeech | '')
+	);
+	let altSpellingsValue = $state(
+		untrack(
+			() =>
+				form?.values?.alternativeSpellings ??
+				data.word.spellings.map((spelling) => spelling.spelling).join(', ')
+		)
+	);
+	let pluralFormValue = $state(
+		untrack(
+			() =>
+				splitPluralFormVariants((values as { pluralForm?: string | null }).pluralForm ?? '')
+					.pluralForm
+		)
+	);
+	let isPluralOnly = $state(
+		untrack(() => Boolean((values as { isPluralOnly?: boolean }).isPluralOnly))
+	);
+	let isSwahiliLoan = $state(
+		untrack(() => Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan))
+	);
+	let alternativePluralFormsValue = $state(
+		untrack(() => {
+			const { alternativePluralForms } = splitPluralFormVariants(
+				(values as { pluralForm?: string | null }).pluralForm ?? ''
+			);
+			return (form?.values?.alternativePluralForms ?? alternativePluralForms) as string;
+		})
+	);
+	let presentAnee = $state(untrack(() => data.word.presentAnee ?? ''));
+	let presentInyee = $state(untrack(() => data.word.presentInyee ?? ''));
+	let presentInee = $state(untrack(() => data.word.presentInee ?? ''));
+	let presentEchek = $state(untrack(() => data.word.presentEchek ?? ''));
+	let presentOkwek = $state(untrack(() => data.word.presentOkwek ?? ''));
+	let presentIchek = $state(untrack(() => data.word.presentIchek ?? ''));
 
 	$effect(() => {
 		kalenjinValue = values.kalenjin ?? '';
@@ -267,38 +294,38 @@
 						audioUrl={data.word.audioUrl}
 						label={`Play pronunciation of ${kalenjinValue}`}
 					/>
+					<div class="entry-title-pills">
+						{#if partOfSpeechValue}
+							<PartOfSpeechInline value={partOfSpeechValue} />
+						{/if}
+						{#if isSwahiliLoan}
+							<SwahiliLoanIndicator />
+						{/if}
+						{#if showPlural}
+							{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
+							{@const primaryPlural = pluralVariants.pluralForm}
+							{@const altPlurals = pluralVariants.alternativePluralForms}
+							<span class="plural-chip">
+								<span class="plural-label">Plural</span>
+								<span class="plural-value">{primaryPlural}</span>
+								{#if data.word.pluralAudioUrl}
+									<AudioPlayButton
+										audioUrl={data.word.pluralAudioUrl}
+										size="sm"
+										label={`Play plural pronunciation of ${primaryPlural}`}
+									/>
+								{/if}
+								{#if altPlurals}
+									<span class="plural-value plural-value-alt">, {altPlurals}</span>
+								{/if}
+							</span>
+						{:else if showPluralOnly}
+							<WordPill text="pl" tooltip="Plural-only" lowercase />
+						{/if}
+					</div>
 				</div>
-				<div class="entry-meta">
-					{#if partOfSpeechValue}
-						<PartOfSpeechInline value={partOfSpeechValue} />
-					{/if}
-					{#if isSwahiliLoan}
-						<SwahiliLoanIndicator />
-					{/if}
-					{#if showPlural}
-						{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
-						{@const primaryPlural = pluralVariants.pluralForm}
-						{@const altPlurals = pluralVariants.alternativePluralForms}
-						<span class="plural-chip">
-							<span class="plural-label">Plural</span>
-							<span class="plural-value">{primaryPlural}</span>
-							{#if data.word.pluralAudioUrl}
-								<AudioPlayButton
-									audioUrl={data.word.pluralAudioUrl}
-									size="sm"
-									label={`Play plural pronunciation of ${primaryPlural}`}
-								/>
-							{/if}
-							{#if altPlurals}
-								<span class="plural-value plural-value-alt">, {altPlurals}</span>
-							{/if}
-						</span>
-					{:else if showPluralOnly}
-						<span class="plural-chip">
-							<span class="plural-label">Plural-only</span>
-						</span>
-					{/if}
-					{#if altSpellingsList.length > 0}
+				{#if altSpellingsList.length > 0}
+					<div class="entry-meta">
 						<button
 							type="button"
 							class="alt-spellings-toggle"
@@ -309,8 +336,8 @@
 							Also spelled ({altSpellingsList.length})
 							<span class="caret" aria-hidden="true">{altSpellingsOpen ? '▾' : '▸'}</span>
 						</button>
-					{/if}
-				</div>
+					</div>
+				{/if}
 				{#if altSpellingsOpen && altSpellingsList.length > 0}
 					<div id="alt-spellings-panel" class="alt-spellings-panel">
 						{altSpellingsList.join(', ')}
@@ -887,6 +914,12 @@
 		font-size: 14px;
 		color: var(--ink-soft);
 		font-style: italic;
+	}
+	.entry-title-pills {
+		align-items: center;
+		display: inline-flex;
+		flex-wrap: wrap;
+		gap: 8px;
 	}
 	.side-field-grid {
 		display: grid;

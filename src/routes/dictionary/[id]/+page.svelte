@@ -2,6 +2,7 @@
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import EditModeToggle from '$lib/components/EditModeToggle.svelte';
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import SidePanel from '$lib/components/SidePanel.svelte';
@@ -11,6 +12,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
 	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
+	import { getEditMode } from '$lib/stores/editMode.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { parseTranslationList } from '$lib/translations';
@@ -30,6 +32,10 @@
 	};
 	const POS_LABELS = PART_OF_SPEECH_LABELS;
 	const values = $derived(form?.values ?? data.word);
+
+	const editModeCtx = getEditMode();
+	const isStaff = $derived(data.user?.role === 'ADMIN' || data.user?.role === 'MANAGER');
+	const editMode = $derived(isStaff && editModeCtx.value);
 
 	let imageExpanded = $state(false);
 	let liveImageUrl = $state<string | null>(null);
@@ -223,17 +229,21 @@
 </svelte:head>
 
 <section>
-	<a href="/dictionary" class="back-link">
-		<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-			<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-		</svg>
-		Back to dictionary
-	</a>
+	<div class="entry-top-bar">
+		<a href="/dictionary" class="back-link">
+			<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+				<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+			</svg>
+			Back to dictionary
+		</a>
+		{#if isStaff}
+			<EditModeToggle />
+		{/if}
+	</div>
 
-	<div class="detail-shell">
+	<div class="detail-shell" class:detail-shell-solo={!editMode}>
 		<div>
 			<div class="entry-head">
-				<div class="entry-label">Kalenjin entry</div>
 				<div class="entry-title">
 					<h1>{kalenjinValue}</h1>
 					<AudioPlayButton
@@ -388,9 +398,9 @@
 			{/if}
 		</div>
 
+		{#if editMode}
 		<aside>
-			{#if data.user}
-				<SidePanel title="Pronunciation">
+			<SidePanel title="Pronunciation">
 					<AudioRecorder
 						targetType="word"
 						targetId={data.word.id}
@@ -697,8 +707,8 @@
 					</form>
 				</SidePanel>
 				{/if}
-			{/if}
 		</aside>
+		{/if}
 	</div>
 </section>
 
@@ -738,6 +748,19 @@
 />
 
 <style>
+	.entry-top-bar {
+		align-items: center;
+		display: flex;
+		gap: 16px;
+		justify-content: space-between;
+		margin-bottom: 16px;
+	}
+	.entry-top-bar :global(.back-link) {
+		margin-bottom: 0;
+	}
+	.detail-shell-solo {
+		grid-template-columns: minmax(0, 1fr);
+	}
 	.translations-body {
 		display: grid;
 		gap: 16px;

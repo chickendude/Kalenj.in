@@ -1,5 +1,14 @@
 /* Kalenjin app — global theme + shared styles */
 
+@font-face {
+  font-family: "Kalenjin Display Fallback";
+  src: local("Georgia");
+  size-adjust: 95.25%;
+  ascent-override: 95%;
+  descent-override: 25%;
+  line-gap-override: 0%;
+}
+
 :root {
   --bg:            oklch(0.97 0.015 85);
   --bg-raised:     oklch(0.99 0.012 85);
@@ -39,7 +48,7 @@
 
   --select-chevron-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='none' stroke='%23666' stroke-width='1.5' d='M1 1l5 5 5-5'/></svg>");
 
-  --font-display: "Source Serif 4", "Source Serif Pro", Georgia, serif;
+  --font-display: "Source Serif 4", "Source Serif Pro", "Kalenjin Display Fallback", Georgia, serif;
   --font-body:    "Work Sans", -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 

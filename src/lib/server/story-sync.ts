@@ -83,7 +83,7 @@ async function replaceExampleSentenceTokens(
 	if (plan.autoLinkedCount > 0) {
 		await tx.exampleSentence.update({
 			where: { id: exampleSentenceId },
-			data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
 		});
 	}
 }
@@ -154,7 +154,7 @@ export async function splitStorySentence(
 					audioUrl: true,
 					audioRecordedById: true,
 					audioRecordedAt: true,
-					needsLemmaProofread: true,
+					status: true,
 					lemmaProofreadAt: true,
 					lessonWords: { select: { id: true }, take: 1 },
 					tokens: {
@@ -223,7 +223,7 @@ export async function splitStorySentence(
 		data: {
 			kalenjin: pieces[0].kalenjin,
 			english: pieces[0].english,
-			needsLemmaProofread: true,
+			status: 'NEEDS_PROOFREAD',
 			lemmaProofreadAt: null
 		}
 	});
@@ -245,7 +245,7 @@ export async function splitStorySentence(
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
-				needsLemmaProofread: true,
+				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null
 			},
 			select: { id: true }
@@ -299,7 +299,7 @@ export async function mergeStorySentenceWithNext(
 					audioUrl: true,
 					audioRecordedById: true,
 					audioRecordedAt: true,
-					needsLemmaProofread: true,
+					status: true,
 					lemmaProofreadAt: true,
 					lessonWords: { select: { id: true }, take: 1 },
 					tokens: {
@@ -351,7 +351,7 @@ export async function mergeStorySentenceWithNext(
 					audioUrl: true,
 					audioRecordedById: true,
 					audioRecordedAt: true,
-					needsLemmaProofread: true,
+					status: true,
 					lemmaProofreadAt: true,
 					lessonWords: { select: { id: true }, take: 1 },
 					tokens: {
@@ -410,9 +410,6 @@ export async function mergeStorySentenceWithNext(
 	if (conflictingMetadata) {
 		throw new Error('Cannot merge story sentences with separate notes, images, or audio.');
 	}
-	const needsLemmaProofread =
-		target.exampleSentence.needsLemmaProofread || next.exampleSentence.needsLemmaProofread;
-
 	await tx.exampleSentence.update({
 		where: { id: target.exampleSentenceId },
 		data: {
@@ -424,10 +421,8 @@ export async function mergeStorySentenceWithNext(
 			audioRecordedById:
 				target.exampleSentence.audioRecordedById ?? next.exampleSentence.audioRecordedById,
 			audioRecordedAt: target.exampleSentence.audioRecordedAt ?? next.exampleSentence.audioRecordedAt,
-			needsLemmaProofread,
-			lemmaProofreadAt: needsLemmaProofread
-				? null
-				: (target.exampleSentence.lemmaProofreadAt ?? next.exampleSentence.lemmaProofreadAt)
+			status: 'NEEDS_PROOFREAD',
+			lemmaProofreadAt: null
 		}
 	});
 

@@ -161,7 +161,15 @@
 	let drafts = $state<Record<string, TokenDraft>>({});
 	let updateForms = $state<Record<string, HTMLFormElement | null>>({});
 	let meaningInputs = $state<Record<string, HTMLInputElement | null>>({});
-	let localTokens = $state<SentenceToken[]>([]);
+	// Initialize from the incoming prop so SSR and the first client paint render the
+	// full token cards. If we start as [], the empty-state `<p>` paints first and
+	// then the cards replace it once the $effect below runs, causing a visible height jump.
+	let localTokens = $state<SentenceToken[]>(
+		tokens.map((token) => ({
+			...token,
+			word: token.word ? { ...token.word } : token.word
+		}))
+	);
 	let lastIncomingSignature = $state('');
 	let modalElement = $state<HTMLDivElement | null>(null);
 	let shortcutsOpen = $state(false);

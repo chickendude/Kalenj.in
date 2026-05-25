@@ -1,5 +1,8 @@
 import { fail } from '@sveltejs/kit';
-import type { Prisma } from '@prisma/client';
+import type { ExampleSentenceStatus, Prisma } from '@prisma/client';
+
+const SENTENCE_STATUSES = ['NEEDS_PROOFREAD', 'IN_CORPUS', 'STORY_ONLY'] as const satisfies readonly ExampleSentenceStatus[];
+const SENTENCE_STATUS_SET: ReadonlySet<string> = new Set(SENTENCE_STATUSES);
 import { buildWordSelect } from '$lib/server/lemma-words';
 import {
 	autoLemmatizeMissingExampleSentenceWords,
@@ -154,7 +157,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 	const [queueSentences, words, ignoredForms] = await Promise.all([
 		prisma.exampleSentence.findMany({
-			where: { needsLemmaProofread: true },
+			where: { status: 'NEEDS_PROOFREAD' },
 			select: {
 				id: true,
 				updatedAt: true,
@@ -251,23 +254,35 @@ export const actions: Actions = {
 		};
 	},
 
-	markProofread: async ({ request, locals }) => {
+	setSentenceStatus: async ({ request, locals }) => {
 		requireEditor(locals);
 		const data = await request.formData();
 		const sentenceId = String(data.get('sentenceId') ?? '').trim();
+		const rawStatus = String(data.get('status') ?? '').trim();
 
 		if (!sentenceId) {
 			return fail(400, { proofreadError: 'Sentence is required.' });
 		}
 
+		if (!SENTENCE_STATUS_SET.has(rawStatus)) {
+			return fail(400, { proofreadError: `Unknown sentence status: "${rawStatus}".` });
+		}
+
+		const status = rawStatus as ExampleSentenceStatus;
 		await prisma.exampleSentence.update({
 			where: { id: sentenceId },
 			data: {
-				needsLemmaProofread: false,
-				lemmaProofreadAt: new Date()
+				status,
+				lemmaProofreadAt: status === 'NEEDS_PROOFREAD' ? null : new Date()
 			}
 		});
 
-		return { proofreadSuccess: 'Sentence marked proofread.' };
+		const STATUS_MESSAGES: Record<ExampleSentenceStatus, string> = {
+			NEEDS_PROOFREAD: 'Sentence returned to the proofread queue.',
+			IN_CORPUS: 'Sentence marked proofread.',
+			STORY_ONLY: 'Sentence marked story-only and removed from the corpus.'
+		};
+
+		return { proofreadSuccess: STATUS_MESSAGES[status] };
 	}
 };

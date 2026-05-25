@@ -570,7 +570,7 @@ export async function createExampleSentenceWithAutoLemma(
 			kalenjin: input.kalenjin,
 			english: input.english,
 			...(input.notes !== undefined ? { notes: input.notes } : {}),
-			needsLemmaProofread: plan.autoLinkedCount > 0,
+			status: 'NEEDS_PROOFREAD',
 			lemmaProofreadAt: null,
 			tokens: {
 				create: plan.tokens.map(tokenCreateData)
@@ -851,7 +851,7 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 
 			await tx.exampleSentence.update({
 				where: { id: sentence.id },
-				data: { needsLemmaProofread: true, lemmaProofreadAt: null }
+				data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
 			});
 		});
 

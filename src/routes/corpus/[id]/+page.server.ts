@@ -1,5 +1,8 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import { Prisma, type PartOfSpeech } from '@prisma/client';
+import { Prisma, type ExampleSentenceStatus, type PartOfSpeech } from '@prisma/client';
+
+const SENTENCE_STATUSES = ['NEEDS_PROOFREAD', 'IN_CORPUS', 'STORY_ONLY'] as const satisfies readonly ExampleSentenceStatus[];
+const SENTENCE_STATUS_SET: ReadonlySet<string> = new Set(SENTENCE_STATUSES);
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { autoLemmatizeMissingExampleSentenceWords } from '$lib/server/auto-lemma';
@@ -482,6 +485,26 @@ export const actions: Actions = {
 		});
 
 		return { autoLemmaSuccess: autoLemmaSentenceMessage(summary) };
+	},
+	setSentenceStatus: async ({ params, request, locals }) => {
+		requireEditor(locals);
+		const formData = await request.formData();
+		const rawStatus = String(formData.get('status') ?? '').trim();
+
+		if (!SENTENCE_STATUS_SET.has(rawStatus)) {
+			return fail(400, { error: `Unknown sentence status: "${rawStatus}".` });
+		}
+
+		const status = rawStatus as ExampleSentenceStatus;
+		await prisma.exampleSentence.update({
+			where: { id: params.id },
+			data: {
+				status,
+				lemmaProofreadAt: status === 'NEEDS_PROOFREAD' ? null : new Date()
+			}
+		});
+
+		return { setSentenceStatusSuccess: true, status };
 	},
 	deleteSentence: async ({ params, locals }) => {
 		requireEditor(locals);

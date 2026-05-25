@@ -57,6 +57,12 @@ enum UserRole {
   USER
 }
 
+enum ExampleSentenceStatus {
+  NEEDS_PROOFREAD
+  IN_CORPUS
+  STORY_ONLY
+}
+
 model User {
   id                 String            @id @default(cuid())
   username           String            @unique
@@ -215,7 +221,7 @@ model ExampleSentence {
   english           String
   notes             String?
   isUnique          Boolean                @default(false)
-  needsLemmaProofread Boolean               @default(false)
+  status            ExampleSentenceStatus  @default(NEEDS_PROOFREAD)
   lemmaProofreadAt  DateTime?
   imageUrl          String?
   audioUrl          String?
@@ -230,7 +236,7 @@ model ExampleSentence {
   storySentence     StorySentence?
 
   @@index([kalenjin])
-  @@index([needsLemmaProofread])
+  @@index([status])
   @@index([kalenjin(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_kalenjin_trgm_idx")
   @@index([english(ops: raw("gin_trgm_ops"))], type: Gin, map: "ExampleSentence_english_trgm_idx")
 }

@@ -61,7 +61,7 @@ describe('lemma proofread page loader', () => {
 		expect(mocks.prisma.exampleSentence.findMany).toHaveBeenNthCalledWith(
 			1,
 			expect.objectContaining({
-				where: { needsLemmaProofread: true }
+				where: { status: 'NEEDS_PROOFREAD' }
 			})
 		);
 	});
@@ -160,8 +160,9 @@ describe('lemma proofread actions', () => {
 	it('marks a sentence as proofread', async () => {
 		const formData = new FormData();
 		formData.set('sentenceId', 'sentence-1');
+		formData.set('status', 'IN_CORPUS');
 
-		await actions.markProofread?.({
+		await actions.setSentenceStatus?.({
 			request: new Request('http://localhost/admin/proofread', { method: 'POST', body: formData }),
 			locals: editorLocals
 		} as never);
@@ -169,10 +170,43 @@ describe('lemma proofread actions', () => {
 		expect(mocks.prisma.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
 			data: {
-				needsLemmaProofread: false,
+				status: 'IN_CORPUS',
 				lemmaProofreadAt: expect.any(Date)
 			}
 		});
+	});
+
+	it('marks a sentence as story-only', async () => {
+		const formData = new FormData();
+		formData.set('sentenceId', 'sentence-1');
+		formData.set('status', 'STORY_ONLY');
+
+		await actions.setSentenceStatus?.({
+			request: new Request('http://localhost/admin/proofread', { method: 'POST', body: formData }),
+			locals: editorLocals
+		} as never);
+
+		expect(mocks.prisma.exampleSentence.update).toHaveBeenCalledWith({
+			where: { id: 'sentence-1' },
+			data: {
+				status: 'STORY_ONLY',
+				lemmaProofreadAt: expect.any(Date)
+			}
+		});
+	});
+
+	it('rejects unknown status values', async () => {
+		const formData = new FormData();
+		formData.set('sentenceId', 'sentence-1');
+		formData.set('status', 'NOT_A_STATUS');
+
+		const result = await actions.setSentenceStatus?.({
+			request: new Request('http://localhost/admin/proofread', { method: 'POST', body: formData }),
+			locals: editorLocals
+		} as never);
+
+		expect(result).toMatchObject({ status: 400 });
+		expect(mocks.prisma.exampleSentence.update).not.toHaveBeenCalled();
 	});
 
 });

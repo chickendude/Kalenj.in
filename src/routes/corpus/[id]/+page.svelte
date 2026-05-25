@@ -3,8 +3,7 @@
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
-	import ProofreadIndicator from '$lib/components/ProofreadIndicator.svelte';
+	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
 	import { invalidateAll } from '$app/navigation';
@@ -28,6 +27,19 @@
 	});
 	$effect(() => {
 		if (form?.autoLemmaSuccess) toast.success(form.autoLemmaSuccess);
+	});
+	$effect(() => {
+		if (form?.setSentenceStatusSuccess) {
+			const labels = {
+				NEEDS_PROOFREAD: 'Needs proofread',
+				IN_CORPUS: 'In corpus',
+				STORY_ONLY: 'Story only'
+			} as const;
+			toast.success(`Status set to "${labels[form.status]}".`);
+		}
+	});
+	$effect(() => {
+		if (form?.error) toast.error(form.error);
 	});
 
 	type SentenceToken = (typeof data.sentence.tokens)[number];
@@ -268,13 +280,7 @@
 			</a>
 			<div class="entry-label-row">
 				<div class="entry-label">Corpus sentence</div>
-				{#if data.sentence.needsLemmaProofread}
-					{#if canEdit}
-						<ProofreadIndicator href="/admin/proofread" />
-					{:else}
-						<ProofreadIndicator />
-					{/if}
-				{/if}
+				<SentenceStatusToggle status={data.sentence.status} {canEdit} />
 				{#if canSeeStoryLinks}
 					<StoryLinksIndicator storyLinks={data.sentence.storyLinks} />
 				{/if}
@@ -435,7 +441,6 @@
 		</section>
 	{/if}
 
-	<FormErrorFeedback error={form?.error} />
 
 	{#if canEdit}
 		<h2 class="section-title">Image</h2>

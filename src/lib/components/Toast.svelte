@@ -6,8 +6,9 @@
 	<div
 		class="wod-toast"
 		class:wod-toast-success={toast.variant === 'success'}
-		role="status"
-		aria-live="polite"
+		class:wod-toast-error={toast.variant === 'error'}
+		role={toast.variant === 'error' ? 'alert' : 'status'}
+		aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
 	>
 		<span class="wod-toast-text">{toast.message}</span>
 		<button

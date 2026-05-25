@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import { slide } from 'svelte/transition';
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import SentenceTokenAnnotations from '$lib/components/SentenceTokenAnnotations.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import StoryLinksIndicator from '$lib/components/StoryLinksIndicator.svelte';
@@ -43,6 +43,12 @@
 	$effect(() => {
 		if (form && 'proofreadSuccess' in form && form.proofreadSuccess) {
 			toast.success(form.proofreadSuccess);
+		}
+	});
+
+	$effect(() => {
+		if (form && 'proofreadError' in form && form.proofreadError) {
+			toast.error(form.proofreadError);
 		}
 	});
 
@@ -116,7 +122,6 @@
 	<div class="page-kicker">Lemma proofread</div>
 </div>
 
-<FormErrorFeedback error={form && 'proofreadError' in form ? form.proofreadError : null} />
 
 <nav class="proofread-tabs" aria-label="Lemma proofread filters">
 	{#each statusTabs as tab}
@@ -156,7 +161,10 @@
 {:else}
 	<div class="proofread-list">
 		{#each data.sentences as sentence (sentence.id)}
-			<section class="form-card proofread-sentence">
+			<section
+				class="form-card proofread-sentence"
+				out:slide={{ duration: 150 }}
+			>
 				<header class="proofread-sentence-head">
 					<div>
 						<div class="proofread-meta">
@@ -187,10 +195,70 @@
 						</div>
 					</div>
 					<div class="proofread-sentence-actions">
-						<a href={`/corpus/${sentence.id}`} class="btn-sm ghost">Open</a>
-						<form method="POST" action="?/markProofread" use:enhance>
+						<a
+							class="icon-btn icon-btn--open"
+							href={`/corpus/${sentence.id}`}
+							aria-label="Open in corpus"
+						>
+							<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+								<path
+									d="M6.5 3.5h-3a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-3M9 2.5h4.5V7M13.5 2.5 7 9"
+									stroke="currentColor"
+									stroke-width="1.4"
+									stroke-linecap="round"
+									stroke-linejoin="round"
+								/>
+							</svg>
+							<span class="icon-btn-tooltip" role="tooltip">Open in corpus</span>
+						</a>
+						<form method="POST" action="?/setSentenceStatus" use:enhance>
 							<input type="hidden" name="sentenceId" value={sentence.id} />
-							<button type="submit" class="btn-sm">Mark proofread</button>
+							<button
+								type="submit"
+								name="status"
+								value="STORY_ONLY"
+								class="icon-btn icon-btn--ignore"
+								aria-label="Mark story-only (exclude from corpus)"
+							>
+								<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+									<path
+										d="M3 2.5h6.5c1 0 1.8.8 1.8 1.8v9.4c-.8-.6-1.7-.9-2.7-.9H3V2.5Z"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linejoin="round"
+									/>
+									<path
+										d="M5 5.5h4M5 7.5h4M5 9.5h2.5"
+										stroke="currentColor"
+										stroke-width="1.4"
+										stroke-linecap="round"
+									/>
+								</svg>
+								<span class="icon-btn-tooltip" role="tooltip">
+									Mark story-only — keeps the sentence in the story but excludes it from the corpus.
+								</span>
+							</button>
+						</form>
+						<form method="POST" action="?/setSentenceStatus" use:enhance>
+							<input type="hidden" name="sentenceId" value={sentence.id} />
+							<button
+								type="submit"
+								name="status"
+								value="IN_CORPUS"
+								class="icon-btn icon-btn--confirm"
+								aria-label="Mark proofread"
+							>
+								<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+									<path
+										d="M3.5 8.5l3 3 6-7"
+										stroke="currentColor"
+										stroke-width="1.8"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+									/>
+								</svg>
+								<span class="icon-btn-tooltip" role="tooltip">Mark proofread</span>
+							</button>
 						</form>
 					</div>
 				</header>
@@ -252,6 +320,77 @@
 	}
 	.proofread-sentence-actions form {
 		margin: 0;
+	}
+
+	.icon-btn {
+		align-items: center;
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: 999px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		display: inline-flex;
+		flex: 0 0 auto;
+		height: 2.5rem;
+		justify-content: center;
+		line-height: 1;
+		padding: 0;
+		position: relative;
+		text-decoration: none;
+		transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+		width: 2.5rem;
+	}
+	.icon-btn:hover,
+	.icon-btn:focus-visible {
+		background: var(--surface);
+	}
+	.icon-btn--ignore:hover,
+	.icon-btn--ignore:focus-visible {
+		background: color-mix(in oklab, var(--brand) 12%, transparent);
+		border-color: color-mix(in oklab, var(--brand) 40%, transparent);
+		color: var(--brand);
+	}
+	.icon-btn--confirm:hover,
+	.icon-btn--confirm:focus-visible {
+		background: color-mix(in oklab, var(--success, #2e7d32) 14%, transparent);
+		border-color: color-mix(in oklab, var(--success, #2e7d32) 55%, transparent);
+		color: var(--success, #2e7d32);
+	}
+	.icon-btn:focus-visible {
+		outline: 2px solid currentColor;
+		outline-offset: 2px;
+	}
+	.icon-btn:disabled {
+		cursor: progress;
+		opacity: 0.6;
+	}
+
+	.icon-btn-tooltip {
+		background: var(--tooltip-bg);
+		border-radius: 6px;
+		bottom: calc(100% + 0.35rem);
+		color: var(--tooltip-ink);
+		font-family: var(--font-body);
+		font-size: 0.78rem;
+		font-weight: 500;
+		left: 50%;
+		line-height: 1.35;
+		max-width: 14rem;
+		opacity: 0;
+		padding: 0.4rem 0.55rem;
+		pointer-events: none;
+		position: absolute;
+		text-align: left;
+		text-transform: none;
+		transform: translateX(-50%);
+		transition: opacity 0s linear;
+		white-space: normal;
+		width: max-content;
+		z-index: 20;
+	}
+	.icon-btn:hover .icon-btn-tooltip,
+	.icon-btn:focus-visible .icon-btn-tooltip {
+		opacity: 1;
 	}
 	.proofread-tabs {
 		align-items: center;

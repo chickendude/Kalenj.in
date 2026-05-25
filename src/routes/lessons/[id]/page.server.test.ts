@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { actions } from './+page.server';
+import {
+	actions,
+	_attachEarlierLessonUsages,
+	_buildVocabCoverageLessonOrderFilter,
+	_getVocabWordCoverage
+} from './+page.server';
 
 const mocks = vi.hoisted(() => {
 	const tx = {
@@ -28,7 +33,11 @@ const mocks = vi.hoisted(() => {
 
 	const prisma = {
 		lesson: {
-			findUnique: vi.fn()
+			findUnique: vi.fn(),
+			findFirst: vi.fn()
+		},
+		exampleSentenceToken: {
+			findMany: vi.fn()
 		},
 		lessonWord: {
 			findMany: vi.fn()
@@ -47,6 +56,7 @@ vi.mock('$lib/server/prisma', () => ({ prisma: mocks.prisma }));
 function resetMocks() {
 	for (const model of [
 		mocks.prisma.lesson,
+		mocks.prisma.exampleSentenceToken,
 		mocks.prisma.lessonWord,
 		mocks.prisma.word,
 		mocks.tx.lesson,
@@ -110,6 +120,224 @@ async function deleteLesson(lessonId = 'lesson-1') {
 
 beforeEach(() => {
 	resetMocks();
+});
+
+describe('_buildVocabCoverageLessonOrderFilter', () => {
+	it('includes later vocabulary lessons before the next story', () => {
+		expect(_buildVocabCoverageLessonOrderFilter(3)).toEqual({ lt: 3 });
+	});
+});
+
+describe('_getVocabWordCoverage', () => {
+	it('counts every vocabulary lesson before the next story, not only the current run', async () => {
+		mocks.prisma.lesson.findFirst.mockResolvedValue({
+			id: 'story-lesson',
+			title: 'Next story',
+			lessonOrder: 10,
+			storyId: 'story-1'
+		});
+		mocks.prisma.exampleSentenceToken.findMany.mockResolvedValue([
+			{
+				wordId: 'earlier-word',
+				word: { id: 'earlier-word', kalenjin: 'ago', translations: 'but' },
+				exampleSentence: {
+					id: 'sentence-1',
+					kalenjin: 'ago',
+					english: 'but',
+					storySentence: { sentenceOrder: 1 }
+				}
+			},
+			{
+				wordId: 'current-word',
+				word: { id: 'current-word', kalenjin: 'am', translations: 'eat' },
+				exampleSentence: {
+					id: 'sentence-2',
+					kalenjin: 'am',
+					english: 'eat',
+					storySentence: { sentenceOrder: 2 }
+				}
+			},
+			{
+				wordId: 'missing-word',
+				word: { id: 'missing-word', kalenjin: 'missing', translations: 'missing' },
+				exampleSentence: {
+					id: 'sentence-3',
+					kalenjin: 'missing',
+					english: 'missing',
+					storySentence: { sentenceOrder: 3 }
+				}
+			}
+		]);
+		mocks.prisma.lessonWord.findMany
+			.mockResolvedValueOnce([{ wordId: 'earlier-word' }, { wordId: 'current-word' }])
+			.mockResolvedValueOnce([
+				{
+					wordId: 'earlier-word',
+					lessonSection: {
+						lesson: { id: 'earlier-lesson', title: 'Earlier lesson', level: 'A1', lessonOrder: 2 }
+					}
+				},
+				{
+					wordId: 'current-word',
+					lessonSection: {
+						lesson: { id: 'later-lesson', title: 'Later lesson', level: 'A1', lessonOrder: 11 }
+					}
+				}
+			]);
+
+		const coverage = await _getVocabWordCoverage({
+			id: 'lesson-9',
+			type: 'VOCABULARY',
+			level: 'A1',
+			lessonOrder: 9
+		});
+
+		expect(mocks.prisma.lessonWord.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: {
+					lessonSection: {
+						lesson: {
+							level: 'A1',
+							type: 'VOCABULARY',
+							lessonOrder: { lt: 10 }
+						}
+					}
+				}
+			})
+		);
+		expect(mocks.prisma.lessonWord.findMany).toHaveBeenNthCalledWith(
+			2,
+			expect.objectContaining({
+				where: expect.objectContaining({
+					wordId: { in: ['earlier-word', 'current-word', 'missing-word'] },
+					lessonSection: {
+						lessonId: { not: 'lesson-9' },
+						lesson: {
+							level: 'A1',
+							type: 'VOCABULARY',
+							lessonOrder: { lte: 9 }
+						}
+					}
+				})
+			})
+		);
+		expect(coverage?.words.map((entry) => [entry.word.id, entry.introduced])).toEqual([
+			['missing-word', false],
+			['earlier-word', true],
+			['current-word', true]
+		]);
+		expect(coverage?.words.find((entry) => entry.word.id === 'earlier-word')?.otherLessons).toEqual([
+			{
+				id: 'earlier-lesson',
+				title: 'Earlier lesson',
+				level: 'A1',
+				lessonOrder: 2,
+				timing: 'earlier'
+			}
+		]);
+		expect(coverage?.words.find((entry) => entry.word.id === 'current-word')?.otherLessons).toEqual(
+			[]
+		);
+	});
+
+	it('skips incomplete story lessons when finding the next coverage story', async () => {
+		mocks.prisma.lesson.findFirst.mockResolvedValue({
+			id: 'story-lesson',
+			title: 'Ready story',
+			lessonOrder: 12,
+			storyId: 'story-2'
+		});
+		mocks.prisma.exampleSentenceToken.findMany.mockResolvedValue([]);
+		mocks.prisma.lessonWord.findMany.mockResolvedValue([]);
+
+		await _getVocabWordCoverage({
+			id: 'lesson-9',
+			type: 'VOCABULARY',
+			level: 'A1',
+			lessonOrder: 9
+		});
+
+		expect(mocks.prisma.lesson.findFirst).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: expect.objectContaining({
+					storyId: { not: null }
+				})
+			})
+		);
+	});
+});
+
+describe('_attachEarlierLessonUsages', () => {
+	it('adds previous lesson usage warnings to existing lesson words', async () => {
+		mocks.prisma.lessonWord.findMany.mockResolvedValue([
+			{
+				wordId: 'word-1',
+				lessonSection: {
+					lesson: { id: 'lesson-middle', title: 'Middle lesson', level: 'A1', lessonOrder: 7 }
+				}
+			},
+			{
+				wordId: 'word-1',
+				lessonSection: {
+					lesson: { id: 'lesson-before', title: 'Earlier lesson', level: 'A1', lessonOrder: 4 }
+				}
+			}
+		]);
+
+		const lesson = await _attachEarlierLessonUsages({
+			id: 'current-lesson',
+			level: 'A1',
+			lessonOrder: 11,
+			sections: [
+				{
+					id: 'section-1',
+					words: [
+						{ id: 'lesson-word-1', wordId: 'word-1' },
+						{ id: 'lesson-word-2', wordId: 'word-2' }
+					]
+				}
+			]
+		});
+
+		expect(mocks.prisma.lessonWord.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: {
+					wordId: { in: ['word-1', 'word-2'] },
+					lessonSection: {
+						lessonId: { not: 'current-lesson' },
+						lesson: {
+							level: 'A1',
+							type: 'VOCABULARY',
+							lessonOrder: { lte: 11 }
+						}
+					}
+				}
+			})
+		);
+		expect(lesson.sections[0].words[0]).toMatchObject({
+			id: 'lesson-word-1',
+			otherLessons: [
+				{
+					id: 'lesson-before',
+					title: 'Earlier lesson',
+					level: 'A1',
+					lessonOrder: 4,
+					timing: 'earlier'
+				},
+				{
+					id: 'lesson-middle',
+					title: 'Middle lesson',
+					level: 'A1',
+					lessonOrder: 7,
+					timing: 'earlier'
+				}
+			]
+		});
+		expect(lesson.sections[0].words[1]).toMatchObject({
+			id: 'lesson-word-2',
+			otherLessons: []
+		});
+	});
 });
 
 describe('reorderWords action', () => {

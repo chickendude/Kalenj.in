@@ -12,7 +12,13 @@
 			kalenjin: string;
 			translations: string;
 			partOfSpeech?: PartOfSpeech | string | null;
-			otherLessons?: { id: string; title: string }[];
+			otherLessons?: {
+				id: string;
+				title: string;
+				level?: string;
+				lessonOrder?: number;
+				timing?: 'earlier' | 'later' | 'other';
+			}[];
 		} | null;
 		mode: 'search' | 'create';
 		draftKalenjin: string;
@@ -76,8 +82,9 @@
 
 	let pendingDuplicateWord = $state<{
 		form: HTMLFormElement;
+		wordId: string;
 		kalenjin: string;
-		lessons: { id: string; title: string }[];
+		lessons: NonNullable<NonNullable<AddWordPickerState['selectedWord']>['otherLessons']>;
 	} | null>(null);
 	let confirmedDuplicateWordId = $state<string | null>(null);
 
@@ -88,26 +95,11 @@
 		}
 	});
 
-	function handleAddWordSubmit(event: SubmitEvent) {
-		const selected = addWordState.selectedWord;
-		if (!selected || !selected.otherLessons?.length) return;
-		if (confirmedDuplicateWordId === selected.id) return;
-		event.preventDefault();
-		pendingDuplicateWord = {
-			form: event.currentTarget as HTMLFormElement,
-			kalenjin: selected.kalenjin,
-			lessons: selected.otherLessons
-		};
-	}
-
 	function confirmPendingDuplicate() {
 		if (!pendingDuplicateWord) return;
-		const selected = addWordState.selectedWord;
-		const form = pendingDuplicateWord.form;
+		const { form, wordId } = pendingDuplicateWord;
 		pendingDuplicateWord = null;
-		if (selected) {
-			confirmedDuplicateWordId = selected.id;
-		}
+		confirmedDuplicateWordId = wordId;
 		form.requestSubmit();
 	}
 
@@ -115,7 +107,26 @@
 		pendingDuplicateWord = null;
 	}
 
-	function enhanceAddWordForm() {
+	function enhanceAddWordForm({
+		cancel,
+		formElement
+	}: {
+		cancel: () => void;
+		formElement: HTMLFormElement;
+	}) {
+		const selected = addWordState.selectedWord;
+		const earlierLessons = selected?.otherLessons?.filter((lesson) => lesson.timing === 'earlier') ?? [];
+		if (selected && earlierLessons.length > 0 && confirmedDuplicateWordId !== selected.id) {
+			cancel();
+			pendingDuplicateWord = {
+				form: formElement,
+				wordId: selected.id,
+				kalenjin: selected.kalenjin,
+				lessons: earlierLessons
+			};
+			return;
+		}
+		confirmedDuplicateWordId = null;
 		return async ({
 			result,
 			update
@@ -150,7 +161,6 @@
 		class="add-word-form"
 		enctype="multipart/form-data"
 		use:enhance={enhanceAddWordForm}
-		onsubmit={handleAddWordSubmit}
 	>
 		<input type="hidden" name="lessonId" value={lessonId} />
 
@@ -206,13 +216,15 @@
 			<p class="error-text">{addWordState.error}</p>
 		{/if}
 
-		{#if addWordState.selectedWord?.otherLessons?.length}
+		{#if addWordState.selectedWord?.otherLessons?.some((lesson) => lesson.timing === 'earlier')}
+			{@const earlierLessons = addWordState.selectedWord.otherLessons.filter(
+				(lesson) => lesson.timing === 'earlier'
+			)}
 			<div class="duplicate-warning" role="status">
-				<strong>Already in another lesson.</strong>
 				<span>
 					"{addWordState.selectedWord.kalenjin}" is taught in
-					{#each addWordState.selectedWord.otherLessons as lesson, index}
-						<a href={`/lessons/${lesson.id}`} target="_blank" rel="noopener">{lesson.title}</a>{#if index < addWordState.selectedWord.otherLessons.length - 1}, {/if}
+					{#each earlierLessons as lesson, index}
+						<a href={`/lessons/${lesson.id}`} target="_blank" rel="noopener">{lesson.title}</a>{#if index < earlierLessons.length - 1}, {/if}
 					{/each}.
 				</span>
 			</div>
@@ -220,7 +232,7 @@
 
 		<div class="add-word-actions">
 			<button type="submit" class="btn">
-				{#if addWordState.selectedWord && addWordState.selectedWord.otherLessons?.length && confirmedDuplicateWordId !== addWordState.selectedWord.id}
+				{#if addWordState.selectedWord && addWordState.selectedWord.otherLessons?.some((lesson) => lesson.timing === 'earlier') && confirmedDuplicateWordId !== addWordState.selectedWord.id}
 					Add "{addWordState.selectedWord.kalenjin}" anyway
 				{:else if addWordState.selectedWord}
 					Add "{addWordState.selectedWord.kalenjin}" to lesson
@@ -234,9 +246,9 @@
 
 <ConfirmDialog
 	open={pendingDuplicateWord !== null}
-	title="Word already in another lesson"
+	title="Word taught in another lesson"
 	message={pendingDuplicateWord
-		? `"${pendingDuplicateWord.kalenjin}" is already taught in ${pendingDuplicateWord.lessons.map((l) => `"${l.title}"`).join(', ')}. Add it to this lesson anyway?`
+		? `"${pendingDuplicateWord.kalenjin}" is taught in ${pendingDuplicateWord.lessons.map((l) => `"${l.title}"`).join(', ')}. Add it to this lesson anyway?`
 		: ''}
 	confirmLabel="Add anyway"
 	onconfirm={confirmPendingDuplicate}
@@ -283,18 +295,14 @@
 	}
 
 	.duplicate-warning {
-		background: color-mix(in oklch, var(--warning, oklch(0.85 0.18 80)) 18%, var(--bg-raised));
-		border: 1px solid color-mix(in oklch, var(--warning, oklch(0.85 0.18 80)) 45%, var(--line));
-		border-radius: var(--radius);
-		color: var(--ink);
-		display: grid;
+		color: oklch(0.45 0.15 25);
 		font-size: 13px;
-		gap: 4px;
-		padding: 10px 14px;
+		font-weight: 600;
 	}
 
 	.duplicate-warning a {
 		color: var(--brand);
+		font-weight: 600;
 	}
 
 	.add-word-images {

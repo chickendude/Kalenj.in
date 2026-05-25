@@ -698,7 +698,13 @@
 												size="sm"
 												label={`Play pronunciation of ${getWordLocal(lessonWord).kalenjin}`}
 											/>
-											<button type="button" class="inline-edit-button word-kalenjin" onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}>{getWordLocal(lessonWord).kalenjin}</button>
+											<button
+												type="button"
+												class="inline-edit-button word-kalenjin"
+												class:word-kalenjin--usage-warning={Boolean(lessonWord.otherLessons?.length)}
+												onclick={() => beginInlineWordEdit(lessonWord, 'kalenjin')}
+												>{getWordLocal(lessonWord).kalenjin}</button
+											>
 										</div>
 									{/if}
 									{#if inlineWordEdit?.lessonWordId === lessonWord.id && inlineWordEdit.field === 'translations'}
@@ -708,6 +714,18 @@
 									{/if}
 									{#if inlineWordError && inlineWordEdit?.lessonWordId === lessonWord.id}
 										<p class="error-text">{inlineWordError}</p>
+									{/if}
+									{#if lessonWord.otherLessons?.length}
+										<div class="lesson-word-usage-warning">
+											<span>
+												Taught in
+												{#each lessonWord.otherLessons as lesson, index}
+													<a href={`/lessons/${lesson.id}`} target="_blank" rel="noopener"
+														>{lesson.title}</a
+													>{#if index < lessonWord.otherLessons.length - 1}, {/if}
+												{/each}.
+											</span>
+										</div>
 									{/if}
 								</div>
 							<div class="vocab-text-cell">
@@ -1145,6 +1163,23 @@
 	.word-translations {
 		color: var(--ink-soft);
 		font-size: 13px;
+	}
+
+	.word-kalenjin--usage-warning {
+		color: oklch(0.56 0.12 25);
+		font-weight: 700;
+	}
+
+	.lesson-word-usage-warning {
+		color: oklch(0.45 0.15 25);
+		font-size: 12px;
+		font-weight: 600;
+		margin-top: 0.35rem;
+	}
+
+	.lesson-word-usage-warning a {
+		color: var(--brand);
+		font-weight: 600;
 	}
 
 	.word-inline-input {

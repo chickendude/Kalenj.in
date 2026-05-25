@@ -328,42 +328,44 @@
 				<div
 					bind:this={kalenjinDisplayShell}
 					class="editable-sentence-shell"
+					role="button"
+					tabindex="0"
+					aria-label="Edit original sentence"
+					onclick={() => beginInlineSentenceEdit('kalenjin')}
+					onkeydown={(event) => {
+						if (event.key === 'Enter' || event.key === ' ') {
+							event.preventDefault();
+							beginInlineSentenceEdit('kalenjin');
+						}
+					}}
 				>
-					<AudioPlayButton
-						audioUrl={data.sentence.audioUrl}
-						label="Play sentence"
-					/>
-					<div
-						class="editable-sentence-text"
-						role="button"
-						tabindex="0"
-						aria-label="Edit original sentence"
-						onclick={() => beginInlineSentenceEdit('kalenjin')}
-						onkeydown={(event) => {
-							if (event.key === 'Enter' || event.key === ' ') {
-								event.preventDefault();
-								beginInlineSentenceEdit('kalenjin');
-							}
-						}}
+					<TokenHoverPreview
+						sentenceId={data.sentence.id}
+						sentenceText={sentenceKalenjin}
+						tokens={displayedSentenceTokens}
+						onTokenClick={() => beginInlineSentenceEdit('kalenjin')}
 					>
-						<TokenHoverPreview
-							sentenceId={data.sentence.id}
-							sentenceText={sentenceKalenjin}
-							tokens={displayedSentenceTokens}
-							onTokenClick={() => beginInlineSentenceEdit('kalenjin')}
-						/>
-					</div>
+						{#snippet leading()}
+							<AudioPlayButton
+								audioUrl={data.sentence.audioUrl}
+								label="Play sentence"
+							/>
+						{/snippet}
+					</TokenHoverPreview>
 				</div>
 			{:else}
-				<AudioPlayButton
-					audioUrl={data.sentence.audioUrl}
-					label="Play sentence"
-				/>
 				<TokenHoverPreview
 					sentenceId={data.sentence.id}
 					sentenceText={sentenceKalenjin}
 					tokens={displayedSentenceTokens}
-				/>
+				>
+					{#snippet leading()}
+						<AudioPlayButton
+							audioUrl={data.sentence.audioUrl}
+							label="Play sentence"
+						/>
+					{/snippet}
+				</TokenHoverPreview>
 			{/if}
 		</div>
 		<div class="sentence-english">
@@ -544,12 +546,8 @@
 		margin-bottom: 0;
 	}
 	.sentence-display {
-		align-items: baseline;
-		display: flex;
-		flex-wrap: wrap;
 		font-family: var(--font-display);
 		font-size: 28px;
-		gap: 12px;
 		line-height: 1.4;
 		margin: 12px 0 6px;
 	}

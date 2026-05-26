@@ -9,7 +9,7 @@ import type { Actions, PageServerLoad } from './$types';
  * Soft anti-spam: once a user has this many awaiting review, they have to
  * wait for staff to clear some out before submitting more.
  */
-const MAX_PENDING_PER_USER = 50;
+const MAX_PENDING_PER_USER = 200;
 
 function requireSignedIn(locals: App.Locals, url: URL): NonNullable<App.Locals['user']> {
 	if (!locals.user) {

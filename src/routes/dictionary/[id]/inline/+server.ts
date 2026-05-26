@@ -44,25 +44,29 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		error(400, 'Invalid field.');
 	}
 
+	const typedField = field as WordInlineField;
+	const trimmedValue = value.trim();
+	if (!trimmedValue) {
+		error(400, typedField === 'kalenjin' ? 'Kalenjin is required.' : 'Translations are required.');
+	}
+
 	const word = await prisma.word.findUnique({ where: { id: wordId } });
 	if (!word) {
 		error(404, 'Word not found.');
 	}
 
-	const typedField = field as WordInlineField;
+	const shouldRename = typedField === 'kalenjin' && trimmedValue !== word.kalenjin;
 
 	const updated = await prisma.$transaction(async (tx) => {
 		const next = await tx.word.update({
 			where: { id: wordId },
 			data: {
-				[typedField]: value,
-				...(typedField === 'kalenjin'
-					? { slug: await generateUniqueWordSlug(tx, value, wordId) }
-					: {})
+				[typedField]: trimmedValue,
+				...(shouldRename ? { slug: await generateUniqueWordSlug(tx, trimmedValue, wordId) } : {})
 			}
 		});
-		if (typedField === 'kalenjin' && value !== word.kalenjin) {
-			await propagateKalenjinRename(tx, wordId, value, word.slug);
+		if (shouldRename) {
+			await propagateKalenjinRename(tx, wordId, trimmedValue, word.slug);
 		}
 		return next;
 	});

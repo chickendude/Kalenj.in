@@ -4,7 +4,7 @@ import { propagateKalenjinRename } from './propagate-rename';
 type WordRow = { id: string; notes: string | null; translations: string };
 
 function mockClient(rows: WordRow[]) {
-	const findUnique = vi.fn().mockResolvedValue({ id: 'cuid-1', kalenjin: 'new name', slug: 'new-name' });
+	const findUnique = vi.fn().mockResolvedValue({ id: 'cuid-1', kalenjin: 'new name', slug: 'old-name' });
 	const findMany = vi.fn().mockResolvedValue(rows);
 	const update = vi.fn().mockResolvedValue({});
 	return {
@@ -21,7 +21,7 @@ describe('propagateKalenjinRename', () => {
 			{
 				id: 'word-a',
 				notes: 'See [old name](/dictionary/cuid-1) for context.',
-				translations: 'related to [old name](/dictionary/cuid-1)'
+				translations: 'related to [old name](/dictionary/old-name)'
 			}
 		]);
 
@@ -31,8 +31,8 @@ describe('propagateKalenjinRename', () => {
 		expect(update).toHaveBeenCalledWith({
 			where: { id: 'word-a' },
 			data: {
-				notes: 'See [new name](/dictionary/new-name) for context.',
-				translations: 'related to [new name](/dictionary/new-name)'
+				notes: 'See [new name](/dictionary/old-name) for context.',
+				translations: 'related to [new name](/dictionary/old-name)'
 			}
 		});
 	});
@@ -66,12 +66,12 @@ describe('propagateKalenjinRename', () => {
 			where: { id: 'word-a' },
 			data: {
 				notes: null,
-				translations: 'see [new](/dictionary/new-name)'
+				translations: 'see [new](/dictionary/old-name)'
 			}
 		});
 	});
 
-	it('queries the correct shape with both contains predicates', async () => {
+	it('queries for both legacy id links and slug links', async () => {
 		const { client, findMany } = mockClient([]);
 
 		await propagateKalenjinRename(client, 'cuid-1', 'x');
@@ -79,8 +79,10 @@ describe('propagateKalenjinRename', () => {
 		expect(findMany).toHaveBeenCalledWith({
 			where: {
 				OR: [
-					{ notes: { contains: 'cuid-1)' } },
-					{ translations: { contains: 'cuid-1)' } }
+					{ notes: { contains: '/dictionary/cuid-1' } },
+					{ translations: { contains: '/dictionary/cuid-1' } },
+					{ notes: { contains: '/dictionary/old-name' } },
+					{ translations: { contains: '/dictionary/old-name' } }
 				]
 			},
 			select: { id: true, notes: true, translations: true }

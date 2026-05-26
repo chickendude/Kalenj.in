@@ -36,7 +36,7 @@ describe('createOrUpdateLinkedWord', () => {
 	it('stores the Swahili loan flag on create', async () => {
 		const create = vi.fn().mockResolvedValue({ id: 'word-1' });
 		const findMany = vi.fn().mockResolvedValue([]);
-		const tx = { word: { create, findMany } };
+		const tx = { $executeRaw: vi.fn(), word: { create, findMany } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			kalenjin: 'meza',
@@ -53,8 +53,7 @@ describe('createOrUpdateLinkedWord', () => {
 
 	it('clears the Swahili loan flag when updating without it checked', async () => {
 		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
-		const findMany = vi.fn().mockResolvedValue([]);
-		const tx = { word: { update, findMany } };
+		const tx = { word: { update } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			wordId: 'word-1',
@@ -72,8 +71,7 @@ describe('createOrUpdateLinkedWord', () => {
 
 	it('leaves the Swahili loan flag untouched on update when omitted', async () => {
 		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
-		const findMany = vi.fn().mockResolvedValue([]);
-		const tx = { word: { update, findMany } };
+		const tx = { word: { update } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			wordId: 'word-1',
@@ -84,6 +82,23 @@ describe('createOrUpdateLinkedWord', () => {
 		expect(update).toHaveBeenCalledWith(
 			expect.objectContaining({
 				data: expect.not.objectContaining({ isSwahiliLoan: expect.any(Boolean) })
+			})
+		);
+	});
+
+	it('keeps the existing slug stable when updating a word', async () => {
+		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
+		const tx = { word: { update } };
+
+		await createOrUpdateLinkedWord(tx as never, {
+			wordId: 'word-1',
+			kalenjin: 'renamed',
+			translations: 'changed'
+		});
+
+		expect(update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				data: expect.not.objectContaining({ slug: expect.any(String) })
 			})
 		);
 	});

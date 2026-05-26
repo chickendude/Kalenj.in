@@ -1,5 +1,7 @@
 ALTER TABLE "Word" ADD COLUMN IF NOT EXISTS "slug" TEXT;
 
+CREATE EXTENSION IF NOT EXISTS unaccent;
+
 DO $$
 DECLARE
   row record;
@@ -14,7 +16,7 @@ BEGIN
   LOOP
     base_slug := regexp_replace(
       regexp_replace(
-        trim(both '-' from regexp_replace(lower(row.kalenjin), '[^a-z0-9]+', '-', 'g')),
+        trim(both '-' from regexp_replace(lower(unaccent(row.kalenjin)), '[^a-z0-9]+', '-', 'g')),
         '-{2,}',
         '-',
         'g'

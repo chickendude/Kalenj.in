@@ -6,9 +6,9 @@ import {
 } from './word-url';
 
 describe('word URL helpers', () => {
-	it('builds word-only dictionary entry hrefs', () => {
+	it('falls back to the word id when no stored slug is present', () => {
 		expect(dictionaryEntryHref({ id: 'abc123', kalenjin: 'Chamgei!' })).toBe(
-			'/dictionary/chamgei'
+			'/dictionary/abc123'
 		);
 	});
 
@@ -26,4 +26,7 @@ describe('word URL helpers', () => {
 		expect(decodeDictionarySegment('Chamgei%20Nebo')).toBe('chamgei nebo');
 	});
 
+	it('turns malformed percent escapes into an empty segment', () => {
+		expect(decodeDictionarySegment('%')).toBe('');
+	});
 });

@@ -4,25 +4,26 @@ import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { decodeDictionarySegment } from '$lib/word-url';
-import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
 
 async function resolveWordId(segment: string): Promise<string | null> {
 	const decoded = decodeDictionarySegment(segment);
-	const wordById = await prisma.word.findUnique({
-		where: { id: decoded },
-		select: { id: true }
-	});
-	if (wordById) return wordById.id;
+	if (!decoded) return null;
 
 	const wordBySlug = await prisma.word.findUnique({
 		where: { slug: decoded },
 		select: { id: true }
 	});
+	if (wordBySlug) return wordBySlug.id;
 
-	return wordBySlug?.id ?? null;
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		select: { id: true }
+	});
+
+	return wordById?.id ?? null;
 }
 
 export const POST: RequestHandler = async ({ request, params, locals }) => {
@@ -53,10 +54,7 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		const next = await tx.word.update({
 			where: { id: wordId },
 			data: {
-				[typedField]: value,
-				...(typedField === 'kalenjin'
-					? { slug: await generateUniqueWordSlug(tx, value, wordId) }
-					: {})
+				[typedField]: value
 			}
 		});
 		if (typedField === 'kalenjin' && value !== word.kalenjin) {

@@ -90,7 +90,8 @@ describe('buildWordLinkInsertion', () => {
 	it('replaces the bracket region with a full link segment', () => {
 		const result = buildWordLinkInsertion('hello [cha', 6, 10, {
 			id: 'abc123',
-			kalenjin: 'chamgei'
+			kalenjin: 'chamgei',
+			href: '/dictionary/chamgei'
 		});
 		expect(result.nextValue).toBe('hello [chamgei](/dictionary/chamgei)');
 		expect(result.nextCaret).toBe('hello [chamgei](/dictionary/chamgei)'.length);
@@ -99,7 +100,8 @@ describe('buildWordLinkInsertion', () => {
 	it('preserves text after the caret', () => {
 		const result = buildWordLinkInsertion('[cha rest', 0, 4, {
 			id: 'abc',
-			kalenjin: 'chamgei'
+			kalenjin: 'chamgei',
+			href: '/dictionary/chamgei'
 		});
 		expect(result.nextValue).toBe('[chamgei](/dictionary/chamgei) rest');
 		expect(result.nextCaret).toBe('[chamgei](/dictionary/chamgei)'.length);
@@ -108,7 +110,8 @@ describe('buildWordLinkInsertion', () => {
 	it('handles trigger at position 0', () => {
 		const result = buildWordLinkInsertion('[x', 0, 2, {
 			id: 'cuidx',
-			kalenjin: 'word'
+			kalenjin: 'word',
+			href: '/dictionary/word'
 		});
 		expect(result.nextValue).toBe('[word](/dictionary/word)');
 		expect(result.nextCaret).toBe('[word](/dictionary/word)'.length);
@@ -117,9 +120,18 @@ describe('buildWordLinkInsertion', () => {
 	it('sanitizes forbidden chars from the label', () => {
 		const result = buildWordLinkInsertion('[', 0, 1, {
 			id: 'cuidx',
-			kalenjin: 'bad];label\nhere'
+			kalenjin: 'bad];label\nhere',
+			href: '/dictionary/bad-label-here'
 		});
 		expect(result.nextValue).toBe('[badlabelhere](/dictionary/bad-label-here)');
+	});
+
+	it('falls back to an id URL when no href is provided', () => {
+		const result = buildWordLinkInsertion('[cha', 0, 4, {
+			id: 'abc123',
+			kalenjin: 'chamgei'
+		});
+		expect(result.nextValue).toBe('[chamgei](/dictionary/abc123)');
 	});
 });
 
@@ -134,6 +146,17 @@ describe('rewriteLinkLabel', () => {
 		expect(
 			rewriteLinkLabel('[a](/dictionary/abc) and [b](/dictionary/abc)', 'abc', 'new')
 		).toBe('[new](/dictionary/new) and [new](/dictionary/new)');
+	});
+
+	it('rewrites slug links for the target word', () => {
+		expect(
+			rewriteLinkLabel(
+				'[old](/dictionary/chamgei) and [legacy](/dictionary/abc)',
+				['abc', 'chamgei'],
+				'kongoi',
+				'/dictionary/chamgei'
+			)
+		).toBe('[kongoi](/dictionary/chamgei) and [kongoi](/dictionary/chamgei)');
 	});
 
 	it('leaves links to other cuids untouched', () => {

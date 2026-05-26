@@ -88,7 +88,11 @@
 	function resultHref(result: SearchResult): string {
 		if (typeof result.href === 'string') return result.href;
 		if (linkBase === '/dictionary/' && primaryKey === 'kalenjin') {
-			return dictionaryEntryHref({ id: result.id, kalenjin: getString(result[primaryKey]) });
+			return dictionaryEntryHref({
+				id: result.id,
+				kalenjin: getString(result[primaryKey]),
+				slug: result.slug
+			});
 		}
 		return `${linkBase}${result.id}`;
 	}

@@ -92,43 +92,47 @@ const wordDetailInclude = {
 
 async function findWordForDictionarySegment(segment: string) {
 	const decoded = decodeDictionarySegment(segment);
+	if (!decoded) return null;
+
+	const wordBySlug = await prisma.word.findUnique({
+		where: { slug: decoded },
+		include: wordDetailInclude
+	});
+	if (wordBySlug) {
+		return {
+			word: wordBySlug,
+			canonicalHref: dictionaryEntryHref(wordBySlug)
+		};
+	}
+
 	const wordById = await prisma.word.findUnique({
 		where: { id: decoded },
 		include: wordDetailInclude
 	});
-	if (wordById) {
-		return {
-			word: wordById,
-			canonicalHref: await canonicalDictionaryHref(prisma, wordById)
-		};
-	}
-
-	const word = await prisma.word.findUnique({
-		where: { slug: decoded },
-		include: wordDetailInclude
-	});
-	if (!word) return null;
+	if (!wordById) return null;
 
 	return {
-		word,
-		canonicalHref: dictionaryEntryHref(word)
+		word: wordById,
+		canonicalHref: await canonicalDictionaryHref(prisma, wordById)
 	};
 }
 
 async function resolveWordId(segment: string): Promise<string | null> {
 	const decoded = decodeDictionarySegment(segment);
-	const wordById = await prisma.word.findUnique({
-		where: { id: decoded },
-		select: { id: true }
-	});
-	if (wordById) return wordById.id;
+	if (!decoded) return null;
 
 	const wordBySlug = await prisma.word.findUnique({
 		where: { slug: decoded },
 		select: { id: true }
 	});
+	if (wordBySlug) return wordBySlug.id;
 
-	return wordBySlug?.id ?? null;
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		select: { id: true }
+	});
+
+	return wordById?.id ?? null;
 }
 
 export const load: PageServerLoad = async ({ params }) => {
@@ -296,7 +300,7 @@ export const actions: Actions = {
 			return fail(400, { relatedWordError: 'Choose a word to link.' });
 		}
 
-		if (relatedWordId === decodeDictionarySegment(params.id)) {
+		if (relatedWordId === params.id) {
 			return fail(400, { relatedWordError: 'A word cannot be related to itself.' });
 		}
 

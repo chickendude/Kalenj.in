@@ -14,17 +14,20 @@ export async function propagateKalenjinRename(
 		select: { id: true, kalenjin: true, slug: true }
 	});
 	const href = target ? dictionaryEntryHref(target) : undefined;
-	const needle = `${cuid})`;
+	const segments = [cuid, target?.slug].filter((segment): segment is string => Boolean(segment));
 	const rows = await client.word.findMany({
 		where: {
-			OR: [{ notes: { contains: needle } }, { translations: { contains: needle } }]
+			OR: segments.flatMap((segment) => [
+				{ notes: { contains: `/dictionary/${segment}` } },
+				{ translations: { contains: `/dictionary/${segment}` } }
+			])
 		},
 		select: { id: true, notes: true, translations: true }
 	});
 
 	for (const row of rows) {
-		const nextNotes = row.notes ? rewriteLinkLabel(row.notes, cuid, newKalenjin, href) : row.notes;
-		const nextTranslations = rewriteLinkLabel(row.translations, cuid, newKalenjin, href);
+		const nextNotes = row.notes ? rewriteLinkLabel(row.notes, segments, newKalenjin, href) : row.notes;
+		const nextTranslations = rewriteLinkLabel(row.translations, segments, newKalenjin, href);
 		if (nextNotes === row.notes && nextTranslations === row.translations) continue;
 		await client.word.update({
 			where: { id: row.id },

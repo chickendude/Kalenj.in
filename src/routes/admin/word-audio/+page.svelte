@@ -37,6 +37,7 @@
 		targetType: 'word' | 'word-plural';
 		primary: string;
 		secondary: string;
+		href?: string;
 		badge?: string;
 	};
 	let sessionItems = $state<RecorderItem[] | null>(null);
@@ -125,6 +126,11 @@
 			targetType: target.targetType,
 			primary: target.primary,
 			secondary: target.secondary,
+			href: dictionaryEntryHref({
+				id: target.targetId,
+				kalenjin: target.wordKalenjin,
+				slug: target.wordSlug
+			}),
 			badge: target.kind === 'plural' ? 'Plural' : undefined
 		}));
 	}
@@ -303,7 +309,12 @@
 								{#if target.kind === 'plural'}
 									<span class="form-badge">Plural</span>
 								{/if}
-								<a href={dictionaryEntryHref({ id: target.targetId, kalenjin: target.wordKalenjin })}
+								<a
+									href={dictionaryEntryHref({
+										id: target.targetId,
+										kalenjin: target.wordKalenjin,
+										slug: target.wordSlug
+									})}
 									>{target.primary}</a
 								>
 							</td>

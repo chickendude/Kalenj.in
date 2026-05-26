@@ -24,7 +24,8 @@ export async function dictionaryHrefMap(
 	const slugById = new Map(storedSlugs.map((word) => [word.id, word.slug]));
 
 	for (const word of words) {
-		map.set(word.id, dictionaryEntryHref({ ...word, slug: word.slug ?? slugById.get(word.id) }));
+		const slug = word.slug ?? slugById.get(word.id);
+		map.set(word.id, slug ? dictionaryEntryHref({ ...word, slug }) : `/dictionary/${word.id}`);
 	}
 
 	return map;
@@ -35,7 +36,7 @@ export async function canonicalDictionaryHref(
 	word: DictionaryHrefWord
 ): Promise<string> {
 	const hrefs = await dictionaryHrefMap(client, [word]);
-	return hrefs.get(word.id) ?? dictionaryEntryHref(word);
+	return hrefs.get(word.id) ?? `/dictionary/${word.id}`;
 }
 
 export async function attachDictionaryHrefs<T extends DictionaryHrefWord>(
@@ -46,6 +47,6 @@ export async function attachDictionaryHrefs<T extends DictionaryHrefWord>(
 	const hrefs = await dictionaryHrefMap(client, words);
 	return words.map((word) => ({
 		...word,
-		href: hrefs.get(word.id) ?? dictionaryEntryHref(word)
+		href: hrefs.get(word.id) ?? `/dictionary/${word.id}`
 	}));
 }

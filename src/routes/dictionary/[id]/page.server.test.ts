@@ -70,7 +70,7 @@ function makeWord(overrides: Record<string, unknown> = {}) {
 }
 
 function mockSlugLookup(word: ReturnType<typeof makeWord>) {
-	mocks.prisma.word.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(word);
+	mocks.prisma.word.findUnique.mockResolvedValueOnce(word);
 }
 
 describe('dictionary detail related words', () => {
@@ -118,12 +118,21 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('redirects legacy ID-only URLs to the readable canonical URL', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValue(makeWord());
+		mocks.prisma.word.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(makeWord());
 
 		await expect(load({ params: { id: 'word-a' } } as never)).rejects.toMatchObject({
 			status: 308,
 			location: '/dictionary/che'
 		});
+	});
+
+	it('returns a clean 404 for malformed percent escapes', async () => {
+		await expect(load({ params: { id: '%' } } as never)).rejects.toMatchObject({
+			status: 404,
+			body: { message: 'Word not found' }
+		});
+
+		expect(mocks.prisma.word.findUnique).not.toHaveBeenCalled();
 	});
 
 	it('loads related words when the current word is the target side', async () => {
@@ -218,7 +227,7 @@ describe('dictionary detail related words', () => {
 		await expect(addRelatedWord('word-b', 'word-a')).resolves.toEqual({ relatedWordSuccess: true });
 
 		expect(mocks.prisma.word.findUnique).toHaveBeenCalledWith({
-			where: { id: 'word-b' },
+			where: { slug: 'word-b' },
 			select: { id: true }
 		});
 		expect(mocks.prisma.word.findUnique).toHaveBeenCalledWith({

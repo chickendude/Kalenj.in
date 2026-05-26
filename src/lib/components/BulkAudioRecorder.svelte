@@ -16,6 +16,7 @@
 		secondary: string;
 		targetId?: string;
 		targetType?: ItemTargetType;
+		href?: string;
 		badge?: string;
 	};
 
@@ -1213,7 +1214,11 @@
 		{@const detailHref =
 			targetType === 'word'
 				? skipItem
-					? dictionaryEntryHref({ id: skipPromptId, kalenjin: skipItem.primary })
+					? (skipItem.href ??
+						dictionaryEntryHref({
+							id: skipItem.targetId ?? skipPromptId,
+							kalenjin: skipItem.primary
+						}))
 					: `/dictionary/${skipPromptId}`
 				: `/corpus/${skipPromptId}`}
 		{@const detailLabel = targetType === 'word' ? 'Open in dictionary →' : 'Open in corpus →'}

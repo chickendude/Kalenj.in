@@ -8,19 +8,24 @@ const tokens = [
 		id: 'token-ngunon',
 		tokenOrder: 0,
 		surfaceForm: 'Ngunon',
-		word: { id: 'word-ngunon', kalenjin: 'Ngunon', translations: 'now' }
+		word: { id: 'word-ngunon', kalenjin: 'Ngunon', slug: 'ngunon', translations: 'now' }
 	},
 	{
 		id: 'token-achobe',
 		tokenOrder: 1,
 		surfaceForm: 'achobe',
-		word: { id: 'word-achobe', kalenjin: 'achobe', translations: 'make' }
+		word: { id: 'word-achobe', kalenjin: 'achobe', slug: 'achobe', translations: 'make' }
 	},
 	{
 		id: 'token-igiilge',
 		tokenOrder: 2,
 		surfaceForm: 'Igiilge',
-		word: { id: 'word-igiilge', kalenjin: 'Igiilge', translations: 'work hard' }
+		word: {
+			id: 'word-igiilge',
+			kalenjin: 'Igiilge',
+			slug: 'igiilge',
+			translations: 'work hard'
+		}
 	}
 ];
 

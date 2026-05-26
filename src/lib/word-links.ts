@@ -55,15 +55,21 @@ export function buildWordLinkInsertion(
 
 export function rewriteLinkLabel(
 	text: string,
-	cuid: string,
+	segments: string | string[],
 	newLabel: string,
 	newHref?: string
 ): string {
 	const safeLabel = sanitizeLabel(newLabel);
-	const escapedCuid = cuid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const pattern = new RegExp(`\\[([^\\]]+)\\]\\(/dictionary/${escapedCuid}\\)`, 'g');
+	const escapedSegments = (Array.isArray(segments) ? segments : [segments])
+		.filter(Boolean)
+		.map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+	if (escapedSegments.length === 0) return text;
+	const pattern = new RegExp(
+		`\\[([^\\]]+)\\]\\(/dictionary/(?:${escapedSegments.join('|')})\\)`,
+		'g'
+	);
 	return text.replace(
 		pattern,
-		`[${safeLabel}](${newHref ?? dictionaryEntryHref({ id: cuid, kalenjin: newLabel })})`
+		`[${safeLabel}](${newHref ?? dictionaryEntryHref({ kalenjin: newLabel })})`
 	);
 }

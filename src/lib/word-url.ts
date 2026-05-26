@@ -18,6 +18,7 @@ export function slugifyWordName(kalenjin: string): string {
 
 export function dictionaryEntrySegment(word: WordLinkTarget): string {
 	if (word.slug) return word.slug;
+	if (word.id) return word.id;
 	return slugifyWordName(word.kalenjin);
 }
 
@@ -26,5 +27,9 @@ export function dictionaryEntryHref(word: WordLinkTarget): string {
 }
 
 export function decodeDictionarySegment(segment: string): string {
-	return decodeURIComponent(segment).trim().toLowerCase();
+	try {
+		return decodeURIComponent(segment).trim().toLowerCase();
+	} catch {
+		return '';
+	}
 }

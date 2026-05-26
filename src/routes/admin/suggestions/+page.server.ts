@@ -110,6 +110,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 		const relatedWordIds = [
 			...new Set(
@@ -185,6 +186,7 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm,
 					isPluralOnly,
+					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
 					imageUrl
 				});

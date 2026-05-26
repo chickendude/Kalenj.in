@@ -45,3 +45,12 @@ ALTER TABLE "Report" ADD CONSTRAINT "Report_reporterId_fkey" FOREIGN KEY ("repor
 
 -- AddForeignKey
 ALTER TABLE "Report" ADD CONSTRAINT "Report_resolvedById_fkey" FOREIGN KEY ("resolvedById") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Enforce exactly-one target matching targetType: a WORD report must set
+-- wordId (and nothing else), a SENTENCE report must set sentenceId. This
+-- catches inconsistent inserts even if a future code path skips the app-
+-- level guard.
+ALTER TABLE "Report" ADD CONSTRAINT "Report_target_consistency_chk" CHECK (
+    ("targetType" = 'WORD' AND "wordId" IS NOT NULL AND "sentenceId" IS NULL)
+    OR ("targetType" = 'SENTENCE' AND "sentenceId" IS NOT NULL AND "wordId" IS NULL)
+);

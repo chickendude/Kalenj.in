@@ -26,7 +26,7 @@ describe('word URL helpers', () => {
 		expect(decodeDictionarySegment('Chamgei%20Nebo')).toBe('chamgei nebo');
 	});
 
-	it('turns malformed percent escapes into an empty segment', () => {
-		expect(decodeDictionarySegment('%')).toBe('');
+	it('leaves malformed percent escapes on the normal lookup path', () => {
+		expect(decodeDictionarySegment('%')).toBe('%');
 	});
 });

@@ -152,7 +152,16 @@ describe('dictionary detail page server', () => {
 			body: { message: 'Word not found' }
 		});
 
-		expect(mocks.prisma.word.findUnique).not.toHaveBeenCalled();
+		expect(mocks.prisma.word.findUnique).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { slug: '%' }
+			})
+		);
+		expect(mocks.prisma.word.findUnique).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: '%' }
+			})
+		);
 	});
 
 	it('redirects to the new readable URL after a headword rename updates the slug', async () => {

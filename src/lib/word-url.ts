@@ -30,6 +30,6 @@ export function decodeDictionarySegment(segment: string): string {
 	try {
 		return decodeURIComponent(segment).trim().toLowerCase();
 	} catch {
-		return '';
+		return segment.trim().toLowerCase();
 	}
 }

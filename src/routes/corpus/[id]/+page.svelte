@@ -4,6 +4,7 @@
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import EditModeToggle from '$lib/components/EditModeToggle.svelte';
+	import ReportDialog from '$lib/components/ReportDialog.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
 	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
@@ -59,6 +60,7 @@
 	let autoLemmaForm = $state<HTMLFormElement | null>(null);
 	let pendingAutoLemmaForm = $state<HTMLFormElement | null>(null);
 	let autoLemmaConfirmed = $state(false);
+	let reportDialogOpen = $state(false);
 	let inlineSentenceEdit = $state<InlineSentenceField | null>(null);
 	let inlineSentenceValue = $state('');
 	let inlineSentenceError = $state<string | null>(null);
@@ -297,6 +299,19 @@
 			</div>
 		</div>
 		<div class="sentence-admin-actions">
+			<Tooltip label="Report an issue">
+				<button
+					type="button"
+					class="icon-action-btn"
+					onclick={() => (reportDialogOpen = true)}
+					aria-label="Report an issue"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+						<line x1="4" y1="22" x2="4" y2="15" />
+					</svg>
+				</button>
+			</Tooltip>
 			{#if canEdit}
 				<form
 					bind:this={autoLemmaForm}
@@ -549,6 +564,14 @@
 	confirmLabel="Auto-fill missing lemmas"
 	onconfirm={confirmPendingAutoLemma}
 	oncancel={cancelPendingAutoLemma}
+/>
+
+<ReportDialog
+	open={reportDialogOpen}
+	targetType="SENTENCE"
+	targetId={data.sentence.id}
+	targetLabel={sentenceKalenjin || data.sentence.kalenjin}
+	onclose={() => (reportDialogOpen = false)}
 />
 
 <style>

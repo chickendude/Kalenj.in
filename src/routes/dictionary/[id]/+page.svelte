@@ -10,6 +10,7 @@
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import ReportDialog from '$lib/components/ReportDialog.svelte';
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
 	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
 	import WordPill from '$lib/components/WordPill.svelte';
@@ -197,6 +198,7 @@
 	let relatedSearchSeq = 0;
 
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
+	let reportDialogOpen = $state(false);
 
 	function requestDeleteEntry(event: SubmitEvent) {
 		if (pendingDeleteForm === event.currentTarget) return;
@@ -280,9 +282,14 @@
 			</svg>
 			Back to dictionary
 		</a>
-		{#if isStaff}
-			<EditModeToggle />
-		{/if}
+		<div class="entry-top-actions">
+			<button type="button" class="btn-sm ghost" onclick={() => (reportDialogOpen = true)}>
+				Report
+			</button>
+			{#if isStaff}
+				<EditModeToggle />
+			{/if}
+		</div>
 	</div>
 
 	<div class="detail-shell" class:detail-shell-solo={!editMode}>
@@ -796,6 +803,14 @@
 	oncancel={cancelPendingDelete}
 />
 
+<ReportDialog
+	open={reportDialogOpen}
+	targetType="WORD"
+	targetId={data.word.id}
+	targetLabel={kalenjinValue || data.word.kalenjin}
+	onclose={() => (reportDialogOpen = false)}
+/>
+
 <style>
 	.entry-top-bar {
 		align-items: center;
@@ -806,6 +821,11 @@
 	}
 	.entry-top-bar :global(.back-link) {
 		margin-bottom: 0;
+	}
+	.entry-top-actions {
+		align-items: center;
+		display: flex;
+		gap: 8px;
 	}
 	.detail-shell-solo {
 		grid-template-columns: minmax(0, 1fr);

@@ -69,6 +69,24 @@ enum SuggestionStatus {
   REJECTED
 }
 
+enum ReportTargetType {
+  WORD
+  SENTENCE
+}
+
+enum ReportIssueType {
+  WRONG_TRANSLATION
+  MISSPELLING
+  AUDIO_ISSUE
+  OTHER
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
 model User {
   id                           String                   @id @default(cuid())
   username                     String                   @unique
@@ -89,6 +107,8 @@ model User {
   reviewedWordSuggestions      WordSuggestion[]         @relation("WordSuggestionReviewer")
   submittedSentenceSuggestions SentenceSuggestion[]     @relation("SentenceSuggestionSubmitter")
   reviewedSentenceSuggestions  SentenceSuggestion[]     @relation("SentenceSuggestionReviewer")
+  reportsSubmitted             Report[]                 @relation("ReportReporter")
+  reportsResolved              Report[]                 @relation("ReportResolver")
 }
 
 model Session {
@@ -151,6 +171,7 @@ model Word {
   relatedToWords          RelatedWord[]                 @relation("RelatedWordTarget")
   observedForms           ObservedWordForm[]
   suggestionsApproved     WordSuggestion[]              @relation("WordSuggestionApprovedWord")
+  reports                 Report[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
@@ -247,6 +268,7 @@ model ExampleSentence {
   lessonWords         LessonWord[]
   storySentence       StorySentence?
   suggestionsApproved SentenceSuggestion[]   @relation("SentenceSuggestionApprovedSentence")
+  reports             Report[]
 
   @@index([kalenjin])
   @@index([status])
@@ -459,4 +481,27 @@ model SentenceSuggestion {
   @@index([status])
   @@index([submitterId])
   @@index([createdAt])
+}
+
+model Report {
+  id           String           @id @default(cuid())
+  targetType   ReportTargetType
+  wordId       String?
+  word         Word?            @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  sentenceId   String?
+  sentence     ExampleSentence? @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+  issueType    ReportIssueType
+  suggestedFix String?
+  reporterId   String?
+  reporter     User?            @relation("ReportReporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  status       ReportStatus     @default(OPEN)
+  resolvedAt   DateTime?
+  resolvedById String?
+  resolvedBy   User?            @relation("ReportResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([wordId])
+  @@index([sentenceId])
 }

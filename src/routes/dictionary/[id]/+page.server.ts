@@ -246,9 +246,10 @@ export const actions: Actions = {
 			newImageUrl = null;
 		}
 
+		let updatedHref: string | null = null;
 		try {
-			await prisma.$transaction(async (tx) => {
-				await createOrUpdateLinkedWord(tx, {
+			const updatedWord = await prisma.$transaction(async (tx) => {
+				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
 					translations,
@@ -265,7 +266,10 @@ export const actions: Actions = {
 				if (kalenjin !== currentWord.kalenjin) {
 					await propagateKalenjinRename(tx, wordId, kalenjin, currentWord.slug);
 				}
+
+				return word;
 			});
+			updatedHref = dictionaryEntryHref(updatedWord);
 		} catch (err) {
 			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
 			throw err;
@@ -273,6 +277,10 @@ export const actions: Actions = {
 
 		if (newImageUrl !== undefined && currentWord.imageUrl && currentWord.imageUrl !== newImageUrl) {
 			await deleteUploadedImage(currentWord.imageUrl);
+		}
+
+		if (updatedHref && `/dictionary/${params.id}` !== updatedHref) {
+			redirect(303, updatedHref);
 		}
 
 		return { success: true };

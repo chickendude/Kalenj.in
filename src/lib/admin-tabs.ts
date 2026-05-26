@@ -9,6 +9,7 @@ export type AdminTab = {
 export const ADMIN_TAB_STORAGE_KEY = 'admin:last-tab';
 
 export const ADMIN_TABS: AdminTab[] = [
+	{ href: '/admin/suggestions', label: 'Suggestions' },
 	{ href: '/admin/word-of-day', label: 'WOTD' },
 	{ href: '/admin/cleanup', label: 'Cleanup' },
 	{ href: '/admin/proofread', label: 'Proofread' },

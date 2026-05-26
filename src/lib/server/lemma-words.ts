@@ -113,6 +113,7 @@ export async function createOrUpdateLinkedWord(
 			where: { id: input.wordId },
 			data: {
 				kalenjin: input.kalenjin,
+				slug: await generateUniqueWordSlug(tx, input.kalenjin, input.wordId),
 				kalenjinNormalized: normalizeLemma(input.kalenjin),
 				translations: input.translations,
 				notes: input.notes ?? null,

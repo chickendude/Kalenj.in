@@ -263,7 +263,7 @@ export const actions: Actions = {
 				});
 
 				if (kalenjin !== currentWord.kalenjin) {
-					await propagateKalenjinRename(tx, wordId, kalenjin);
+					await propagateKalenjinRename(tx, wordId, kalenjin, currentWord.slug);
 				}
 			});
 		} catch (err) {

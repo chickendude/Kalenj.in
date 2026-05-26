@@ -4,6 +4,7 @@ import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { decodeDictionarySegment } from '$lib/word-url';
+import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
@@ -54,11 +55,14 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		const next = await tx.word.update({
 			where: { id: wordId },
 			data: {
-				[typedField]: value
+				[typedField]: value,
+				...(typedField === 'kalenjin'
+					? { slug: await generateUniqueWordSlug(tx, value, wordId) }
+					: {})
 			}
 		});
 		if (typedField === 'kalenjin' && value !== word.kalenjin) {
-			await propagateKalenjinRename(tx, wordId, value);
+			await propagateKalenjinRename(tx, wordId, value, word.slug);
 		}
 		return next;
 	});

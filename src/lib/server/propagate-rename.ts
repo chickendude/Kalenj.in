@@ -7,14 +7,17 @@ type PrismaLike = PrismaClient | Prisma.TransactionClient;
 export async function propagateKalenjinRename(
 	client: PrismaLike,
 	cuid: string,
-	newKalenjin: string
+	newKalenjin: string,
+	previousSlug?: string | null
 ): Promise<void> {
 	const target = await client.word.findUnique({
 		where: { id: cuid },
 		select: { id: true, kalenjin: true, slug: true }
 	});
 	const href = target ? dictionaryEntryHref(target) : undefined;
-	const segments = [cuid, target?.slug].filter((segment): segment is string => Boolean(segment));
+	const segments = [cuid, previousSlug, target?.slug].filter(
+		(segment): segment is string => Boolean(segment)
+	);
 	const rows = await client.word.findMany({
 		where: {
 			OR: segments.flatMap((segment) => [

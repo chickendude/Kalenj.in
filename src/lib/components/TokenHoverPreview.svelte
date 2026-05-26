@@ -7,6 +7,7 @@
 	type TokenWord = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
 		translations: string;
 	};
 
@@ -31,6 +32,7 @@
 		westernTime: string | null;
 		timeNote: string | null;
 		wordId: string | null;
+		wordSlug: string | null;
 		hasInfo: boolean;
 	};
 
@@ -87,6 +89,7 @@
 		const inContext = inContextTranslation?.trim() ? inContextTranslation.trim() : null;
 		const westernTime = timeAnnotation?.westernTime ?? null;
 		const wordId = word?.id ?? null;
+		const wordSlug = word?.slug ?? null;
 		return {
 			key,
 			kalenjin: word?.kalenjin ?? surfaceForm,
@@ -95,6 +98,7 @@
 			westernTime,
 			timeNote: timeAnnotation?.note ?? null,
 			wordId,
+			wordSlug,
 			hasInfo: Boolean(english || inContext || westernTime || wordId)
 		};
 	}
@@ -168,15 +172,16 @@
 		return `--tooltip-offset: ${offset}px`;
 	}
 
-	function openWordEntry(wordId: string, kalenjin: string) {
-		window.location.href = dictionaryEntryHref({ id: wordId, kalenjin });
+	function openWordEntry(wordId: string, kalenjin: string, slug: string | null) {
+		window.location.href = dictionaryEntryHref({ id: wordId, kalenjin, slug: slug ?? undefined });
 	}
 
 	function handleLinkedTokenClick(
 		event: MouseEvent,
 		tooltipKey: string,
 		wordId: string,
-		kalenjin: string
+		kalenjin: string,
+		slug: string | null
 	) {
 		event.stopPropagation();
 		const element = event.currentTarget as HTMLElement;
@@ -186,14 +191,15 @@
 			void tick().then(() => placeTooltip(tooltipKey, element));
 			return;
 		}
-		openWordEntry(wordId, kalenjin);
+		openWordEntry(wordId, kalenjin, slug);
 	}
 
 	function handleLinkedTokenKeydown(
 		event: KeyboardEvent,
 		tooltipKey: string,
 		wordId: string,
-		kalenjin: string
+		kalenjin: string,
+		slug: string | null
 	) {
 		if (event.key !== 'Enter' && event.key !== ' ') return;
 		event.preventDefault();
@@ -204,7 +210,7 @@
 			void tick().then(() => placeTooltip(tooltipKey, element));
 			return;
 		}
-		openWordEntry(wordId, kalenjin);
+		openWordEntry(wordId, kalenjin, slug);
 	}
 
 	function handlePreviewTokenClick(event: MouseEvent, tooltipKey: string, token: PreviewToken) {
@@ -226,7 +232,11 @@
 			class:has-entry-link={Boolean(popup.wordId && tapPreviewMode)}
 			>{#if popup.wordId && tapPreviewMode}
 				<a
-					href={dictionaryEntryHref({ id: popup.wordId, kalenjin: popup.kalenjin })}
+					href={dictionaryEntryHref({
+						id: popup.wordId,
+						kalenjin: popup.kalenjin,
+						slug: popup.wordSlug ?? undefined
+					})}
 					class="tooltip-entry-link"
 					aria-label={`Open dictionary entry for ${popup.kalenjin}`}
 					onclick={(event) => event.stopPropagation()}
@@ -294,9 +304,21 @@
 									onfocus={(event) => prepareTooltip(tooltipKey, event.currentTarget)}
 									onblur={() => hideTooltip(tooltipKey)}
 									onclick={(event) =>
-										handleLinkedTokenClick(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+										handleLinkedTokenClick(
+											event,
+											tooltipKey,
+											popup.wordId!,
+											popup.kalenjin,
+											popup.wordSlug
+										)}
 									onkeydown={(event) =>
-										handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+										handleLinkedTokenKeydown(
+											event,
+											tooltipKey,
+											popup.wordId!,
+											popup.kalenjin,
+											popup.wordSlug
+										)}
 								>
 									{segment.surfaceForm}{@render tooltipContent(popup)}
 								</span>
@@ -337,9 +359,21 @@
 							onfocus={(event) => prepareTooltip(tooltipKey, event.currentTarget)}
 							onblur={() => hideTooltip(tooltipKey)}
 							onclick={(event) =>
-								handleLinkedTokenClick(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+								handleLinkedTokenClick(
+									event,
+									tooltipKey,
+									popup.wordId!,
+									popup.kalenjin,
+									popup.wordSlug
+								)}
 							onkeydown={(event) =>
-								handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+								handleLinkedTokenKeydown(
+									event,
+									tooltipKey,
+									popup.wordId!,
+									popup.kalenjin,
+									popup.wordSlug
+								)}
 						>
 							{token.surfaceForm}{@render tooltipContent(popup)}
 						</span>

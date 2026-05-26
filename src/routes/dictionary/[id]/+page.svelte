@@ -280,7 +280,7 @@
 </svelte:head>
 
 <section>
-	<div class="entry-top-bar">
+	<div class="detail-top-row">
 		<BackLink href="/dictionary" label="Back to dictionary" />
 		<div class="entry-top-actions">
 			<Tooltip label="Report an issue">
@@ -822,13 +822,6 @@
 />
 
 <style>
-	.entry-top-bar {
-		align-items: center;
-		display: flex;
-		gap: 16px;
-		justify-content: space-between;
-		margin-bottom: 0;
-	}
 	.entry-top-actions {
 		align-items: center;
 		display: flex;

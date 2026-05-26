@@ -4,6 +4,7 @@
 	type TokenWord = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
 		translations: string;
 	};
 

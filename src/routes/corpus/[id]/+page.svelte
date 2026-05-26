@@ -283,7 +283,7 @@
 </svelte:head>
 
 <section>
-	<div class="entry-head-row">
+	<div class="detail-top-row">
 		<div class="entry-nav-meta">
 			<BackLink href="/corpus" label="Back to corpus" />
 			<div class="entry-label-row">
@@ -571,14 +571,6 @@
 />
 
 <style>
-	.entry-head-row {
-		align-items: flex-start;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
-		justify-content: space-between;
-		margin-bottom: 0;
-	}
 	.entry-nav-meta {
 		display: grid;
 		gap: 0.2rem;

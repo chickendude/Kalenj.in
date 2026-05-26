@@ -175,7 +175,6 @@ model Word {
   reports                 Report[]
 
   @@index([kalenjin])
-  @@index([slug])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
   @@index([translations])

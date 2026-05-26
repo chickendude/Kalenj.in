@@ -135,7 +135,7 @@ async function resolveWordId(segment: string): Promise<string | null> {
 	return wordById?.id ?? null;
 }
 
-export const load: PageServerLoad = async ({ params }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
 	const result = await findWordForDictionarySegment(params.id);
 
 	if (!result) {
@@ -143,7 +143,7 @@ export const load: PageServerLoad = async ({ params }) => {
 	}
 
 	if (result.canonicalHref && `/dictionary/${params.id}` !== result.canonicalHref) {
-		redirect(308, result.canonicalHref);
+		redirect(308, `${result.canonicalHref}${url?.search ?? ''}`);
 	}
 
 	const { word } = result;

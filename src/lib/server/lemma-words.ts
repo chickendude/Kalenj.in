@@ -109,11 +109,18 @@ export async function createOrUpdateLinkedWord(
 		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
 
 	if (input.wordId) {
+		const existingWord = await tx.word.findUnique({
+			where: { id: input.wordId },
+			select: { kalenjin: true, slug: true }
+		});
+		const shouldUpdateSlug = !existingWord?.slug || existingWord.kalenjin !== input.kalenjin;
 		return tx.word.update({
 			where: { id: input.wordId },
 			data: {
 				kalenjin: input.kalenjin,
-				slug: await generateUniqueWordSlug(tx, input.kalenjin, input.wordId),
+				...(shouldUpdateSlug
+					? { slug: await generateUniqueWordSlug(tx, input.kalenjin, input.wordId) }
+					: {}),
 				kalenjinNormalized: normalizeLemma(input.kalenjin),
 				translations: input.translations,
 				notes: input.notes ?? null,

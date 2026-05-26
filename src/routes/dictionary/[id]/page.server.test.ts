@@ -146,6 +146,20 @@ describe('dictionary detail page server', () => {
 		});
 	});
 
+	it('preserves query strings when redirecting legacy URLs to the canonical slug', async () => {
+		mocks.prisma.word.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(makeWord());
+
+		await expect(
+			load({
+				params: { id: 'word-a' },
+				url: new URL('http://localhost/dictionary/word-a?tab=examples&highlight=42')
+			} as never)
+		).rejects.toMatchObject({
+			status: 308,
+			location: '/dictionary/che?tab=examples&highlight=42'
+		});
+	});
+
 	it('returns a clean 404 for malformed percent escapes', async () => {
 		await expect(load({ params: { id: '%' } } as never)).rejects.toMatchObject({
 			status: 404,
@@ -180,6 +194,7 @@ describe('dictionary detail page server', () => {
 
 		mocks.prisma.word.findUnique
 			.mockResolvedValueOnce({ id: 'word-a' })
+			.mockResolvedValueOnce(currentWord)
 			.mockResolvedValueOnce(currentWord)
 			.mockResolvedValueOnce(updatedWord);
 		mocks.prisma.word.findMany.mockResolvedValue([]);

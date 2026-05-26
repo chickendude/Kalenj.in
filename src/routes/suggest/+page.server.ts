@@ -4,6 +4,13 @@ import { parseSentenceSuggestion, parseWordSuggestion } from '$lib/server/sugges
 import { PARTS_OF_SPEECH, PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 import type { Actions, PageServerLoad } from './$types';
 
+/**
+ * Per-user cap on PENDING suggestions across both word and sentence queues.
+ * Soft anti-spam: once a user has this many awaiting review, they have to
+ * wait for staff to clear some out before submitting more.
+ */
+const MAX_PENDING_PER_USER = 50;
+
 function requireSignedIn(locals: App.Locals, url: URL): NonNullable<App.Locals['user']> {
 	if (!locals.user) {
 		const redirectTo = encodeURIComponent(url.pathname);
@@ -14,6 +21,14 @@ function requireSignedIn(locals: App.Locals, url: URL): NonNullable<App.Locals['
 		throw redirect(303, '/admin/suggestions');
 	}
 	return locals.user;
+}
+
+async function countPendingSuggestionsFor(userId: string): Promise<number> {
+	const [words, sentences] = await Promise.all([
+		prisma.wordSuggestion.count({ where: { submitterId: userId, status: 'PENDING' } }),
+		prisma.sentenceSuggestion.count({ where: { submitterId: userId, status: 'PENDING' } })
+	]);
+	return words + sentences;
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -74,23 +89,26 @@ export const actions: Actions = {
 		}
 
 		if (editingId) {
-			const existing = await prisma.wordSuggestion.findUnique({
-				where: { id: editingId },
-				select: { id: true, submitterId: true, status: true }
-			});
-			if (!existing || existing.submitterId !== user.id) {
-				return fail(404, { wordError: 'Suggestion not found.' });
-			}
-			if (existing.status !== 'PENDING') {
-				return fail(400, {
-					wordError: 'This suggestion has already been reviewed and can no longer be edited.'
-				});
-			}
-			await prisma.wordSuggestion.update({
-				where: { id: editingId },
+			// Atomic check-and-update: only succeeds if the row is still PENDING and
+			// owned by this user. Avoids a TOCTOU between "fetch + verify" and
+			// "update" where staff could approve the suggestion mid-flight.
+			const updated = await prisma.wordSuggestion.updateMany({
+				where: { id: editingId, submitterId: user.id, status: 'PENDING' },
 				data: parsed.value
 			});
+			if (updated.count === 0) {
+				return fail(400, {
+					wordError:
+						'This suggestion can no longer be edited (either not yours or already reviewed).'
+				});
+			}
 			return { wordUpdated: { kalenjin: parsed.value.kalenjin } };
+		}
+
+		if ((await countPendingSuggestionsFor(user.id)) >= MAX_PENDING_PER_USER) {
+			return fail(429, {
+				wordError: `You already have ${MAX_PENDING_PER_USER} suggestions awaiting review. Please wait for staff to look through them before adding more.`
+			});
 		}
 
 		await prisma.wordSuggestion.create({
@@ -123,28 +141,27 @@ export const actions: Actions = {
 		}
 
 		if (editingId) {
-			const existing = await prisma.sentenceSuggestion.findUnique({
-				where: { id: editingId },
-				select: { id: true, submitterId: true, status: true }
-			});
-			if (!existing || existing.submitterId !== user.id) {
-				return fail(404, { sentenceError: 'Suggestion not found.' });
-			}
-			if (existing.status !== 'PENDING') {
-				return fail(400, {
-					sentenceError:
-						'This suggestion has already been reviewed and can no longer be edited.'
-				});
-			}
-			await prisma.sentenceSuggestion.update({
-				where: { id: editingId },
+			const updated = await prisma.sentenceSuggestion.updateMany({
+				where: { id: editingId, submitterId: user.id, status: 'PENDING' },
 				data: {
 					kalenjin: parsed.value.kalenjin,
 					english: parsed.value.english,
 					notes: parsed.value.notes
 				}
 			});
+			if (updated.count === 0) {
+				return fail(400, {
+					sentenceError:
+						'This suggestion can no longer be edited (either not yours or already reviewed).'
+				});
+			}
 			return { sentenceUpdated: true };
+		}
+
+		if ((await countPendingSuggestionsFor(user.id)) >= MAX_PENDING_PER_USER) {
+			return fail(429, {
+				sentenceError: `You already have ${MAX_PENDING_PER_USER} suggestions awaiting review. Please wait for staff to look through them before adding more.`
+			});
 		}
 
 		await prisma.sentenceSuggestion.create({

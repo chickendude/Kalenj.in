@@ -17,6 +17,19 @@ function readText(formData: FormData, key: string): string {
 	return String(formData.get(key) ?? '').trim();
 }
 
+/**
+ * Thrown inside a transaction when an atomic claim on a PENDING suggestion
+ * fails because another reviewer resolved it first. Catching this outside
+ * the transaction lets us return a 409 cleanly while the transaction rolls
+ * back any work we did (Word/ExampleSentence creates, related links).
+ */
+class SuggestionRaceError extends Error {
+	constructor() {
+		super('Another reviewer already resolved this suggestion.');
+		this.name = 'SuggestionRaceError';
+	}
+}
+
 const VALID_STATUSES: readonly SuggestionStatus[] = ['PENDING', 'APPROVED', 'REJECTED'];
 
 function parseStatusFilter(value: string | null): SuggestionStatus | 'ALL' {
@@ -148,6 +161,22 @@ export const actions: Actions = {
 		let word;
 		try {
 			word = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+				// Atomically claim the suggestion: only proceeds if it's still PENDING.
+				// `updateMany` returns count=0 if another reviewer already approved or
+				// declined it; we throw to abort the transaction and roll back any
+				// Word/RelatedWord rows we created in this branch.
+				const claim = await tx.wordSuggestion.updateMany({
+					where: { id: suggestion.id, status: 'PENDING' },
+					data: {
+						status: 'APPROVED',
+						reviewerId: reviewer.id,
+						reviewNote,
+						reviewedAt: new Date()
+					}
+				});
+				if (claim.count === 0) {
+					throw new SuggestionRaceError();
+				}
 				const created = await createOrUpdateLinkedWord(tx, {
 					kalenjin,
 					translations,
@@ -167,19 +196,16 @@ export const actions: Actions = {
 				}
 				await tx.wordSuggestion.update({
 					where: { id: suggestion.id },
-					data: {
-						status: 'APPROVED',
-						reviewerId: reviewer.id,
-						reviewNote,
-						reviewedAt: new Date(),
-						approvedWordId: created.id
-					}
+					data: { approvedWordId: created.id }
 				});
 				return created;
 			});
 		} catch (err) {
 			if (imageUrl) {
 				await deleteUploadedImage(imageUrl);
+			}
+			if (err instanceof SuggestionRaceError) {
+				return fail(409, { error: err.message });
 			}
 			throw err;
 		}
@@ -190,17 +216,14 @@ export const actions: Actions = {
 	rejectWord: async ({ request, locals }) => {
 		const reviewer = requireEditor(locals);
 		const formData = await request.formData();
-		const id = String(formData.get('id') ?? '');
-		const reviewNote = String(formData.get('reviewNote') ?? '').trim() || null;
+		const id = readText(formData, 'id');
+		const reviewNote = readText(formData, 'reviewNote') || null;
 
-		const suggestion = await prisma.wordSuggestion.findUnique({ where: { id } });
-		if (!suggestion) return fail(404, { error: 'Suggestion not found.' });
-		if (suggestion.status !== 'PENDING') {
-			return fail(400, { error: 'Suggestion is already resolved.' });
-		}
+		if (!id) return fail(400, { error: 'Missing suggestion id.' });
 
-		await prisma.wordSuggestion.update({
-			where: { id },
+		// Atomic claim: succeeds only if the row is still PENDING.
+		const claim = await prisma.wordSuggestion.updateMany({
+			where: { id, status: 'PENDING' },
 			data: {
 				status: 'REJECTED',
 				reviewerId: reviewer.id,
@@ -208,6 +231,9 @@ export const actions: Actions = {
 				reviewedAt: new Date()
 			}
 		});
+		if (claim.count === 0) {
+			return fail(409, { error: 'Suggestion was already resolved or does not exist.' });
+		}
 
 		return { rejectedWord: { suggestionId: id } };
 	},
@@ -245,17 +271,23 @@ export const actions: Actions = {
 
 		let approvedSentenceId: string;
 		if (existing) {
-			approvedSentenceId = existing.id;
-			await prisma.sentenceSuggestion.update({
-				where: { id: suggestion.id },
+			// Match found: atomically claim the suggestion as APPROVED → existing row.
+			const claim = await prisma.sentenceSuggestion.updateMany({
+				where: { id: suggestion.id, status: 'PENDING' },
 				data: {
 					status: 'APPROVED',
 					reviewerId: reviewer.id,
 					reviewNote,
 					reviewedAt: new Date(),
-					approvedSentenceId
+					approvedSentenceId: existing.id
 				}
 			});
+			if (claim.count === 0) {
+				return fail(409, {
+					error: 'Suggestion was already resolved or does not exist.'
+				});
+			}
+			approvedSentenceId = existing.id;
 		} else {
 			const tokenData = tokenizeSentence(kalenjin);
 			if (tokenData.length === 0) {
@@ -263,26 +295,41 @@ export const actions: Actions = {
 					error: 'Could not extract tokens from the Kalenjin sentence.'
 				});
 			}
-			const sentence = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-				const created = await createExampleSentenceWithAutoLemma(tx, {
-					kalenjin,
-					english,
-					notes: notesRaw,
-					tokenData
+			try {
+				const sentence = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+					// Claim the suggestion first so a concurrent approval rolls back
+					// before we spend the work tokenising and inserting an
+					// ExampleSentence.
+					const claim = await tx.sentenceSuggestion.updateMany({
+						where: { id: suggestion.id, status: 'PENDING' },
+						data: {
+							status: 'APPROVED',
+							reviewerId: reviewer.id,
+							reviewNote,
+							reviewedAt: new Date()
+						}
+					});
+					if (claim.count === 0) throw new SuggestionRaceError();
+
+					const created = await createExampleSentenceWithAutoLemma(tx, {
+						kalenjin,
+						english,
+						notes: notesRaw,
+						tokenData
+					});
+					await tx.sentenceSuggestion.update({
+						where: { id: suggestion.id },
+						data: { approvedSentenceId: created.id }
+					});
+					return created;
 				});
-				await tx.sentenceSuggestion.update({
-					where: { id: suggestion.id },
-					data: {
-						status: 'APPROVED',
-						reviewerId: reviewer.id,
-						reviewNote,
-						reviewedAt: new Date(),
-						approvedSentenceId: created.id
-					}
-				});
-				return created;
-			});
-			approvedSentenceId = sentence.id;
+				approvedSentenceId = sentence.id;
+			} catch (err) {
+				if (err instanceof SuggestionRaceError) {
+					return fail(409, { error: err.message });
+				}
+				throw err;
+			}
 		}
 
 		return {
@@ -293,17 +340,13 @@ export const actions: Actions = {
 	rejectSentence: async ({ request, locals }) => {
 		const reviewer = requireEditor(locals);
 		const formData = await request.formData();
-		const id = String(formData.get('id') ?? '');
-		const reviewNote = String(formData.get('reviewNote') ?? '').trim() || null;
+		const id = readText(formData, 'id');
+		const reviewNote = readText(formData, 'reviewNote') || null;
 
-		const suggestion = await prisma.sentenceSuggestion.findUnique({ where: { id } });
-		if (!suggestion) return fail(404, { error: 'Suggestion not found.' });
-		if (suggestion.status !== 'PENDING') {
-			return fail(400, { error: 'Suggestion is already resolved.' });
-		}
+		if (!id) return fail(400, { error: 'Missing suggestion id.' });
 
-		await prisma.sentenceSuggestion.update({
-			where: { id },
+		const claim = await prisma.sentenceSuggestion.updateMany({
+			where: { id, status: 'PENDING' },
 			data: {
 				status: 'REJECTED',
 				reviewerId: reviewer.id,
@@ -311,6 +354,9 @@ export const actions: Actions = {
 				reviewedAt: new Date()
 			}
 		});
+		if (claim.count === 0) {
+			return fail(409, { error: 'Suggestion was already resolved or does not exist.' });
+		}
 
 		return { rejectedSentence: { suggestionId: id } };
 	}

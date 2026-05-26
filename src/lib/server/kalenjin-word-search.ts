@@ -9,6 +9,7 @@ import { normalizeLemma } from '$lib/server/normalize-lemma';
 export type KalenjinSearchWord = {
 	id: string;
 	kalenjin: string;
+	slug?: string;
 	kalenjinNormalized: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;

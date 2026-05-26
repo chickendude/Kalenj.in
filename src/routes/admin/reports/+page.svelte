@@ -3,6 +3,7 @@
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import { REPORT_ISSUE_LABELS } from '$lib/report-issue-types';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -76,7 +77,7 @@
 	}
 
 	function targetHref(report: PageData['reports'][number]): string | null {
-		if (report.word) return `/dictionary/${report.word.id}`;
+		if (report.word) return dictionaryEntryHref(report.word);
 		if (report.sentence) return `/corpus/${report.sentence.id}`;
 		return null;
 	}

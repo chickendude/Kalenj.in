@@ -12,6 +12,7 @@ import { createOrUpdateLinkedWord, readPresentTenseFromFormData } from '$lib/ser
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import { relatedWordPair } from '$lib/server/related-words';
+import { attachDictionaryHrefs, canonicalDictionaryHref } from '$lib/server/dictionary-hrefs';
 import {
 	filterByPartOfSpeech,
 	matchesMissing,
@@ -28,10 +29,12 @@ type SearchLanguage = 'both' | 'translations' | 'kalenjin';
 type DictionarySearchWord = {
 	id: string;
 	kalenjin: string;
+	slug?: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	audioUrl: string | null;
 	isSwahiliLoan: boolean;
+	href?: string;
 };
 
 function parseLanguage(value: string | null): SearchLanguage {
@@ -74,6 +77,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			select: {
 				id: true,
 				kalenjin: true,
+				slug: true,
 				translations: true,
 				partOfSpeech: true,
 				audioUrl: true,
@@ -94,6 +98,7 @@ export const load: PageServerLoad = async ({ url }) => {
 			select: {
 				id: true,
 				kalenjin: true,
+				slug: true,
 				translations: true,
 				partOfSpeech: true,
 				audioUrl: true,
@@ -123,6 +128,7 @@ export const load: PageServerLoad = async ({ url }) => {
 				select: {
 					id: true,
 					kalenjin: true,
+					slug: true,
 					translations: true,
 					partOfSpeech: true,
 					audioUrl: true,
@@ -155,8 +161,9 @@ export const load: PageServerLoad = async ({ url }) => {
 	}
 
 	const totalCount = await prisma.word.count();
+	const wordsWithHref = await attachDictionaryHrefs(prisma, words);
 
-	return { query, language, pos: posParam, missing, words, totalCount };
+	return { query, language, pos: posParam, missing, words: wordsWithHref, totalCount };
 };
 
 export const actions: Actions = {
@@ -283,6 +290,6 @@ export const actions: Actions = {
 			return { created: true, word: { id: word.id, kalenjin: word.kalenjin } };
 		}
 
-		redirect(303, `/dictionary/${word.id}`);
+		redirect(303, await canonicalDictionaryHref(prisma, word));
 	}
 };

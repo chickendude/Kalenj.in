@@ -2,6 +2,7 @@
 	import { untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import BulkAudioReviewActions from './BulkAudioReviewActions.svelte';
 	import BulkAudioReviewTable from './BulkAudioReviewTable.svelte';
 	import BulkConfirmDialog from './BulkConfirmDialog.svelte';
@@ -1209,7 +1210,12 @@
 >
 	{#if skipPromptId}
 		{@const skipItem = itemById.get(skipPromptId)}
-		{@const detailHref = targetType === 'word' ? `/dictionary/${skipPromptId}` : `/corpus/${skipPromptId}`}
+		{@const detailHref =
+			targetType === 'word'
+				? skipItem
+					? dictionaryEntryHref({ id: skipPromptId, kalenjin: skipItem.primary })
+					: `/dictionary/${skipPromptId}`
+				: `/corpus/${skipPromptId}`}
 		{@const detailLabel = targetType === 'word' ? 'Open in dictionary →' : 'Open in corpus →'}
 		<h3 id="skip-title">Double-check this entry</h3>
 		{#if skipItem}

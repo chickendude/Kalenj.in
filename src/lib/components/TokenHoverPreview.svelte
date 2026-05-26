@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
+	import { dictionaryEntryHref } from '$lib/word-url';
 
 	type TokenWord = {
 		id: string;
@@ -167,11 +168,16 @@
 		return `--tooltip-offset: ${offset}px`;
 	}
 
-	function openWordEntry(wordId: string) {
-		window.location.href = `/dictionary/${wordId}`;
+	function openWordEntry(wordId: string, kalenjin: string) {
+		window.location.href = dictionaryEntryHref({ id: wordId, kalenjin });
 	}
 
-	function handleLinkedTokenClick(event: MouseEvent, tooltipKey: string, wordId: string) {
+	function handleLinkedTokenClick(
+		event: MouseEvent,
+		tooltipKey: string,
+		wordId: string,
+		kalenjin: string
+	) {
 		event.stopPropagation();
 		const element = event.currentTarget as HTMLElement;
 		if (tapPreviewMode) {
@@ -180,10 +186,15 @@
 			void tick().then(() => placeTooltip(tooltipKey, element));
 			return;
 		}
-		openWordEntry(wordId);
+		openWordEntry(wordId, kalenjin);
 	}
 
-	function handleLinkedTokenKeydown(event: KeyboardEvent, tooltipKey: string, wordId: string) {
+	function handleLinkedTokenKeydown(
+		event: KeyboardEvent,
+		tooltipKey: string,
+		wordId: string,
+		kalenjin: string
+	) {
 		if (event.key !== 'Enter' && event.key !== ' ') return;
 		event.preventDefault();
 		event.stopPropagation();
@@ -193,7 +204,7 @@
 			void tick().then(() => placeTooltip(tooltipKey, element));
 			return;
 		}
-		openWordEntry(wordId);
+		openWordEntry(wordId, kalenjin);
 	}
 
 	function handlePreviewTokenClick(event: MouseEvent, tooltipKey: string, token: PreviewToken) {
@@ -215,7 +226,7 @@
 			class:has-entry-link={Boolean(popup.wordId && tapPreviewMode)}
 			>{#if popup.wordId && tapPreviewMode}
 				<a
-					href={`/dictionary/${popup.wordId}`}
+					href={dictionaryEntryHref({ id: popup.wordId, kalenjin: popup.kalenjin })}
 					class="tooltip-entry-link"
 					aria-label={`Open dictionary entry for ${popup.kalenjin}`}
 					onclick={(event) => event.stopPropagation()}
@@ -282,8 +293,10 @@
 									onpointerleave={() => hideTooltip(tooltipKey)}
 									onfocus={(event) => prepareTooltip(tooltipKey, event.currentTarget)}
 									onblur={() => hideTooltip(tooltipKey)}
-									onclick={(event) => handleLinkedTokenClick(event, tooltipKey, popup.wordId!)}
-									onkeydown={(event) => handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!)}
+									onclick={(event) =>
+										handleLinkedTokenClick(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+									onkeydown={(event) =>
+										handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!, popup.kalenjin)}
 								>
 									{segment.surfaceForm}{@render tooltipContent(popup)}
 								</span>
@@ -323,8 +336,10 @@
 							onpointerleave={() => hideTooltip(tooltipKey)}
 							onfocus={(event) => prepareTooltip(tooltipKey, event.currentTarget)}
 							onblur={() => hideTooltip(tooltipKey)}
-							onclick={(event) => handleLinkedTokenClick(event, tooltipKey, popup.wordId!)}
-							onkeydown={(event) => handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!)}
+							onclick={(event) =>
+								handleLinkedTokenClick(event, tooltipKey, popup.wordId!, popup.kalenjin)}
+							onkeydown={(event) =>
+								handleLinkedTokenKeydown(event, tooltipKey, popup.wordId!, popup.kalenjin)}
 						>
 							{token.surfaceForm}{@render tooltipContent(popup)}
 						</span>

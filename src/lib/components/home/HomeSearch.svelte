@@ -1,11 +1,14 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type SearchResult = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
+		href?: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 	};
@@ -48,7 +51,7 @@
 
 	function go(word: SearchResult | undefined) {
 		if (!word) return;
-		window.location.href = `/dictionary/${word.id}`;
+		window.location.href = word.href ?? dictionaryEntryHref(word);
 	}
 
 	function onKeyDown(event: KeyboardEvent) {
@@ -121,7 +124,7 @@
 			{:else}
 				{#each results as word, i (word.id)}
 					<a
-						href={`/dictionary/${word.id}`}
+						href={word.href ?? dictionaryEntryHref(word)}
 						class="home-search-row"
 						class:hover={i === hover}
 						role="option"

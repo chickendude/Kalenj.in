@@ -3,12 +3,34 @@ import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
+import { decodeDictionarySegment } from '$lib/word-url';
+import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
 
+async function resolveWordId(segment: string): Promise<string | null> {
+	const decoded = decodeDictionarySegment(segment);
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		select: { id: true }
+	});
+	if (wordById) return wordById.id;
+
+	const wordBySlug = await prisma.word.findUnique({
+		where: { slug: decoded },
+		select: { id: true }
+	});
+
+	return wordBySlug?.id ?? null;
+}
+
 export const POST: RequestHandler = async ({ request, params, locals }) => {
 	requireEditor(locals);
+	const wordId = await resolveWordId(params.id);
+	if (!wordId) {
+		error(404, 'Word not found.');
+	}
 	const body = (await request.json()) as { field?: string; value?: string };
 	const { field, value } = body;
 
@@ -20,7 +42,7 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		error(400, 'Invalid field.');
 	}
 
-	const word = await prisma.word.findUnique({ where: { id: params.id } });
+	const word = await prisma.word.findUnique({ where: { id: wordId } });
 	if (!word) {
 		error(404, 'Word not found.');
 	}
@@ -29,11 +51,16 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 
 	const updated = await prisma.$transaction(async (tx) => {
 		const next = await tx.word.update({
-			where: { id: params.id },
-			data: { [typedField]: value }
+			where: { id: wordId },
+			data: {
+				[typedField]: value,
+				...(typedField === 'kalenjin'
+					? { slug: await generateUniqueWordSlug(tx, value, wordId) }
+					: {})
+			}
 		});
 		if (typedField === 'kalenjin' && value !== word.kalenjin) {
-			await propagateKalenjinRename(tx, params.id, value);
+			await propagateKalenjinRename(tx, wordId, value);
 		}
 		return next;
 	});

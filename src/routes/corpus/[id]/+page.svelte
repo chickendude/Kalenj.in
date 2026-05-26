@@ -581,7 +581,8 @@
 		flex-wrap: wrap;
 		gap: 12px;
 		justify-content: space-between;
-		margin-bottom: 8px;
+		margin-bottom: 0;
+		margin-top: -18px;
 	}
 	.entry-nav-meta {
 		align-items: center;
@@ -591,7 +592,6 @@
 	}
 	.entry-nav-meta .back-link {
 		line-height: 1;
-		margin-bottom: 0;
 	}
 
 	.sentence-admin-actions {
@@ -661,7 +661,7 @@
 		font-family: var(--font-display);
 		font-size: 28px;
 		line-height: 1.4;
-		margin: 12px 0 6px;
+		margin: 4px 0 6px;
 	}
 
 	.sentence-english {

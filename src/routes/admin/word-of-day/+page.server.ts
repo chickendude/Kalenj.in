@@ -96,7 +96,7 @@ export const actions: Actions = {
 				id: true,
 				date: true,
 				word: {
-					select: { id: true, kalenjin: true, translations: true, partOfSpeech: true }
+					select: { id: true, kalenjin: true, slug: true, translations: true, partOfSpeech: true }
 				}
 			}
 		});

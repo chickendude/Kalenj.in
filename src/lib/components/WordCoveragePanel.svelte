@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 
@@ -122,7 +123,7 @@
 					<div class="coverage-row" class:coverage-row--introduced={entry.introduced}>
 						<div class="coverage-word">
 							<a
-								href={`/dictionary/${entry.word.id}`}
+								href={dictionaryEntryHref(entry.word)}
 								class="coverage-word-link"
 								class:coverage-word-link--usage-warning={entry.otherLessons?.some(
 									(lesson) => lesson.timing === 'earlier'

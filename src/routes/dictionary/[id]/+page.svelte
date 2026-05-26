@@ -19,6 +19,7 @@
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks, stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import { renderMarkdown } from '$lib/markdown';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { enhance } from '$app/forms';
@@ -30,6 +31,8 @@
 	type DictionarySearchResult = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
+		href?: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 		isSwahiliLoan: boolean;
@@ -415,7 +418,7 @@
 			{:else}
 				<div class="related-word-grid">
 					{#each data.word.relatedWords as link (link.word.id)}
-						<a href={`/dictionary/${link.word.id}`} class="related-word-card">
+						<a href={dictionaryEntryHref(link.word)} class="related-word-card">
 							<span class="related-word-heading">
 								<span class="related-word-title">{link.word.kalenjin}</span>
 								{#if link.word.partOfSpeech}
@@ -687,7 +690,7 @@
 						<ul class="related-editor-list">
 							{#each data.word.relatedWords as link (link.word.id)}
 								<li>
-									<a href={`/dictionary/${link.word.id}`}>
+									<a href={dictionaryEntryHref(link.word)}>
 										<span>{link.word.kalenjin}</span>
 										<small>{firstTranslation(link.word.translations)}</small>
 									</a>
@@ -817,9 +820,6 @@
 		display: flex;
 		gap: 16px;
 		justify-content: space-between;
-		margin-bottom: 16px;
-	}
-	.entry-top-bar :global(.back-link) {
 		margin-bottom: 0;
 	}
 	.entry-top-actions {

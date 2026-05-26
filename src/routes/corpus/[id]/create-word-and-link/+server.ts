@@ -2,6 +2,7 @@ import { error, json } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { normalizeLemma } from '$lib/server/normalize-lemma';
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
+import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -48,6 +49,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		const word = await tx.word.create({
 			data: {
 				kalenjin,
+				slug: await generateUniqueWordSlug(tx, kalenjin),
 				kalenjinNormalized: normalizeLemma(kalenjin),
 				translations,
 				notes: notes || null
@@ -55,6 +57,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			select: {
 				id: true,
 				kalenjin: true,
+				slug: true,
 				translations: true,
 				partOfSpeech: true,
 				notes: true,

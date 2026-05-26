@@ -2,11 +2,14 @@
 	import { goto } from '$app/navigation';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type SearchResult = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
+		href?: string;
 		pluralForm: string | null;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
@@ -56,7 +59,7 @@
 	function go(word: SearchResult | undefined) {
 		if (!word) return;
 		dismiss();
-		goto(`/dictionary/${word.id}`);
+		goto(word.href ?? dictionaryEntryHref(word));
 	}
 
 	function browseAll() {
@@ -136,7 +139,7 @@
 			{:else}
 				{#each results as word, i (word.id)}
 					<a
-						href={`/dictionary/${word.id}`}
+						href={word.href ?? dictionaryEntryHref(word)}
 						class="nav-search-row"
 						class:hover={i === hover}
 						role="option"

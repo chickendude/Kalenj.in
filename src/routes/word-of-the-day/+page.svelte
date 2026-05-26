@@ -3,6 +3,7 @@
 	import HomeWordOfDay from '$lib/components/home/HomeWordOfDay.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -53,7 +54,7 @@
 		<ol class="wod-archive-list">
 			{#each data.history as entry (entry.id)}
 				<li>
-					<a class="wod-archive-entry" href={`/dictionary/${entry.word.id}`}>
+					<a class="wod-archive-entry" href={dictionaryEntryHref(entry.word)}>
 						<time class="wod-archive-date mono" datetime={entry.date.toISOString().slice(0, 10)}>
 							{shortFmt.format(entry.date)}
 						</time>

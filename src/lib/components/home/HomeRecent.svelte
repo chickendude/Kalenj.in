@@ -5,6 +5,7 @@
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PartOfSpeech } from '@prisma/client';
 
 	type RecentWord = {
@@ -60,7 +61,7 @@
 								size="sm"
 								label={`Play pronunciation of ${word.kalenjin}`}
 							/>
-							<a href={`/dictionary/${word.id}`} class="recent-entry">
+							<a href={dictionaryEntryHref(word)} class="recent-entry">
 								<span class="recent-word">{word.kalenjin}</span>
 								{#if word.partOfSpeech}
 									<PartOfSpeechInline value={word.partOfSpeech} size="tiny" />

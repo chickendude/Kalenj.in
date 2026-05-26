@@ -23,6 +23,12 @@ describe('renderWordLinks', () => {
 		);
 	});
 
+	it('renders readable word slugs', () => {
+		expect(renderWordLinks('see [chamgei](/dictionary/chamgei)')).toBe(
+			'see <a href="/dictionary/chamgei">chamgei</a>'
+		);
+	});
+
 	it('renders multiple links in one string', () => {
 		expect(
 			renderWordLinks('[a](/dictionary/x1); and [b](/dictionary/y2) too')
@@ -86,8 +92,8 @@ describe('buildWordLinkInsertion', () => {
 			id: 'abc123',
 			kalenjin: 'chamgei'
 		});
-		expect(result.nextValue).toBe('hello [chamgei](/dictionary/abc123)');
-		expect(result.nextCaret).toBe('hello [chamgei](/dictionary/abc123)'.length);
+		expect(result.nextValue).toBe('hello [chamgei](/dictionary/chamgei)');
+		expect(result.nextCaret).toBe('hello [chamgei](/dictionary/chamgei)'.length);
 	});
 
 	it('preserves text after the caret', () => {
@@ -95,8 +101,8 @@ describe('buildWordLinkInsertion', () => {
 			id: 'abc',
 			kalenjin: 'chamgei'
 		});
-		expect(result.nextValue).toBe('[chamgei](/dictionary/abc) rest');
-		expect(result.nextCaret).toBe('[chamgei](/dictionary/abc)'.length);
+		expect(result.nextValue).toBe('[chamgei](/dictionary/chamgei) rest');
+		expect(result.nextCaret).toBe('[chamgei](/dictionary/chamgei)'.length);
 	});
 
 	it('handles trigger at position 0', () => {
@@ -104,8 +110,8 @@ describe('buildWordLinkInsertion', () => {
 			id: 'cuidx',
 			kalenjin: 'word'
 		});
-		expect(result.nextValue).toBe('[word](/dictionary/cuidx)');
-		expect(result.nextCaret).toBe('[word](/dictionary/cuidx)'.length);
+		expect(result.nextValue).toBe('[word](/dictionary/word)');
+		expect(result.nextCaret).toBe('[word](/dictionary/word)'.length);
 	});
 
 	it('sanitizes forbidden chars from the label', () => {
@@ -113,27 +119,27 @@ describe('buildWordLinkInsertion', () => {
 			id: 'cuidx',
 			kalenjin: 'bad];label\nhere'
 		});
-		expect(result.nextValue).toBe('[badlabelhere](/dictionary/cuidx)');
+		expect(result.nextValue).toBe('[badlabelhere](/dictionary/bad-label-here)');
 	});
 });
 
 describe('rewriteLinkLabel', () => {
 	it('rewrites the label for the target cuid', () => {
 		expect(rewriteLinkLabel('see [chamgee](/dictionary/abc)', 'abc', 'chamgei')).toBe(
-			'see [chamgei](/dictionary/abc)'
+			'see [chamgei](/dictionary/chamgei)'
 		);
 	});
 
 	it('rewrites multiple occurrences of the same cuid', () => {
 		expect(
 			rewriteLinkLabel('[a](/dictionary/abc) and [b](/dictionary/abc)', 'abc', 'new')
-		).toBe('[new](/dictionary/abc) and [new](/dictionary/abc)');
+		).toBe('[new](/dictionary/new) and [new](/dictionary/new)');
 	});
 
 	it('leaves links to other cuids untouched', () => {
 		expect(
 			rewriteLinkLabel('[a](/dictionary/abc) and [b](/dictionary/xyz)', 'abc', 'new')
-		).toBe('[new](/dictionary/abc) and [b](/dictionary/xyz)');
+		).toBe('[new](/dictionary/new) and [b](/dictionary/xyz)');
 	});
 
 	it('leaves non-link text untouched', () => {
@@ -142,7 +148,7 @@ describe('rewriteLinkLabel', () => {
 
 	it('sanitizes the new label of forbidden chars', () => {
 		expect(rewriteLinkLabel('[a](/dictionary/abc)', 'abc', 'bad];label')).toBe(
-			'[badlabel](/dictionary/abc)'
+			'[badlabel](/dictionary/bad-label)'
 		);
 	});
 });

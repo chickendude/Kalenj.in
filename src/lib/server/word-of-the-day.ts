@@ -22,11 +22,11 @@ const wordOfDayInclude = {
 							tokens: {
 								orderBy: { tokenOrder: 'asc' },
 								include: {
-									word: { select: { id: true, kalenjin: true, translations: true, audioUrl: true } },
+									word: { select: { id: true, kalenjin: true, slug: true, translations: true, audioUrl: true } },
 									segments: {
 										orderBy: { segmentOrder: 'asc' },
 										include: {
-											word: { select: { id: true, kalenjin: true, translations: true, audioUrl: true } }
+											word: { select: { id: true, kalenjin: true, slug: true, translations: true, audioUrl: true } }
 										}
 									}
 								}

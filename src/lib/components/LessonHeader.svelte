@@ -327,11 +327,6 @@
 		gap: 0.5rem;
 	}
 
-	.page-header-main > :global(.back-link) {
-		margin-top: -24px;
-		margin-bottom: 8px;
-	}
-
 	.lesson-nav-icon {
 		color: inherit;
 		display: inline-block;

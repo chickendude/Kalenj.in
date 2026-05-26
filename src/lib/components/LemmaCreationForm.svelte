@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import ImageUploadField from './ImageUploadField.svelte';
 	import WordLinkEditor from './WordLinkEditor.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
@@ -64,7 +65,7 @@
 		entityIdField: string;
 		activeTokenId: string;
 		activeSegmentId?: string | null;
-		activeWord: { id: string; imageUrl?: string | null } | null;
+		activeWord: { id: string; kalenjin: string; imageUrl?: string | null } | null;
 		activeWordId: string | null;
 		inContextTranslation: string;
 		activeSurface: string;
@@ -179,7 +180,7 @@
 	<div class="lemma-mode-side">
 		{#if activeWord}
 			<a
-				href={`/dictionary/${activeWord.id}`}
+				href={dictionaryEntryHref(activeWord)}
 				target="_blank"
 				rel="noreferrer"
 				class="lemma-sideling"

@@ -4,10 +4,12 @@ import { propagateKalenjinRename } from './propagate-rename';
 type WordRow = { id: string; notes: string | null; translations: string };
 
 function mockClient(rows: WordRow[]) {
+	const findUnique = vi.fn().mockResolvedValue({ id: 'cuid-1', kalenjin: 'new name', slug: 'new-name' });
 	const findMany = vi.fn().mockResolvedValue(rows);
 	const update = vi.fn().mockResolvedValue({});
 	return {
-		client: { word: { findMany, update } } as never,
+		client: { word: { findUnique, findMany, update } } as never,
+		findUnique,
 		findMany,
 		update
 	};
@@ -29,8 +31,8 @@ describe('propagateKalenjinRename', () => {
 		expect(update).toHaveBeenCalledWith({
 			where: { id: 'word-a' },
 			data: {
-				notes: 'See [new name](/dictionary/cuid-1) for context.',
-				translations: 'related to [new name](/dictionary/cuid-1)'
+				notes: 'See [new name](/dictionary/new-name) for context.',
+				translations: 'related to [new name](/dictionary/new-name)'
 			}
 		});
 	});
@@ -64,7 +66,7 @@ describe('propagateKalenjinRename', () => {
 			where: { id: 'word-a' },
 			data: {
 				notes: null,
-				translations: 'see [new](/dictionary/cuid-1)'
+				translations: 'see [new](/dictionary/new-name)'
 			}
 		});
 	});
@@ -77,8 +79,8 @@ describe('propagateKalenjinRename', () => {
 		expect(findMany).toHaveBeenCalledWith({
 			where: {
 				OR: [
-					{ notes: { contains: '/dictionary/cuid-1)' } },
-					{ translations: { contains: '/dictionary/cuid-1)' } }
+					{ notes: { contains: 'cuid-1)' } },
+					{ translations: { contains: 'cuid-1)' } }
 				]
 			},
 			select: { id: true, notes: true, translations: true }

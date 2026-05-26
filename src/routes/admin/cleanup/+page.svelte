@@ -4,6 +4,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -94,7 +95,7 @@
 					{#each data.missingPlurals.items as word (word.id)}
 						<tr>
 							<td>
-								<a href={`/dictionary/${word.id}`} class="cleanup-link">{word.kalenjin}</a>
+								<a href={dictionaryEntryHref(word)} class="cleanup-link">{word.kalenjin}</a>
 							</td>
 							<td class="muted">
 								{firstTranslation(stripWordLinks(word.translations))}

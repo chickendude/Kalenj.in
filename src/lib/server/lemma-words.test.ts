@@ -8,6 +8,7 @@ describe('buildWordSelect', () => {
 		expect(select).toMatchObject({
 			id: true,
 			kalenjin: true,
+			slug: true,
 			translations: true,
 			partOfSpeech: true,
 			pluralForm: true,
@@ -34,7 +35,8 @@ describe('buildWordSelect', () => {
 describe('createOrUpdateLinkedWord', () => {
 	it('stores the Swahili loan flag on create', async () => {
 		const create = vi.fn().mockResolvedValue({ id: 'word-1' });
-		const tx = { word: { create } };
+		const findMany = vi.fn().mockResolvedValue([]);
+		const tx = { word: { create, findMany } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			kalenjin: 'meza',
@@ -51,7 +53,8 @@ describe('createOrUpdateLinkedWord', () => {
 
 	it('clears the Swahili loan flag when updating without it checked', async () => {
 		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
-		const tx = { word: { update } };
+		const findMany = vi.fn().mockResolvedValue([]);
+		const tx = { word: { update, findMany } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			wordId: 'word-1',
@@ -69,7 +72,8 @@ describe('createOrUpdateLinkedWord', () => {
 
 	it('leaves the Swahili loan flag untouched on update when omitted', async () => {
 		const update = vi.fn().mockResolvedValue({ id: 'word-1' });
-		const tx = { word: { update } };
+		const findMany = vi.fn().mockResolvedValue([]);
+		const tx = { word: { update, findMany } };
 
 		await createOrUpdateLinkedWord(tx as never, {
 			wordId: 'word-1',

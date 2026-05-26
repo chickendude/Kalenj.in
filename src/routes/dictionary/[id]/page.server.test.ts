@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
 	const prisma = {
 		word: {
 			findUnique: vi.fn(),
+			findMany: vi.fn(),
 			update: vi.fn(),
 			delete: vi.fn()
 		},
@@ -51,6 +52,7 @@ function makeWord(overrides: Record<string, unknown> = {}) {
 	return {
 		id: 'word-a',
 		kalenjin: 'che',
+		slug: 'che',
 		translations: 'which are',
 		kalenjinNormalized: 'che',
 		partOfSpeech: null,
@@ -67,9 +69,14 @@ function makeWord(overrides: Record<string, unknown> = {}) {
 	};
 }
 
+function mockSlugLookup(word: ReturnType<typeof makeWord>) {
+	mocks.prisma.word.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce(word);
+}
+
 describe('dictionary detail related words', () => {
 	beforeEach(() => {
 		mocks.prisma.word.findUnique.mockReset();
+		mocks.prisma.word.findMany.mockReset();
 		mocks.prisma.word.update.mockReset();
 		mocks.prisma.word.delete.mockReset();
 		mocks.prisma.relatedWord.createMany.mockReset();
@@ -77,7 +84,7 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('loads related words when the current word is the source side', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValue(
+		mockSlugLookup(
 			makeWord({
 				relatedWords: [
 					{
@@ -93,7 +100,7 @@ describe('dictionary detail related words', () => {
 			})
 		);
 
-		await expect(load({ params: { id: 'word-a' } } as never)).resolves.toMatchObject({
+		await expect(load({ params: { id: 'che' } } as never)).resolves.toMatchObject({
 			word: {
 				id: 'word-a',
 				relatedWords: [
@@ -110,9 +117,19 @@ describe('dictionary detail related words', () => {
 		});
 	});
 
+	it('redirects legacy ID-only URLs to the readable canonical URL', async () => {
+		mocks.prisma.word.findUnique.mockResolvedValue(makeWord());
+
+		await expect(load({ params: { id: 'word-a' } } as never)).rejects.toMatchObject({
+			status: 308,
+			location: '/dictionary/che'
+		});
+	});
+
 	it('loads related words when the current word is the target side', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValue(
+		mockSlugLookup(
 			makeWord({
+				id: 'word-b',
 				relatedToWords: [
 					{
 						createdAt: new Date('2026-01-02T00:00:00.000Z'),
@@ -127,7 +144,7 @@ describe('dictionary detail related words', () => {
 			})
 		);
 
-		await expect(load({ params: { id: 'word-b' } } as never)).resolves.toMatchObject({
+		await expect(load({ params: { id: 'che' } } as never)).resolves.toMatchObject({
 			word: {
 				relatedWords: [
 					{
@@ -144,7 +161,7 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('sorts related words across both sides by Kalenjin headword', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValue(
+		mockSlugLookup(
 			makeWord({
 				relatedWords: [
 					{
@@ -171,7 +188,7 @@ describe('dictionary detail related words', () => {
 			})
 		);
 
-		const result = (await load({ params: { id: 'word-a' } } as never)) as {
+		const result = (await load({ params: { id: 'che' } } as never)) as {
 			word: {
 				relatedWords: Array<{
 					word: { kalenjin: string };
@@ -193,7 +210,10 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('adds one canonical related-word pair and skips duplicate pairs', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValue({ id: 'word-found' });
+		mocks.prisma.word.findUnique
+			.mockResolvedValueOnce({ id: 'word-b' })
+			.mockResolvedValueOnce({ id: 'word-b' })
+			.mockResolvedValueOnce({ id: 'word-a' });
 
 		await expect(addRelatedWord('word-b', 'word-a')).resolves.toEqual({ relatedWordSuccess: true });
 
@@ -212,7 +232,8 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('returns a clean 404 when adding from a missing current word', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValueOnce(null).mockResolvedValueOnce({ id: 'word-b' });
+		mocks.prisma.word.findUnique.mockResolvedValueOnce(null);
+		mocks.prisma.word.findMany.mockResolvedValueOnce([]);
 
 		await expect(addRelatedWord('word-a', 'word-b')).rejects.toMatchObject({
 			status: 404,
@@ -223,7 +244,10 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('rejects missing related words without creating a link', async () => {
-		mocks.prisma.word.findUnique.mockResolvedValueOnce({ id: 'word-a' }).mockResolvedValueOnce(null);
+		mocks.prisma.word.findUnique
+			.mockResolvedValueOnce({ id: 'word-a' })
+			.mockResolvedValueOnce({ id: 'word-a' })
+			.mockResolvedValueOnce(null);
 
 		await expect(addRelatedWord('word-a', 'word-b')).resolves.toMatchObject({
 			status: 404,
@@ -234,6 +258,8 @@ describe('dictionary detail related words', () => {
 	});
 
 	it('removes the canonical related-word pair from either side', async () => {
+		mocks.prisma.word.findUnique.mockResolvedValueOnce({ id: 'word-b' });
+
 		await expect(removeRelatedWord('word-b', 'word-a')).resolves.toEqual({ relatedWordSuccess: true });
 
 		expect(mocks.prisma.relatedWord.deleteMany).toHaveBeenCalledWith({

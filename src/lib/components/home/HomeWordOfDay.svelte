@@ -5,6 +5,7 @@
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import { parseTranslationList } from '$lib/translations';
 	import { renderWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';
 	import type { PartOfSpeech } from '@prisma/client';
 
@@ -69,7 +70,7 @@
 	<div class="wod-body">
 		<div class="wod-main">
 			<div class="wod-headword">
-				<a href={`/dictionary/${word.id}`} class="wod-word">{word.kalenjin}</a>
+				<a href={dictionaryEntryHref(word)} class="wod-word">{word.kalenjin}</a>
 				<AudioPlayButton audioUrl={word.audioUrl} label={`Play pronunciation of ${word.kalenjin}`} />
 			</div>
 			<div class="wod-meta">
@@ -116,7 +117,7 @@
 					No example yet — <a href="/corpus">add one</a>.
 				</div>
 			{/if}
-			<a href={`/dictionary/${word.id}`} class="wod-more">
+			<a href={dictionaryEntryHref(word)} class="wod-more">
 				<span>Full entry</span>
 				<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
 					<path

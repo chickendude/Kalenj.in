@@ -4,6 +4,7 @@
 	import { page } from '$app/state';
 	import type { PartOfSpeech } from '@prisma/client';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import BulkAudioRecorder from '$lib/components/BulkAudioRecorder.svelte';
 	import type { PageData } from './$types';
 
@@ -302,7 +303,9 @@
 								{#if target.kind === 'plural'}
 									<span class="form-badge">Plural</span>
 								{/if}
-								<a href={`/dictionary/${target.targetId}`}>{target.primary}</a>
+								<a href={dictionaryEntryHref({ id: target.targetId, kalenjin: target.wordKalenjin })}
+									>{target.primary}</a
+								>
 							</td>
 							<td class="col-trans">{target.secondary}</td>
 						</tr>

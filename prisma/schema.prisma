@@ -136,6 +136,7 @@ model EmailVerificationToken {
 model Word {
   id                      String                        @id @default(cuid())
   kalenjin                String
+  slug                    String                        @unique
   translations            String
   kalenjinNormalized      String
   partOfSpeech            PartOfSpeech?
@@ -174,6 +175,7 @@ model Word {
   reports                 Report[]
 
   @@index([kalenjin])
+  @@index([slug])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
   @@index([translations])

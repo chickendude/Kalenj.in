@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
 	const prisma = {
 		$executeRaw: vi.fn(),
+		$queryRaw: vi.fn(),
 		$transaction: vi.fn(),
 		word: {
 			findUnique: vi.fn(),
@@ -93,6 +94,7 @@ function mockSlugLookup(word: ReturnType<typeof makeWord>) {
 describe('dictionary detail page server', () => {
 	beforeEach(() => {
 		mocks.prisma.$executeRaw.mockReset();
+		mocks.prisma.$queryRaw.mockReset();
 		mocks.prisma.$transaction.mockReset();
 		mocks.prisma.$transaction.mockImplementation(async (callback) => callback(mocks.prisma));
 		mocks.prisma.word.findUnique.mockReset();
@@ -101,6 +103,7 @@ describe('dictionary detail page server', () => {
 		mocks.prisma.word.delete.mockReset();
 		mocks.prisma.relatedWord.createMany.mockReset();
 		mocks.prisma.relatedWord.deleteMany.mockReset();
+		mocks.prisma.$queryRaw.mockResolvedValue([{ kalenjin: 'che', slug: 'che' }]);
 	});
 
 	it('loads related words when the current word is the source side', async () => {
@@ -197,6 +200,7 @@ describe('dictionary detail page server', () => {
 			.mockResolvedValueOnce(currentWord)
 			.mockResolvedValueOnce(currentWord)
 			.mockResolvedValueOnce(updatedWord);
+		mocks.prisma.$queryRaw.mockResolvedValue([{ kalenjin: 'kot', slug: 'kot' }]);
 		mocks.prisma.word.findMany.mockResolvedValue([]);
 		mocks.prisma.word.update.mockResolvedValue(updatedWord);
 
@@ -217,6 +221,47 @@ describe('dictionary detail page server', () => {
 				data: expect.objectContaining({ kalenjin: 'kota', slug: 'kota' })
 			})
 		);
+	});
+
+	it('bases rename propagation on the transaction-local word state', async () => {
+		const staleCurrentWord = makeWord({
+			kalenjin: 'kot',
+			slug: 'kot',
+			translations: 'bag',
+			imageUrl: null
+		});
+		const transactionCurrentWord = makeWord({
+			kalenjin: 'koti',
+			slug: 'koti',
+			translations: 'bag',
+			imageUrl: null
+		});
+
+		mocks.prisma.word.findUnique
+			.mockResolvedValueOnce({ id: 'word-a' })
+			.mockResolvedValueOnce(staleCurrentWord)
+			.mockResolvedValueOnce(transactionCurrentWord);
+		mocks.prisma.$queryRaw.mockResolvedValue([{ kalenjin: 'koti', slug: 'koti' }]);
+		mocks.prisma.word.update.mockResolvedValue(transactionCurrentWord);
+
+		await expect(
+			actions.update?.({
+				params: { id: 'kot' },
+				locals,
+				request: updateWordRequest({ kalenjin: 'koti', translations: 'bag' })
+			} as never)
+		).rejects.toMatchObject({
+			status: 303,
+			location: '/dictionary/koti'
+		});
+
+		expect(mocks.prisma.word.update).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { id: 'word-a' },
+				data: expect.not.objectContaining({ slug: expect.any(String) })
+			})
+		);
+		expect(mocks.prisma.word.findMany).not.toHaveBeenCalled();
 	});
 
 	it('loads related words when the current word is the target side', async () => {

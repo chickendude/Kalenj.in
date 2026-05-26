@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import type { PartOfSpeech } from '@prisma/client';
+import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { prisma } from '$lib/server/prisma';
@@ -24,6 +24,11 @@ type RelatedWordSummary = {
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	isSwahiliLoan: boolean;
+};
+
+type WordRenameSnapshot = {
+	kalenjin: string;
+	slug: string;
 };
 
 function readText(formData: FormData, key: string): string {
@@ -133,6 +138,16 @@ async function resolveWordId(segment: string): Promise<string | null> {
 	});
 
 	return wordById?.id ?? null;
+}
+
+async function lockWordRenameSnapshot(
+	tx: Prisma.TransactionClient,
+	wordId: string
+): Promise<WordRenameSnapshot | null> {
+	const rows = await tx.$queryRaw<WordRenameSnapshot[]>(
+		Prisma.sql`SELECT "kalenjin", "slug" FROM "Word" WHERE "id" = ${wordId} FOR UPDATE`
+	);
+	return rows[0] ?? null;
 }
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -249,6 +264,7 @@ export const actions: Actions = {
 		let updatedHref: string | null = null;
 		try {
 			const updatedWord = await prisma.$transaction(async (tx) => {
+				const previousWord = await lockWordRenameSnapshot(tx, wordId);
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -263,8 +279,8 @@ export const actions: Actions = {
 					imageUrl: newImageUrl
 				});
 
-				if (kalenjin !== currentWord.kalenjin) {
-					await propagateKalenjinRename(tx, wordId, kalenjin, currentWord.slug);
+				if (previousWord && kalenjin !== previousWord.kalenjin) {
+					await propagateKalenjinRename(tx, wordId, kalenjin, previousWord.slug);
 				}
 
 				return word;

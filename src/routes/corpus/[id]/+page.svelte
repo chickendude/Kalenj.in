@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AudioRecorder from '$lib/components/AudioRecorder.svelte';
+	import BackLink from '$lib/components/BackLink.svelte';
 	import ClickToEditText from '$lib/components/ClickToEditText.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import EditModeToggle from '$lib/components/EditModeToggle.svelte';
@@ -284,12 +285,7 @@
 <section>
 	<div class="entry-head-row">
 		<div class="entry-nav-meta">
-			<a href="/corpus" class="back-link">
-				<svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-					<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-				</svg>
-				Back to corpus
-			</a>
+			<BackLink href="/corpus" label="Back to corpus" />
 			<div class="entry-label-row">
 				<div class="entry-label">Corpus sentence</div>
 				<SentenceStatusToggle status={data.sentence.status} {canEdit} />
@@ -576,24 +572,17 @@
 
 <style>
 	.entry-head-row {
-		align-items: center;
+		align-items: flex-start;
 		display: flex;
 		flex-wrap: wrap;
 		gap: 12px;
 		justify-content: space-between;
 		margin-bottom: 0;
-		margin-top: -18px;
 	}
 	.entry-nav-meta {
-		align-items: center;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 12px;
+		display: grid;
+		gap: 0.2rem;
 	}
-	.entry-nav-meta .back-link {
-		line-height: 1;
-	}
-
 	.sentence-admin-actions {
 		align-items: center;
 		display: flex;
@@ -603,42 +592,6 @@
 	}
 	.sentence-action-form {
 		margin: 0;
-	}
-	.icon-action-btn {
-		align-items: center;
-		background: var(--bg-raised);
-		border: 1px solid var(--line);
-		border-radius: 50%;
-		color: var(--ink-soft);
-		cursor: pointer;
-		display: inline-flex;
-		flex-shrink: 0;
-		height: 32px;
-		justify-content: center;
-		padding: 0;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
-		width: 32px;
-	}
-	.icon-action-btn:hover:not(:disabled) {
-		background: var(--brand);
-		border-color: var(--brand);
-		color: var(--on-brand, white);
-	}
-	.icon-action-btn:focus-visible {
-		outline: 2px solid var(--brand);
-		outline-offset: 2px;
-	}
-	.icon-action-btn:disabled {
-		cursor: not-allowed;
-		opacity: 0.5;
-	}
-	.icon-action-btn.danger {
-		color: #b91c1c;
-	}
-	.icon-action-btn.danger:hover:not(:disabled) {
-		background: #b91c1c;
-		border-color: #b91c1c;
-		color: white;
 	}
 	/* Visually separate the edit-mode toggle from the destructive icon so it's
 	   harder to misclick. */

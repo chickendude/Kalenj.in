@@ -10,9 +10,11 @@
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import BackLink from '$lib/components/BackLink.svelte';
 	import ReportDialog from '$lib/components/ReportDialog.svelte';
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
 	import SwahiliLoanToggle from '$lib/components/SwahiliLoanToggle.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 	import WordPill from '$lib/components/WordPill.svelte';
 	import { getEditMode } from '$lib/stores/editMode.svelte';
 	import { PART_OF_SPEECH_LABELS, PARTS_OF_SPEECH } from '$lib/parts-of-speech';
@@ -279,16 +281,21 @@
 
 <section>
 	<div class="entry-top-bar">
-		<a href="/dictionary" class="back-link">
-			<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
-				<path d="M7.5 2L3 6l4.5 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-			</svg>
-			Back to dictionary
-		</a>
+		<BackLink href="/dictionary" label="Back to dictionary" />
 		<div class="entry-top-actions">
-			<button type="button" class="btn-sm ghost" onclick={() => (reportDialogOpen = true)}>
-				Report
-			</button>
+			<Tooltip label="Report an issue">
+				<button
+					type="button"
+					class="icon-action-btn"
+					onclick={() => (reportDialogOpen = true)}
+					aria-label="Report an issue"
+				>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+						<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+						<line x1="4" y1="22" x2="4" y2="15" />
+					</svg>
+				</button>
+			</Tooltip>
 			{#if isStaff}
 				<EditModeToggle />
 			{/if}

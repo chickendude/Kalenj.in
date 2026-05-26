@@ -4,6 +4,7 @@
 	import AddWordDialog, { type AddWordInitial } from '$lib/components/AddWordDialog.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import { invalidateAll } from '$app/navigation';
 	import type { ActionData, PageData } from './$types';
 
@@ -157,7 +158,7 @@
 						<td>
 							<span class={statusClass(s.status)}>{statusLabel(s.status)}</span>
 							{#if s.status === 'APPROVED' && s.approvedWord}
-								<a class="approved-link" href={`/dictionary/${s.approvedWord.id}`}>view entry</a>
+								<a class="approved-link" href={dictionaryEntryHref(s.approvedWord)}>view entry</a>
 							{/if}
 							{#if s.status !== 'PENDING' && s.reviewer}
 								<div class="reviewer">

@@ -39,6 +39,8 @@
 	type DictionarySearchResult = {
 		id: string;
 		kalenjin: string;
+		slug?: string;
+		href?: string;
 		translations: string;
 		partOfSpeech: PartOfSpeech | null;
 		isSwahiliLoan: boolean;

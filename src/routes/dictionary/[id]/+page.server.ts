@@ -1,5 +1,5 @@
 import { error, fail, redirect } from '@sveltejs/kit';
-import type { PartOfSpeech } from '@prisma/client';
+import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { combinePluralFormVariants } from '$lib/plural-form-variants';
 import { prisma } from '$lib/server/prisma';
@@ -8,6 +8,8 @@ import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import { relatedWordPair } from '$lib/server/related-words';
+import { decodeDictionarySegment, dictionaryEntryHref } from '$lib/word-url';
+import { canonicalDictionaryHref } from '$lib/server/dictionary-hrefs';
 import type { Actions, PageServerLoad } from './$types';
 
 type RelatedPair = {
@@ -18,9 +20,15 @@ type RelatedPair = {
 type RelatedWordSummary = {
 	id: string;
 	kalenjin: string;
+	slug: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	isSwahiliLoan: boolean;
+};
+
+type WordRenameSnapshot = {
+	kalenjin: string;
+	slug: string;
 };
 
 function readText(formData: FormData, key: string): string {
@@ -35,64 +43,125 @@ function sortRelatedWords(relatedWords: RelatedPair[]): RelatedPair[] {
 	);
 }
 
-export const load: PageServerLoad = async ({ params }) => {
-	const word = await prisma.word.findUnique({
-		where: { id: params.id },
+const wordDetailInclude = {
+	spellings: {
+		orderBy: [{ spelling: 'asc' as const }]
+	},
+	sentences: {
 		include: {
-			spellings: {
-				orderBy: [{ spelling: 'asc' }]
-			},
-			sentences: {
+			exampleSentence: {
 				include: {
-					exampleSentence: {
+					tokens: {
+						orderBy: { tokenOrder: 'asc' as const },
 						include: {
-							tokens: {
-								orderBy: { tokenOrder: 'asc' },
-								include: {
-									word: true,
-									segments: {
-										orderBy: { segmentOrder: 'asc' },
-										include: { word: true }
-									}
-								}
+							word: true,
+							segments: {
+								orderBy: { segmentOrder: 'asc' as const },
+								include: { word: true }
 							}
-						}
-					}
-				}
-			},
-			relatedWords: {
-				include: {
-					relatedWord: {
-						select: {
-							id: true,
-							kalenjin: true,
-							translations: true,
-							partOfSpeech: true,
-							isSwahiliLoan: true
-						}
-					}
-				}
-			},
-			relatedToWords: {
-				include: {
-					word: {
-						select: {
-							id: true,
-							kalenjin: true,
-							translations: true,
-							partOfSpeech: true,
-							isSwahiliLoan: true
 						}
 					}
 				}
 			}
 		}
+	},
+	relatedWords: {
+		include: {
+			relatedWord: {
+				select: {
+					id: true,
+					kalenjin: true,
+					slug: true,
+					translations: true,
+					partOfSpeech: true,
+					isSwahiliLoan: true
+				}
+			}
+		}
+	},
+	relatedToWords: {
+		include: {
+			word: {
+				select: {
+					id: true,
+					kalenjin: true,
+					slug: true,
+					translations: true,
+					partOfSpeech: true,
+					isSwahiliLoan: true
+				}
+			}
+		}
+	}
+};
+
+async function findWordForDictionarySegment(segment: string) {
+	const decoded = decodeDictionarySegment(segment);
+	if (!decoded) return null;
+
+	const wordBySlug = await prisma.word.findUnique({
+		where: { slug: decoded },
+		include: wordDetailInclude
+	});
+	if (wordBySlug) {
+		return {
+			word: wordBySlug,
+			canonicalHref: dictionaryEntryHref(wordBySlug)
+		};
+	}
+
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		include: wordDetailInclude
+	});
+	if (!wordById) return null;
+
+	return {
+		word: wordById,
+		canonicalHref: await canonicalDictionaryHref(prisma, wordById)
+	};
+}
+
+async function resolveWordId(segment: string): Promise<string | null> {
+	const decoded = decodeDictionarySegment(segment);
+	if (!decoded) return null;
+
+	const wordBySlug = await prisma.word.findUnique({
+		where: { slug: decoded },
+		select: { id: true }
+	});
+	if (wordBySlug) return wordBySlug.id;
+
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		select: { id: true }
 	});
 
-	if (!word) {
+	return wordById?.id ?? null;
+}
+
+async function lockWordRenameSnapshot(
+	tx: Prisma.TransactionClient,
+	wordId: string
+): Promise<WordRenameSnapshot | null> {
+	const rows = await tx.$queryRaw<WordRenameSnapshot[]>(
+		Prisma.sql`SELECT "kalenjin", "slug" FROM "Word" WHERE "id" = ${wordId} FOR UPDATE`
+	);
+	return rows[0] ?? null;
+}
+
+export const load: PageServerLoad = async ({ params, url }) => {
+	const result = await findWordForDictionarySegment(params.id);
+
+	if (!result) {
 		error(404, 'Word not found');
 	}
 
+	if (result.canonicalHref && `/dictionary/${params.id}` !== result.canonicalHref) {
+		redirect(308, `${result.canonicalHref}${url?.search ?? ''}`);
+	}
+
+	const { word } = result;
 	const relatedWords = sortRelatedWords([
 		...word.relatedWords.map((link) => ({
 			word: link.relatedWord,
@@ -115,7 +184,11 @@ export const load: PageServerLoad = async ({ params }) => {
 export const actions: Actions = {
 	update: async ({ request, params, locals }) => {
 		requireEditor(locals);
-		const currentWord = await prisma.word.findUnique({ where: { id: params.id } });
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
+		const currentWord = await prisma.word.findUnique({ where: { id: wordId } });
 		if (!currentWord) {
 			error(404, 'Word not found');
 		}
@@ -188,10 +261,12 @@ export const actions: Actions = {
 			newImageUrl = null;
 		}
 
+		let updatedHref: string | null = null;
 		try {
-			await prisma.$transaction(async (tx) => {
-				await createOrUpdateLinkedWord(tx, {
-					wordId: params.id,
+			const updatedWord = await prisma.$transaction(async (tx) => {
+				const previousWord = await lockWordRenameSnapshot(tx, wordId);
+				const word = await createOrUpdateLinkedWord(tx, {
+					wordId,
 					kalenjin,
 					translations,
 					notes: notes || null,
@@ -204,10 +279,13 @@ export const actions: Actions = {
 					imageUrl: newImageUrl
 				});
 
-				if (kalenjin !== currentWord.kalenjin) {
-					await propagateKalenjinRename(tx, params.id, kalenjin);
+				if (previousWord && kalenjin !== previousWord.kalenjin) {
+					await propagateKalenjinRename(tx, wordId, kalenjin, previousWord.slug);
 				}
+
+				return word;
 			});
+			updatedHref = dictionaryEntryHref(updatedWord);
 		} catch (err) {
 			if (typeof newImageUrl === 'string') await deleteUploadedImage(newImageUrl);
 			throw err;
@@ -217,15 +295,23 @@ export const actions: Actions = {
 			await deleteUploadedImage(currentWord.imageUrl);
 		}
 
+		if (updatedHref && `/dictionary/${params.id}` !== updatedHref) {
+			redirect(303, updatedHref);
+		}
+
 		return { success: true };
 	},
 	delete: async ({ params, locals }) => {
 		requireEditor(locals);
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
 		const existing = await prisma.word.findUnique({
-			where: { id: params.id },
+			where: { id: wordId },
 			select: { imageUrl: true }
 		});
-		await prisma.word.delete({ where: { id: params.id } });
+		await prisma.word.delete({ where: { id: wordId } });
 		if (existing?.imageUrl) await deleteUploadedImage(existing.imageUrl);
 		redirect(303, '/dictionary');
 	},
@@ -242,9 +328,18 @@ export const actions: Actions = {
 			return fail(400, { relatedWordError: 'A word cannot be related to itself.' });
 		}
 
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
+
+		if (relatedWordId === wordId) {
+			return fail(400, { relatedWordError: 'A word cannot be related to itself.' });
+		}
+
 		const [currentWord, relatedWord] = await Promise.all([
 			prisma.word.findUnique({
-				where: { id: params.id },
+				where: { id: wordId },
 				select: { id: true }
 			}),
 			prisma.word.findUnique({
@@ -261,7 +356,7 @@ export const actions: Actions = {
 		}
 
 		await prisma.relatedWord.createMany({
-			data: [relatedWordPair(params.id, relatedWordId)],
+			data: [relatedWordPair(wordId, relatedWordId)],
 			skipDuplicates: true
 		});
 
@@ -269,6 +364,10 @@ export const actions: Actions = {
 	},
 	removeRelatedWord: async ({ request, params, locals }) => {
 		requireEditor(locals);
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
 		const formData = await request.formData();
 		const relatedWordId = readText(formData, 'relatedWordId');
 
@@ -277,7 +376,7 @@ export const actions: Actions = {
 		}
 
 		await prisma.relatedWord.deleteMany({
-			where: relatedWordPair(params.id, relatedWordId)
+			where: relatedWordPair(wordId, relatedWordId)
 		});
 
 		return { relatedWordSuccess: true };

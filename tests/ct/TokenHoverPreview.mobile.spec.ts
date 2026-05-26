@@ -8,19 +8,24 @@ const tokens = [
 		id: 'token-ngunon',
 		tokenOrder: 0,
 		surfaceForm: 'Ngunon',
-		word: { id: 'word-ngunon', kalenjin: 'Ngunon', translations: 'now' }
+		word: { id: 'word-ngunon', kalenjin: 'Ngunon', slug: 'ngunon', translations: 'now' }
 	},
 	{
 		id: 'token-achobe',
 		tokenOrder: 1,
 		surfaceForm: 'achobe',
-		word: { id: 'word-achobe', kalenjin: 'achobe', translations: 'make' }
+		word: { id: 'word-achobe', kalenjin: 'achobe', slug: 'achobe', translations: 'make' }
 	},
 	{
 		id: 'token-igiilge',
 		tokenOrder: 2,
 		surfaceForm: 'Igiilge',
-		word: { id: 'word-igiilge', kalenjin: 'Igiilge', translations: 'work hard' }
+		word: {
+			id: 'word-igiilge',
+			kalenjin: 'Igiilge',
+			slug: 'igiilge',
+			translations: 'work hard'
+		}
 	}
 ];
 
@@ -65,11 +70,35 @@ test('mobile taps show one preview with a full-entry affordance', async ({ mount
 	await expect(
 		component.getByRole('link', { name: 'Open dictionary entry for Ngunon', exact: true })
 	).toBeVisible();
+	await expect(
+		component.getByRole('link', { name: 'Open dictionary entry for Ngunon', exact: true })
+	).toHaveAttribute('href', '/dictionary/ngunon');
 
 	await component.getByRole('link', { name: /^Igiilge$/ }).click();
 	await expect(page.getByRole('tooltip')).toHaveCount(1);
 	await expect(page.getByRole('tooltip')).toContainText('work hard');
 	await expect(page.getByRole('tooltip')).not.toContainText('now');
+});
+
+test('mobile full-entry affordance uses the stored dictionary slug', async ({ mount }) => {
+	const component = await mount(TokenHoverPreviewHarness, {
+		props: {
+			sentenceText: 'Kot',
+			tokens: [
+				{
+					id: 'token-kot',
+					tokenOrder: 0,
+					surfaceForm: 'Kot',
+					word: { id: 'word-kot-2', kalenjin: 'kot', slug: 'kot-1', translations: 'bag' }
+				}
+			]
+		}
+	});
+
+	await component.getByRole('link', { name: /^Kot$/ }).click();
+	await expect(
+		component.getByRole('link', { name: 'Open dictionary entry for kot', exact: true })
+	).toHaveAttribute('href', '/dictionary/kot-1');
 });
 
 test('mobile previews stay onscreen and remain centered when there is room', async ({

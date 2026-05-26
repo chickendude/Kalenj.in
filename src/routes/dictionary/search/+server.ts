@@ -9,6 +9,7 @@ import {
 	sortTranslationSearchResults
 } from '$lib/translations';
 import { splitPluralFormVariants } from '$lib/plural-form-variants';
+import { attachDictionaryHrefs } from '$lib/server/dictionary-hrefs';
 import type { RequestHandler } from './$types';
 
 const MAX_RESULTS = 7;
@@ -20,15 +21,18 @@ const PREFIX_OR_EXACT_SCORE_LIMIT = 8;
 type SearchResult = {
 	id: string;
 	kalenjin: string;
+	slug?: string;
 	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
 	isSwahiliLoan: boolean;
+	href?: string;
 };
 
 function toResult(word: {
 	id: string;
 	kalenjin: string;
+	slug?: string;
 	pluralForm: string | null;
 	translations: string;
 	partOfSpeech: string | null;
@@ -37,6 +41,7 @@ function toResult(word: {
 	return {
 		id: word.id,
 		kalenjin: word.kalenjin,
+		slug: word.slug,
 		pluralForm: splitPluralFormVariants(word.pluralForm).pluralForm || null,
 		translations: word.translations,
 		partOfSpeech: word.partOfSpeech,
@@ -57,7 +62,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		const prefixOrExact = kalenjinMatches.filter(
 			(word) => scoreKalenjinWordMatch(word, query) < PREFIX_OR_EXACT_SCORE_LIMIT
 		);
-		return json({ results: prefixOrExact.map(toResult) });
+		return json({ results: await attachDictionaryHrefs(prisma, prefixOrExact.map(toResult)) });
 	}
 
 	const prioritizeTranslations = isNumericTranslationSearchQuery(query);
@@ -70,6 +75,7 @@ export const GET: RequestHandler = async ({ url }) => {
 			select: {
 				id: true,
 				kalenjin: true,
+				slug: true,
 				pluralForm: true,
 				translations: true,
 				partOfSpeech: true,
@@ -91,5 +97,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		}
 	}
 
-	return json({ results: [...merged.values()].slice(0, MAX_RESULTS) });
+	return json({
+		results: await attachDictionaryHrefs(prisma, [...merged.values()].slice(0, MAX_RESULTS))
+	});
 };

@@ -1,8 +1,11 @@
 <script lang="ts">
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
+	import { dictionaryEntryHref } from '$lib/word-url';
 
 	type SearchResult = {
 		id: string;
+		slug?: string;
+		href?: string;
 		[key: string]: unknown;
 	};
 
@@ -81,6 +84,18 @@
 	function getString(value: unknown): string {
 		return typeof value === 'string' ? value : '';
 	}
+
+	function resultHref(result: SearchResult): string {
+		if (typeof result.href === 'string') return result.href;
+		if (linkBase === '/dictionary/' && primaryKey === 'kalenjin') {
+			return dictionaryEntryHref({
+				id: result.id,
+				kalenjin: getString(result[primaryKey]),
+				slug: result.slug
+			});
+		}
+		return `${linkBase}${result.id}`;
+	}
 </script>
 
 {#if results.length > 0 || loading || errorMessage}
@@ -101,7 +116,7 @@
 					<li class="dup-item">
 						<a
 							class="dup-link"
-							href={`${linkBase}${result.id}`}
+							href={resultHref(result)}
 							target="_blank"
 							rel="noopener"
 						>

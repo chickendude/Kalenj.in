@@ -5,6 +5,7 @@
 		formatLessonType,
 		formatVocabularyLessonType
 	} from '$lib/course';
+	import BackLink from '$lib/components/BackLink.svelte';
 
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
@@ -169,7 +170,7 @@
 
 <div class="lesson-head-row">
 	<div class="page-header-main">
-		<a href="/lessons" class="back-link">← Back to lessons</a>
+		<BackLink href="/lessons" label="Back to lessons" />
 		<div class="kicker">
 			{#if lessonType === 'VOCABULARY'}
 				{@const currentVocabType = lessonVocabularyType || 'VOCAB'}
@@ -325,11 +326,6 @@
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-	}
-
-	.page-header-main > :global(.back-link) {
-		margin-top: -24px;
-		margin-bottom: 8px;
 	}
 
 	.lesson-nav-icon {

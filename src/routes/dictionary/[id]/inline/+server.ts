@@ -3,12 +3,36 @@ import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 import { propagateKalenjinRename } from '$lib/server/propagate-rename';
+import { decodeDictionarySegment } from '$lib/word-url';
+import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 
 const ALLOWED_FIELDS = ['kalenjin', 'translations'] as const;
 type WordInlineField = (typeof ALLOWED_FIELDS)[number];
 
+async function resolveWordId(segment: string): Promise<string | null> {
+	const decoded = decodeDictionarySegment(segment);
+	if (!decoded) return null;
+
+	const wordBySlug = await prisma.word.findUnique({
+		where: { slug: decoded },
+		select: { id: true }
+	});
+	if (wordBySlug) return wordBySlug.id;
+
+	const wordById = await prisma.word.findUnique({
+		where: { id: decoded },
+		select: { id: true }
+	});
+
+	return wordById?.id ?? null;
+}
+
 export const POST: RequestHandler = async ({ request, params, locals }) => {
 	requireEditor(locals);
+	const wordId = await resolveWordId(params.id);
+	if (!wordId) {
+		error(404, 'Word not found.');
+	}
 	const body = (await request.json()) as { field?: string; value?: string };
 	const { field, value } = body;
 
@@ -20,20 +44,29 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 		error(400, 'Invalid field.');
 	}
 
-	const word = await prisma.word.findUnique({ where: { id: params.id } });
+	const typedField = field as WordInlineField;
+	const trimmedValue = value.trim();
+	if (!trimmedValue) {
+		error(400, typedField === 'kalenjin' ? 'Kalenjin is required.' : 'Translations are required.');
+	}
+
+	const word = await prisma.word.findUnique({ where: { id: wordId } });
 	if (!word) {
 		error(404, 'Word not found.');
 	}
 
-	const typedField = field as WordInlineField;
+	const shouldRename = typedField === 'kalenjin' && trimmedValue !== word.kalenjin;
 
 	const updated = await prisma.$transaction(async (tx) => {
 		const next = await tx.word.update({
-			where: { id: params.id },
-			data: { [typedField]: value }
+			where: { id: wordId },
+			data: {
+				[typedField]: trimmedValue,
+				...(shouldRename ? { slug: await generateUniqueWordSlug(tx, trimmedValue, wordId) } : {})
+			}
 		});
-		if (typedField === 'kalenjin' && value !== word.kalenjin) {
-			await propagateKalenjinRename(tx, params.id, value);
+		if (shouldRename) {
+			await propagateKalenjinRename(tx, wordId, trimmedValue, word.slug);
 		}
 		return next;
 	});

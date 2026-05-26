@@ -5,6 +5,7 @@
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import { PART_OF_SPEECH_LABELS as POS_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
 	import AddWordDialog from '$lib/components/AddWordDialog.svelte';
 	import SwahiliLoanIndicator from '$lib/components/SwahiliLoanIndicator.svelte';
@@ -382,7 +383,8 @@
 			</thead>
 			<tbody>
 				{#each data.words as word}
-					<tr onclick={() => window.location.href = `/dictionary/${word.id}`} style="cursor: pointer">
+					{@const entryHref = word.href ?? dictionaryEntryHref(word)}
+					<tr onclick={() => window.location.href = entryHref} style="cursor: pointer">
 						<td class="col-word">
 							<div class="col-word-row">
 								<AudioPlayButton
@@ -391,7 +393,7 @@
 									label={`Play pronunciation of ${word.kalenjin}`}
 								/>
 								<span class="word-with-pos">
-									<a href={`/dictionary/${word.id}`}>{word.kalenjin}</a>
+									<a href={entryHref}>{word.kalenjin}</a>
 									{#if word.partOfSpeech}
 										<PartOfSpeechInline value={word.partOfSpeech} size="tiny" />
 									{/if}

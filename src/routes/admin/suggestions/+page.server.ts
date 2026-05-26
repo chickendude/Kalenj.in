@@ -61,7 +61,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			include: {
 				submitter: { select: submitterSelect },
 				reviewer: { select: reviewerSelect },
-				approvedWord: { select: { id: true, kalenjin: true } }
+				approvedWord: { select: { id: true, kalenjin: true, slug: true } }
 			}
 		}),
 		prisma.sentenceSuggestion.findMany({

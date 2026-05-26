@@ -37,7 +37,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				resolvedAt: true,
 				reporter: { select: { id: true, username: true, displayName: true } },
 				resolvedBy: { select: { id: true, username: true, displayName: true } },
-				word: { select: { id: true, kalenjin: true, translations: true } },
+				word: { select: { id: true, kalenjin: true, slug: true, translations: true } },
 				sentence: { select: { id: true, kalenjin: true, english: true } }
 			}
 		}),

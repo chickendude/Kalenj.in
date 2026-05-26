@@ -12,6 +12,7 @@ const SEARCH_LIMIT = 200;
 type WordRow = {
 	id: string;
 	kalenjin: string;
+	slug: string;
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	pluralForm: string | null;
@@ -27,6 +28,7 @@ export type RecordingTarget = {
 	primary: string;
 	secondary: string;
 	wordKalenjin: string;
+	wordSlug: string;
 	kind: 'singular' | 'plural';
 };
 
@@ -45,6 +47,7 @@ function buildTargets(words: WordRow[]): RecordingTarget[] {
 				primary: word.kalenjin,
 				secondary: word.translations,
 				wordKalenjin: word.kalenjin,
+				wordSlug: word.slug,
 				kind: 'singular'
 			});
 		}
@@ -56,6 +59,7 @@ function buildTargets(words: WordRow[]): RecordingTarget[] {
 				primary: word.pluralForm,
 				secondary: `plural of ${word.kalenjin} — ${word.translations}`,
 				wordKalenjin: word.kalenjin,
+				wordSlug: word.slug,
 				kind: 'plural'
 			});
 		}
@@ -114,6 +118,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		words = posFiltered.map((w) => ({
 			id: w.id,
 			kalenjin: w.kalenjin,
+			slug: w.slug ?? w.id,
 			translations: w.translations,
 			partOfSpeech: w.partOfSpeech,
 			pluralForm: w.pluralForm,
@@ -136,6 +141,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 				select: {
 					id: true,
 					kalenjin: true,
+					slug: true,
 					translations: true,
 					partOfSpeech: true,
 					pluralForm: true,

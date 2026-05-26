@@ -5,6 +5,7 @@
 	import FormActions from '$lib/components/FormActions.svelte';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 
 	let { data, form } = $props();
 	type LessonFormValues = {
@@ -344,7 +345,7 @@
 									<ul class="uninstructed-list">
 										{#each uninstructed as word}
 											<li>
-												<a href={`/dictionary/${word.id}`} class="uninstructed-word">
+												<a href={dictionaryEntryHref(word)} class="uninstructed-word">
 													<span class="kal">{word.kalenjin}</span>
 													<span class="en">{stripWordLinks(word.translations)}</span>
 												</a>

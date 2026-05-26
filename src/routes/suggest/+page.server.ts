@@ -38,7 +38,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		prisma.wordSuggestion.findMany({
 			where: { submitterId: user.id },
 			orderBy: { createdAt: 'desc' },
-			take: 20
+			take: 20,
+			include: {
+				approvedWord: { select: { id: true, kalenjin: true, slug: true } }
+			}
 		}),
 		prisma.sentenceSuggestion.findMany({
 			where: { submitterId: user.id },

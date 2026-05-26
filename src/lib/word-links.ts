@@ -1,4 +1,7 @@
-const LINK_REGEX = /\[([^\]]+)\]\(\/dictionary\/([a-z0-9]+)\)/g;
+import { dictionaryEntryHref } from '$lib/word-url';
+
+const LINK_REGEX =
+	/\[([^\]]+)\]\(\/dictionary\/([a-z0-9][a-z0-9-]*)\)/g;
 
 function escapeHtml(text: string): string {
 	return text
@@ -39,10 +42,10 @@ export function buildWordLinkInsertion(
 	value: string,
 	triggerStart: number,
 	caretPos: number,
-	pick: { id: string; kalenjin: string }
+	pick: { id: string; kalenjin: string; href?: string }
 ): { nextValue: string; nextCaret: number } {
 	const label = sanitizeLabel(pick.kalenjin);
-	const segment = `[${label}](/dictionary/${pick.id})`;
+	const segment = `[${label}](${pick.href ?? dictionaryEntryHref(pick)})`;
 	const before = value.slice(0, triggerStart);
 	const after = value.slice(caretPos);
 	const nextValue = before + segment + after;
@@ -50,9 +53,23 @@ export function buildWordLinkInsertion(
 	return { nextValue, nextCaret };
 }
 
-export function rewriteLinkLabel(text: string, cuid: string, newLabel: string): string {
+export function rewriteLinkLabel(
+	text: string,
+	segments: string | string[],
+	newLabel: string,
+	newHref?: string
+): string {
 	const safeLabel = sanitizeLabel(newLabel);
-	const escapedCuid = cuid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	const pattern = new RegExp(`\\[([^\\]]+)\\]\\(/dictionary/${escapedCuid}\\)`, 'g');
-	return text.replace(pattern, `[${safeLabel}](/dictionary/${cuid})`);
+	const escapedSegments = (Array.isArray(segments) ? segments : [segments])
+		.filter(Boolean)
+		.map((segment) => segment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+	if (escapedSegments.length === 0) return text;
+	const pattern = new RegExp(
+		`\\[([^\\]]+)\\]\\(/dictionary/(?:${escapedSegments.join('|')})\\)`,
+		'g'
+	);
+	return text.replace(
+		pattern,
+		`[${safeLabel}](${newHref ?? dictionaryEntryHref({ kalenjin: newLabel })})`
+	);
 }

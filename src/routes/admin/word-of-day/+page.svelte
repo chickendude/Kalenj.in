@@ -6,6 +6,7 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { WordSearchHit } from './search/+server';
 	import type { ActionData, PageData } from './$types';
@@ -233,7 +234,7 @@
 				</td>
 				<td>
 					<div class="wod-admin-word-cell">
-						<a href={`/dictionary/${row.word.id}`} class="wod-admin-word" title={row.word.kalenjin}
+						<a href={dictionaryEntryHref(row.word)} class="wod-admin-word" title={row.word.kalenjin}
 							>{row.word.kalenjin}</a
 						>
 						{#if row.word.partOfSpeech}

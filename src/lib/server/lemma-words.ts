@@ -1,6 +1,7 @@
 import { Prisma, type PartOfSpeech } from '@prisma/client';
 import { prepareAlternativeSpellings, preparePluralForms } from './kalenjin-word-search';
 import { normalizeLemma } from './normalize-lemma';
+import { generateUniqueWordSlug } from './word-slugs';
 
 const PRESENT_TENSE_KEYS = [
 	'presentAnee',
@@ -28,6 +29,7 @@ export function buildWordSelect() {
 	return {
 		id: true,
 		kalenjin: true,
+		slug: true,
 		translations: true,
 		notes: true,
 		partOfSpeech: true,
@@ -107,10 +109,18 @@ export async function createOrUpdateLinkedWord(
 		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
 
 	if (input.wordId) {
+		const existingWord = await tx.word.findUnique({
+			where: { id: input.wordId },
+			select: { kalenjin: true, slug: true }
+		});
+		const shouldUpdateSlug = !existingWord?.slug || existingWord.kalenjin !== input.kalenjin;
 		return tx.word.update({
 			where: { id: input.wordId },
 			data: {
 				kalenjin: input.kalenjin,
+				...(shouldUpdateSlug
+					? { slug: await generateUniqueWordSlug(tx, input.kalenjin, input.wordId) }
+					: {}),
 				kalenjinNormalized: normalizeLemma(input.kalenjin),
 				translations: input.translations,
 				notes: input.notes ?? null,
@@ -133,6 +143,7 @@ export async function createOrUpdateLinkedWord(
 	return tx.word.create({
 		data: {
 			kalenjin: input.kalenjin,
+			slug: await generateUniqueWordSlug(tx, input.kalenjin),
 			kalenjinNormalized: normalizeLemma(input.kalenjin),
 			translations: input.translations,
 			notes: input.notes ?? null,

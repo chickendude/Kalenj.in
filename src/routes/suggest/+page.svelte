@@ -6,6 +6,7 @@
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
+	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PartOfSpeech, SentenceSuggestion, WordSuggestion } from '@prisma/client';
 	import type { ActionData, PageData } from './$types';
 
@@ -274,8 +275,10 @@
 						<td>{suggestion.translations}</td>
 						<td>
 							<span class={statusClass(suggestion.status)}>{statusLabel(suggestion.status)}</span>
-							{#if suggestion.status === 'APPROVED' && suggestion.approvedWordId}
-								<a class="approved-link" href={`/dictionary/${suggestion.approvedWordId}`}>view entry</a>
+							{#if suggestion.status === 'APPROVED' && suggestion.approvedWord}
+								<a class="approved-link" href={dictionaryEntryHref(suggestion.approvedWord)}
+									>view entry</a
+								>
 							{/if}
 						</td>
 						<td>{dateFmt.format(suggestion.createdAt)}</td>

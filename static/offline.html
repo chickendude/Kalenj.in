@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Offline · Kalenj.in</title>
+		<style>
+			:root {
+				color-scheme: light dark;
+				--bg: #f6f4ef;
+				--fg: #1f2a24;
+				--muted: #5a6b62;
+				--brand: #365e4a;
+			}
+			@media (prefers-color-scheme: dark) {
+				:root {
+					--bg: #1a221d;
+					--fg: #e7ece8;
+					--muted: #9aa8a0;
+					--brand: #6b8a7a;
+				}
+			}
+			* {
+				box-sizing: border-box;
+			}
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+			}
+			body {
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 1.25rem;
+				padding: 2rem;
+				background: var(--bg);
+				color: var(--fg);
+				font-family:
+					'Work Sans', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+				text-align: center;
+			}
+			svg {
+				width: 72px;
+				height: 72px;
+			}
+			h1 {
+				margin: 0;
+				font-size: 1.5rem;
+				font-weight: 600;
+			}
+			p {
+				margin: 0;
+				max-width: 28rem;
+				color: var(--muted);
+				line-height: 1.5;
+			}
+			button {
+				margin-top: 0.5rem;
+				padding: 0.6rem 1.4rem;
+				font: inherit;
+				font-weight: 600;
+				color: #fff;
+				background: var(--brand);
+				border: none;
+				border-radius: 8px;
+				cursor: pointer;
+			}
+			button:hover {
+				filter: brightness(1.08);
+			}
+		</style>
+	</head>
+	<body>
+		<svg viewBox="0 0 64 64" aria-hidden="true">
+			<defs>
+				<clipPath id="c"><rect width="64" height="64" rx="10" /></clipPath>
+				<linearGradient id="s" x1="0" y1="0" x2="0" y2="1">
+					<stop offset="0" stop-color="#6b8a7a" />
+					<stop offset="1" stop-color="#365e4a" />
+				</linearGradient>
+			</defs>
+			<g clip-path="url(#c)">
+				<rect width="64" height="64" fill="url(#s)" />
+				<circle cx="48" cy="20" r="5" fill="#c47a3a" />
+				<path
+					d="M-2 40 L8 32 L16 36 L26 30 L36 34 L48 28 L56 32 L66 30 L66 48 L-2 48 Z"
+					fill="#1e3a2c"
+					opacity="0.65"
+				/>
+				<g fill="#ffffff">
+					<rect x="14" y="10" width="6" height="30" />
+					<polygon points="20,25 34,10 40,10 24,27" />
+					<polygon points="20,25 24,24 40,40 34,40" />
+				</g>
+				<path d="M-2 48 L10 40 L22 46 L34 38 L46 44 L58 38 L66 42 L66 66 L-2 66 Z" fill="#1e3a2c" />
+				<path
+					d="M-2 56 L18 48 L34 54 L52 46 L66 52 L66 66 L-2 66 Z"
+					fill="#c47a3a"
+					opacity="0.9"
+				/>
+			</g>
+		</svg>
+		<h1>You're offline</h1>
+		<p>
+			Kalenj.in needs an internet connection to look up words and browse the corpus. Reconnect and
+			try again.
+		</p>
+		<button type="button" onclick="location.reload()">Try again</button>
+	</body>
+</html>

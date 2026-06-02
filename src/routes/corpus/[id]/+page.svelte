@@ -37,7 +37,7 @@
 	$effect(() => {
 		if (form?.setSentenceStatusSuccess) {
 			const labels = {
-				NEEDS_PROOFREAD: 'Needs proofread',
+				NEEDS_PROOFREAD: 'Not proofread',
 				IN_CORPUS: 'Proofread',
 				STORY_ONLY: 'Story only'
 			} as const;

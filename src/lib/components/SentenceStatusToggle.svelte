@@ -12,7 +12,7 @@
 	const CYCLE: ExampleSentenceStatus[] = ['NEEDS_PROOFREAD', 'IN_CORPUS', 'STORY_ONLY'];
 
 	const LABELS: Record<ExampleSentenceStatus, string> = {
-		NEEDS_PROOFREAD: 'Needs proofread',
+		NEEDS_PROOFREAD: 'Not proofread',
 		IN_CORPUS: 'Proofread',
 		STORY_ONLY: 'Story only'
 	};

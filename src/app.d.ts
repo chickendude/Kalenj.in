@@ -10,6 +10,7 @@ declare global {
 				displayName: string | null;
 				role: 'ADMIN' | 'MANAGER' | 'USER';
 				themePreference: 'light' | 'dark' | 'auto';
+				statsFilterPreference: string | null;
 			} | null;
 			sessionToken: string | null;
 		}

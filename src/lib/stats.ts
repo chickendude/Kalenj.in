@@ -25,6 +25,8 @@ export const RANGE_IDS: RangeId[] = [
 export const METRIC_IDS = [
 	'wordsCreated',
 	'sentencesCreated',
+	'wordAudioRecorded',
+	'sentenceAudioRecorded',
 	'cumulativeWords',
 	'cumulativeSentences'
 ] as const;

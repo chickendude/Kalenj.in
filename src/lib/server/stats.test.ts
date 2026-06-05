@@ -152,6 +152,8 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 	it('maps creation metrics to themselves', () => {
 		expect(sourceChangeMetric('wordsCreated')).toBe('wordsCreated');
 		expect(sourceChangeMetric('sentencesCreated')).toBe('sentencesCreated');
+		expect(sourceChangeMetric('wordAudioRecorded')).toBe('wordAudioRecorded');
+		expect(sourceChangeMetric('sentenceAudioRecorded')).toBe('sentenceAudioRecorded');
 	});
 
 	it('deduplicates source metrics across visible metrics', () => {
@@ -159,9 +161,10 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 			'wordsCreated',
 			'cumulativeWords',
 			'sentencesCreated',
-			'cumulativeSentences'
+			'cumulativeSentences',
+			'wordAudioRecorded'
 		]);
-		expect(result.sort()).toEqual(['sentencesCreated', 'wordsCreated']);
+		expect(result.sort()).toEqual(['sentencesCreated', 'wordAudioRecorded', 'wordsCreated']);
 	});
 
 	it('returns an empty list when no metrics are visible', () => {
@@ -175,7 +178,9 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 
 function makeSeries(
 	wordsCreated: number[],
-	sentencesCreated: number[]
+	sentencesCreated: number[],
+	wordAudioRecorded: number[] = wordsCreated.map(() => 0),
+	sentenceAudioRecorded: number[] = wordsCreated.map(() => 0)
 ): Record<MetricId, SeriesPoint[]> {
 	const labels = wordsCreated.map((_, i) => `bucket-${i}`);
 	let wordsRunning = 0;
@@ -193,6 +198,8 @@ function makeSeries(
 	return {
 		wordsCreated: toPoints(wordsCreated),
 		sentencesCreated: toPoints(sentencesCreated),
+		wordAudioRecorded: toPoints(wordAudioRecorded),
+		sentenceAudioRecorded: toPoints(sentenceAudioRecorded),
 		cumulativeWords: toPoints(cumulativeWords),
 		cumulativeSentences: toPoints(cumulativeSentences)
 	};
@@ -210,6 +217,15 @@ describe('filterEmptyBucketIndices', () => {
 		const series = makeSeries([0, 3, 0, 1, 0], [0, 0, 5, 0, 0]);
 		const idx = filterEmptyBucketIndices(5, series, ['wordsCreated']);
 		expect(idx).toEqual([1, 3]);
+	});
+
+	it('includes audio activity metrics', () => {
+		const series = makeSeries([0, 0, 0], [0, 0, 0], [0, 2, 0], [0, 0, 4]);
+		const idx = filterEmptyBucketIndices(3, series, [
+			'wordAudioRecorded',
+			'sentenceAudioRecorded'
+		]);
+		expect(idx).toEqual([1, 2]);
 	});
 
 	it('returns no indices when no effective metrics are provided', () => {

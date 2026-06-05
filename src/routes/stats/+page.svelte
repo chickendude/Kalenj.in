@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { statsUrlHasFilterParams } from '$lib/stats-preferences';
 	import {
 		cumulativeCellValue,
 		filterEmptyBucketIndices,
@@ -13,14 +15,18 @@
 
 	const METRIC_LABELS: Record<MetricId, string> = {
 		wordsCreated: 'New Words',
-		sentencesCreated: 'New Corpus Sentences',
+		sentencesCreated: 'New Sentences',
+		wordAudioRecorded: 'New Word Audio',
+		sentenceAudioRecorded: 'New Sentence Audio',
 		cumulativeWords: 'Total Words',
-		cumulativeSentences: 'Total Corpus Sentences'
+		cumulativeSentences: 'Total Sentences'
 	};
 
 	const METRIC_COLORS: Record<MetricId, string> = {
 		wordsCreated: '#365e4a',
 		sentencesCreated: '#c47a3a',
+		wordAudioRecorded: '#2563eb',
+		sentenceAudioRecorded: '#be185d',
 		cumulativeWords: '#1e3a2c',
 		cumulativeSentences: '#7a4a18'
 	};
@@ -192,7 +198,7 @@
 		hoverIndex = Math.max(0, Math.min(total - 1, idx));
 	}
 
-	function submitForm(form: HTMLFormElement) {
+	async function submitForm(form: HTMLFormElement) {
 		const formData = new FormData(form);
 		const params = new URLSearchParams();
 		for (const [key, value] of formData) {
@@ -201,13 +207,15 @@
 			if (key === 'page') continue;
 			params.append(key, value);
 		}
-		goto(`?${params.toString()}`, { noScroll: true, keepFocus: true });
+		const qs = params.toString();
+		await saveStatsFilters(qs);
+		await refreshStatsFromPreferences();
 	}
 
 	function onChange(event: Event) {
 		const target = event.currentTarget as HTMLInputElement;
 		const form = target.closest('form');
-		if (form) submitForm(form);
+		if (form) void submitForm(form);
 	}
 
 	function gotoPage(p: number) {
@@ -217,6 +225,43 @@
 		const qs = params.toString();
 		goto(qs ? `?${qs}` : '?', { noScroll: true, keepFocus: true });
 	}
+
+	async function saveStatsFilters(qs: string) {
+		const params = new URLSearchParams(qs);
+		const body = new FormData();
+		body.set('range', params.get('range') ?? data.range);
+		for (const id of params.getAll('metrics')) body.append('metrics', id);
+		try {
+			const response = await fetch('/stats/preferences', { method: 'POST', body });
+			if (!response.ok) console.warn('Failed to save stats filters', response.status);
+		} catch (err) {
+			console.warn('Failed to save stats filters', err);
+		}
+	}
+
+	function statsUrlWithoutFilterParams(): string {
+		const params = new URLSearchParams(window.location.search);
+		for (const key of ['f', 'range', 'metrics', 'page']) params.delete(key);
+		const qs = params.toString();
+		return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+	}
+
+	async function refreshStatsFromPreferences() {
+		const nextUrl = statsUrlWithoutFilterParams();
+		const currentUrl = `${window.location.pathname}${window.location.search}`;
+		if (nextUrl !== currentUrl) {
+			await goto(nextUrl, { noScroll: true, keepFocus: true, replaceState: true });
+			return;
+		}
+		await invalidateAll();
+	}
+
+	onMount(() => {
+		const current = new URLSearchParams(window.location.search);
+		if (statsUrlHasFilterParams(current)) {
+			void saveStatsFilters(data.activeFilterPreference).then(refreshStatsFromPreferences);
+		}
+	});
 
 	const audioWordPct = $derived(
 		stats.overview.totalWords === 0

@@ -9,7 +9,8 @@ export const page = {
 			username: 'editor',
 			displayName: null,
 			role: 'ADMIN',
-			themePreference: 'auto'
+			themePreference: 'auto',
+			statsFilterPreference: null
 		}
 	}
 };

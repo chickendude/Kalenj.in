@@ -21,8 +21,20 @@ const { load } = await import('./+page.server');
 
 type LoaderResult = Exclude<Awaited<ReturnType<typeof load>>, void>;
 
-async function call(search: string): Promise<LoaderResult> {
-	const result = await load({ url: new URL(`http://localhost/stats${search}`) } as never);
+const user = {
+	id: 'u1',
+	username: 'editor',
+	displayName: null,
+	role: 'ADMIN',
+	themePreference: 'auto',
+	statsFilterPreference: null
+} as const;
+
+async function call(search: string, statsFilterPreference: string | null = null): Promise<LoaderResult> {
+	const result = await load({
+		locals: { user: { ...user, statsFilterPreference }, sessionToken: 's1' },
+		url: new URL(`http://localhost/stats${search}`)
+	} as never);
 	if (!result) throw new Error('loader returned void');
 	return result as LoaderResult;
 }
@@ -37,7 +49,14 @@ describe('stats page loader — metrics defaulting', () => {
 	it('defaults to all metrics when neither f nor metrics are present', async () => {
 		const result = await call('');
 		expect(result.selectedMetrics.sort()).toEqual(
-			['cumulativeSentences', 'cumulativeWords', 'sentencesCreated', 'wordsCreated'].sort()
+			[
+				'cumulativeSentences',
+				'cumulativeWords',
+				'sentenceAudioRecorded',
+				'sentencesCreated',
+				'wordAudioRecorded',
+				'wordsCreated'
+			].sort()
 		);
 	});
 
@@ -45,7 +64,7 @@ describe('stats page loader — metrics defaulting', () => {
 		// Reproduces the bug: a user navigating directly to ?range=allTime should still
 		// see all metrics, not zero.
 		const result = await call('?range=allTime');
-		expect(result.selectedMetrics).toHaveLength(4);
+		expect(result.selectedMetrics).toHaveLength(6);
 	});
 
 	it('respects the metrics list when f=1 is present (form submission)', async () => {
@@ -61,6 +80,21 @@ describe('stats page loader — metrics defaulting', () => {
 
 	it('drops unknown metric values that arrive in the URL', async () => {
 		const result = await call('?f=1&metrics=wordsCreated&metrics=bogusMetric');
+		expect(result.selectedMetrics).toEqual(['wordsCreated']);
+	});
+
+	it('uses the saved user stats filters when the URL has no filters', async () => {
+		const result = await call('', 'f=1&range=thisYear&metrics=sentencesCreated');
+		expect(result.range).toBe('thisYear');
+		expect(result.selectedMetrics).toEqual(['sentencesCreated']);
+	});
+
+	it('lets explicit URL filters override the saved user stats filters', async () => {
+		const result = await call(
+			'?f=1&range=thisMonth&metrics=wordsCreated',
+			'f=1&range=thisYear&metrics=sentencesCreated'
+		);
+		expect(result.range).toBe('thisMonth');
 		expect(result.selectedMetrics).toEqual(['wordsCreated']);
 	});
 });

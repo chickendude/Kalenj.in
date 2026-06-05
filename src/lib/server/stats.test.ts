@@ -147,6 +147,8 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 	it('maps each cumulative metric back to its source creation metric', () => {
 		expect(sourceChangeMetric('cumulativeWords')).toBe('wordsCreated');
 		expect(sourceChangeMetric('cumulativeSentences')).toBe('sentencesCreated');
+		expect(sourceChangeMetric('cumulativeWordAudio')).toBe('wordAudioRecorded');
+		expect(sourceChangeMetric('cumulativeSentenceAudio')).toBe('sentenceAudioRecorded');
 	});
 
 	it('maps creation metrics to themselves', () => {
@@ -162,7 +164,8 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 			'cumulativeWords',
 			'sentencesCreated',
 			'cumulativeSentences',
-			'wordAudioRecorded'
+			'wordAudioRecorded',
+			'cumulativeWordAudio'
 		]);
 		expect(result.sort()).toEqual(['sentencesCreated', 'wordAudioRecorded', 'wordsCreated']);
 	});
@@ -185,6 +188,8 @@ function makeSeries(
 	const labels = wordsCreated.map((_, i) => `bucket-${i}`);
 	let wordsRunning = 0;
 	let sentencesRunning = 0;
+	let wordAudioRunning = 0;
+	let sentenceAudioRunning = 0;
 	const cumulativeWords = wordsCreated.map((c) => {
 		wordsRunning += c;
 		return wordsRunning;
@@ -192,6 +197,14 @@ function makeSeries(
 	const cumulativeSentences = sentencesCreated.map((c) => {
 		sentencesRunning += c;
 		return sentencesRunning;
+	});
+	const cumulativeWordAudio = wordAudioRecorded.map((c) => {
+		wordAudioRunning += c;
+		return wordAudioRunning;
+	});
+	const cumulativeSentenceAudio = sentenceAudioRecorded.map((c) => {
+		sentenceAudioRunning += c;
+		return sentenceAudioRunning;
 	});
 	const toPoints = (counts: number[]): SeriesPoint[] =>
 		counts.map((count, i) => ({ bucket: labels[i], count }));
@@ -201,7 +214,9 @@ function makeSeries(
 		wordAudioRecorded: toPoints(wordAudioRecorded),
 		sentenceAudioRecorded: toPoints(sentenceAudioRecorded),
 		cumulativeWords: toPoints(cumulativeWords),
-		cumulativeSentences: toPoints(cumulativeSentences)
+		cumulativeSentences: toPoints(cumulativeSentences),
+		cumulativeWordAudio: toPoints(cumulativeWordAudio),
+		cumulativeSentenceAudio: toPoints(cumulativeSentenceAudio)
 	};
 }
 
@@ -238,6 +253,15 @@ describe('filterEmptyBucketIndices', () => {
 		// cumulativeWords → effective is wordsCreated → bucket 1 has activity
 		const effective = getEffectiveChangeMetrics(['cumulativeWords']);
 		expect(filterEmptyBucketIndices(3, series, effective)).toEqual([1]);
+	});
+
+	it('returns indices for cumulative audio selections using their source activity', () => {
+		const series = makeSeries([0, 0, 0], [0, 0, 0], [0, 2, 0], [0, 0, 4]);
+		const effective = getEffectiveChangeMetrics([
+			'cumulativeWordAudio',
+			'cumulativeSentenceAudio'
+		]);
+		expect(filterEmptyBucketIndices(3, series, effective)).toEqual([1, 2]);
 	});
 });
 

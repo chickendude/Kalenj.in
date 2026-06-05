@@ -191,6 +191,8 @@ export async function loadStats(
 		sentenceAudioRecordedRows,
 		baselineWords,
 		baselineSentences,
+		baselineWordAudio,
+		baselineSentenceAudio,
 		totalWords,
 		totalSentences,
 		wordsWithAudio,
@@ -202,6 +204,8 @@ export async function loadStats(
 		bucketCount('ExampleSentence', 'audioRecordedAt', bucket, from, to),
 		prisma.word.count({ where: { createdAt: { lt: from } } }),
 		prisma.exampleSentence.count({ where: { createdAt: { lt: from } } }),
+		prisma.word.count({ where: { audioRecordedAt: { lt: from } } }),
+		prisma.exampleSentence.count({ where: { audioRecordedAt: { lt: from } } }),
 		prisma.word.count(),
 		prisma.exampleSentence.count(),
 		prisma.word.count({ where: { audioUrl: { not: null } } }),
@@ -224,7 +228,9 @@ export async function loadStats(
 			wordAudioRecorded,
 			sentenceAudioRecorded,
 			cumulativeWords: toCumulative(wordsCreated, baselineWords),
-			cumulativeSentences: toCumulative(sentencesCreated, baselineSentences)
+			cumulativeSentences: toCumulative(sentencesCreated, baselineSentences),
+			cumulativeWordAudio: toCumulative(wordAudioRecorded, baselineWordAudio),
+			cumulativeSentenceAudio: toCumulative(sentenceAudioRecorded, baselineSentenceAudio)
 		},
 		overview: {
 			totalWords,

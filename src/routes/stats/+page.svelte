@@ -19,7 +19,9 @@
 		wordAudioRecorded: 'New Word Audio',
 		sentenceAudioRecorded: 'New Sentence Audio',
 		cumulativeWords: 'Total Words',
-		cumulativeSentences: 'Total Sentences'
+		cumulativeSentences: 'Total Sentences',
+		cumulativeWordAudio: 'Total Word Audio',
+		cumulativeSentenceAudio: 'Total Sentence Audio'
 	};
 
 	const METRIC_COLORS: Record<MetricId, string> = {
@@ -28,7 +30,9 @@
 		wordAudioRecorded: '#2563eb',
 		sentenceAudioRecorded: '#be185d',
 		cumulativeWords: '#1e3a2c',
-		cumulativeSentences: '#7a4a18'
+		cumulativeSentences: '#7a4a18',
+		cumulativeWordAudio: '#1d4ed8',
+		cumulativeSentenceAudio: '#9d174d'
 	};
 
 	const RANGE_LABELS: Record<RangeId, string> = {

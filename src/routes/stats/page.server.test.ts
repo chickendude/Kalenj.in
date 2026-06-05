@@ -51,6 +51,8 @@ describe('stats page loader — metrics defaulting', () => {
 		expect(result.selectedMetrics.sort()).toEqual(
 			[
 				'cumulativeSentences',
+				'cumulativeSentenceAudio',
+				'cumulativeWordAudio',
 				'cumulativeWords',
 				'sentenceAudioRecorded',
 				'sentencesCreated',
@@ -64,7 +66,7 @@ describe('stats page loader — metrics defaulting', () => {
 		// Reproduces the bug: a user navigating directly to ?range=allTime should still
 		// see all metrics, not zero.
 		const result = await call('?range=allTime');
-		expect(result.selectedMetrics).toHaveLength(6);
+		expect(result.selectedMetrics).toHaveLength(8);
 	});
 
 	it('respects the metrics list when f=1 is present (form submission)', async () => {

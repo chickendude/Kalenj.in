@@ -60,6 +60,7 @@
 
 	const stats = $derived(data.stats);
 	const selected = $derived(new Set(data.selectedMetrics));
+	const ANON_STATS_FILTER_STORAGE_KEY = 'statsFilters';
 
 	// Buckets are UTC-aligned (Postgres `date_trunc` with UTC inputs) so format in UTC
 	// to avoid off-by-one labels in non-UTC timezones.
@@ -208,8 +209,14 @@
 			params.append(key, value);
 		}
 		const qs = params.toString();
-		await saveStatsFilters(qs);
-		await refreshStatsFromPreferences();
+		if (!data.user) {
+			saveAnonymousStatsFilters(qs);
+			await refreshStatsFromUrl(qs);
+			return;
+		}
+		const saved = await saveStatsFilters(qs);
+		if (saved) await refreshStatsFromPreferences();
+		else await refreshStatsFromUrl(qs);
 	}
 
 	function onChange(event: Event) {
@@ -226,17 +233,45 @@
 		goto(qs ? `?${qs}` : '?', { noScroll: true, keepFocus: true });
 	}
 
-	async function saveStatsFilters(qs: string) {
+	async function saveStatsFilters(qs: string): Promise<boolean> {
 		const params = new URLSearchParams(qs);
 		const body = new FormData();
 		body.set('range', params.get('range') ?? data.range);
 		for (const id of params.getAll('metrics')) body.append('metrics', id);
 		try {
 			const response = await fetch('/stats/preferences', { method: 'POST', body });
-			if (!response.ok) console.warn('Failed to save stats filters', response.status);
+			if (!response.ok) {
+				console.warn('Failed to save stats filters', response.status);
+				return false;
+			}
+			return true;
 		} catch (err) {
 			console.warn('Failed to save stats filters', err);
+			return false;
 		}
+	}
+
+	function saveAnonymousStatsFilters(qs: string) {
+		try {
+			localStorage.setItem(ANON_STATS_FILTER_STORAGE_KEY, qs);
+		} catch {
+			// Ignore storage failures; URL filters still work for this page view.
+		}
+	}
+
+	function readAnonymousStatsFilters(): string | null {
+		try {
+			return localStorage.getItem(ANON_STATS_FILTER_STORAGE_KEY);
+		} catch {
+			return null;
+		}
+	}
+
+	function statsUrlWithFilterParams(qs: string): string {
+		const params = new URLSearchParams(window.location.search);
+		for (const key of ['f', 'range', 'metrics', 'page']) params.delete(key);
+		new URLSearchParams(qs).forEach((value, key) => params.append(key, value));
+		return `${window.location.pathname}?${params.toString()}`;
 	}
 
 	function statsUrlWithoutFilterParams(): string {
@@ -256,10 +291,29 @@
 		await invalidateAll();
 	}
 
+	async function refreshStatsFromUrl(qs: string) {
+		const nextUrl = statsUrlWithFilterParams(qs);
+		const currentUrl = `${window.location.pathname}${window.location.search}`;
+		if (nextUrl !== currentUrl) {
+			await goto(nextUrl, { noScroll: true, keepFocus: true, replaceState: true });
+			return;
+		}
+		await invalidateAll();
+	}
+
 	onMount(() => {
 		const current = new URLSearchParams(window.location.search);
-		if (statsUrlHasFilterParams(current)) {
+		if (data.user && statsUrlHasFilterParams(current)) {
 			void saveStatsFilters(data.activeFilterPreference).then(refreshStatsFromPreferences);
+			return;
+		}
+		if (!data.user && statsUrlHasFilterParams(current)) {
+			saveAnonymousStatsFilters(data.activeFilterPreference);
+			return;
+		}
+		if (!data.user) {
+			const saved = readAnonymousStatsFilters();
+			if (saved) void refreshStatsFromUrl(saved);
 		}
 	});
 

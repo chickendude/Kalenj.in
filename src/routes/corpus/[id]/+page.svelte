@@ -435,7 +435,11 @@
 					preserveHeight
 					onSave={saveSentenceEnglish}
 				>
-					<SentenceTimeText text={sentenceEnglish} />
+					{#if sentenceEnglish}
+						<SentenceTimeText text={sentenceEnglish} />
+					{:else}
+						<span class="sentence-english-placeholder">Add translation...</span>
+					{/if}
 				</ClickToEditText>
 			{:else}
 				<SentenceTimeText text={sentenceEnglish} />
@@ -656,6 +660,10 @@
 
 	.sentence-notes-row {
 		margin-top: 2px;
+	}
+
+	.sentence-english-placeholder {
+		color: var(--ink-faint, var(--ink-mute));
 	}
 
 	.sentence-notes {

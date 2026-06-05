@@ -24,7 +24,7 @@
 			the language data.
 		</p>
 		<p>
-			The site does not use advertising cookies, analytics pixels, or cross-site tracking tools.
+			The site does not use advertising cookies, third-party analytics tools, or cross-site tracking tools.
 		</p>
 	</div>
 

@@ -63,6 +63,20 @@ describe('loadAutoLemmaInContextTranslations', () => {
 
 		expect(result.get('kaa\u0000word-kaa')).toBe('house');
 	});
+
+	it('normalizes punctuation-bearing stored forms when reusing translations', async () => {
+		const db = {
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([
+					{ normalizedForm: 'i?', wordId: 'word-i', inContextTranslation: 'I' }
+				])
+			}
+		};
+
+		const result = await loadAutoLemmaInContextTranslations(db as never, [['i', 'word-i']]);
+
+		expect(result.get('i\u0000word-i')).toBe('I');
+	});
 });
 
 describe('buildAutoLemmaTokenPlans', () => {
@@ -242,6 +256,34 @@ describe('buildAutoLemmaTokenPlans', () => {
 			autoLinked: true
 		});
 	});
+
+	it('normalizes incoming punctuation before replaying a known fused-token segmentation', () => {
+		const result = buildAutoLemmaTokenPlans(
+			[{ tokenOrder: 0, surfaceForm: 'chechuk?', normalizedForm: 'chechuk?' }],
+			[],
+			new Map(),
+			new Map([
+				[
+					'chechuk',
+					[
+						{ normalizedForm: 'che', wordId: 'word-che' },
+						{ normalizedForm: 'chuk', wordId: 'word-chuk' }
+					]
+				]
+			])
+		);
+
+		expect(result.autoLinkedCount).toBe(2);
+		expect(result.tokens[0]).toMatchObject({
+			normalizedForm: 'chechuk',
+			wordId: null,
+			segments: [
+				{ surfaceForm: 'che', normalizedForm: 'che', wordId: 'word-che', autoLinked: true },
+				{ surfaceForm: 'chuk?', normalizedForm: 'chuk', wordId: 'word-chuk', autoLinked: true }
+			],
+			autoLinked: true
+		});
+	});
 });
 
 describe('autoLemmatizeMissingExampleSentenceWords', () => {
@@ -408,6 +450,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi
 					.fn()
 					.mockResolvedValueOnce([])
+					.mockResolvedValueOnce([])
 					.mockResolvedValueOnce([
 						{
 							normalizedForm: 'kaa',
@@ -489,6 +532,187 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
 			where: { id: 'sentence-1' },
 			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
+		});
+	});
+
+	it('links existing tokens whose stored normalized form still has punctuation', async () => {
+		const tx = {
+			exampleSentenceToken: { update: vi.fn() },
+			exampleSentenceTokenSegment: { update: vi.fn(), createMany: vi.fn() },
+			exampleSentence: { update: vi.fn() },
+			wordSentence: { createMany: vi.fn() },
+			observedWordForm: { upsert: vi.fn() }
+		};
+		const db = {
+			exampleSentence: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: 'sentence-1',
+						tokens: [
+							{
+								id: 'token-1',
+								surfaceForm: 'i?',
+								normalizedForm: 'i?',
+								wordId: null,
+								inContextTranslation: null,
+								segments: []
+							}
+						]
+					}
+				])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([{ normalizedForm: 'i', wordId: 'word-i' }])
+			},
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			$transaction: vi.fn((callback) => callback(tx))
+		};
+
+		const result = await autoLemmatizeMissingExampleSentenceWords(db as never);
+
+		expect(result).toMatchObject({
+			updatedSentences: 1,
+			linkedWords: 1
+		});
+		expect(tx.exampleSentenceToken.update).toHaveBeenCalledWith({
+			where: { id: 'token-1' },
+			data: { wordId: 'word-i' }
+		});
+		expect(tx.observedWordForm.upsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { normalizedForm_wordId: { normalizedForm: 'i', wordId: 'word-i' } }
+			})
+		);
+	});
+
+	it('uses exact punctuation surface history when the normalized form is ambiguous', async () => {
+		const tx = {
+			exampleSentenceToken: { update: vi.fn() },
+			exampleSentenceTokenSegment: { update: vi.fn(), createMany: vi.fn() },
+			exampleSentence: { update: vi.fn() },
+			wordSentence: { createMany: vi.fn() },
+			observedWordForm: { upsert: vi.fn() }
+		};
+		const db = {
+			exampleSentence: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: 'sentence-1',
+						tokens: [
+							{
+								id: 'token-1',
+								surfaceForm: 'i?',
+								normalizedForm: 'i',
+								wordId: null,
+								inContextTranslation: null,
+								segments: []
+							}
+						]
+					}
+				])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([
+					{ normalizedForm: 'i', wordId: 'word-question' },
+					{ normalizedForm: 'i', wordId: 'word-you-are' }
+				])
+			},
+			exampleSentenceToken: {
+				findMany: vi
+					.fn()
+					.mockResolvedValueOnce([
+						{ surfaceForm: 'i?', normalizedForm: 'i', wordId: 'word-question' }
+					])
+					.mockResolvedValueOnce([])
+					.mockResolvedValueOnce([])
+			},
+			$transaction: vi.fn((callback) => callback(tx))
+		};
+
+		const result = await autoLemmatizeMissingExampleSentenceWords(db as never);
+
+		expect(result).toMatchObject({
+			updatedSentences: 1,
+			linkedWords: 1
+		});
+		expect(tx.exampleSentenceToken.update).toHaveBeenCalledWith({
+			where: { id: 'token-1' },
+			data: { wordId: 'word-question' }
+		});
+	});
+
+	it('replays known fused-token splits whose stored source form has punctuation', async () => {
+		const tx = {
+			exampleSentenceToken: { update: vi.fn() },
+			exampleSentenceTokenSegment: { update: vi.fn(), createMany: vi.fn() },
+			exampleSentence: { update: vi.fn() },
+			wordSentence: { createMany: vi.fn() },
+			observedWordForm: { upsert: vi.fn() }
+		};
+		const db = {
+			exampleSentence: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: 'sentence-1',
+						tokens: [
+							{
+								id: 'token-1',
+								surfaceForm: 'chechuk?',
+								normalizedForm: 'chechuk?',
+								wordId: null,
+								inContextTranslation: null,
+								segments: []
+							}
+						]
+					}
+				])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						normalizedForm: 'chechuk?',
+						segments: [
+							{ normalizedForm: 'che', wordId: 'word-che' },
+							{ normalizedForm: 'chuk', wordId: 'word-chuk' }
+						]
+					}
+				])
+			},
+			$transaction: vi.fn((callback) => callback(tx))
+		};
+
+		const result = await autoLemmatizeMissingExampleSentenceWords(db as never);
+
+		expect(result).toMatchObject({
+			updatedSentences: 1,
+			linkedWords: 2
+		});
+		expect(tx.exampleSentenceTokenSegment.createMany).toHaveBeenCalledWith({
+			data: [
+				{
+					tokenId: 'token-1',
+					segmentOrder: 0,
+					segmentStart: 0,
+					segmentEnd: 3,
+					surfaceForm: 'che',
+					normalizedForm: 'che',
+					wordId: 'word-che'
+				},
+				{
+					tokenId: 'token-1',
+					segmentOrder: 1,
+					segmentStart: 3,
+					segmentEnd: 8,
+					surfaceForm: 'chuk?',
+					normalizedForm: 'chuk',
+					wordId: 'word-chuk'
+				}
+			]
 		});
 	});
 

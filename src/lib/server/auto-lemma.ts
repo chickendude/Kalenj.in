@@ -42,11 +42,14 @@ export type AutoLemmaPlanResult = {
 
 type AutoLemmaTranslationKey = `${string}\u0000${string}`;
 type AutoLemmaTranslationPair = [normalizedForm: string, wordId: string];
+type AutoLemmaLookupInput = string | { normalizedForm: string; surfaceForm?: string | null };
 
 export type AutoLemmaSegmentPattern = Array<{
 	normalizedForm: string;
 	wordId: string;
 }>;
+
+const COMMON_EDGE_PUNCTUATION = ['.', '?', '!', ',', ';', ':'];
 
 type ExampleSentenceCreateInput = {
 	kalenjin: string;
@@ -57,6 +60,43 @@ type ExampleSentenceCreateInput = {
 
 function distinct(values: string[]): string[] {
 	return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function effectiveNormalizedForm(value: string): string {
+	return normalizeToken(value);
+}
+
+function lookupFormVariants(value: string): string[] {
+	const raw = value.trim().toLowerCase();
+	const normalized = effectiveNormalizedForm(value);
+	if (!normalized) {
+		return distinct([raw]);
+	}
+
+	return distinct([raw, normalized, ...COMMON_EDGE_PUNCTUATION.map((mark) => `${normalized}${mark}`)]);
+}
+
+function lookupInputNormalizedForm(input: AutoLemmaLookupInput): string {
+	return typeof input === 'string'
+		? effectiveNormalizedForm(input)
+		: effectiveNormalizedForm(input.normalizedForm);
+}
+
+function lookupInputForms(inputs: AutoLemmaLookupInput[]): string[] {
+	return inputs.map(lookupInputNormalizedForm);
+}
+
+function lookupInputSurfaceForms(inputs: AutoLemmaLookupInput[]): Array<{
+	normalizedForm: string;
+	surfaceForm: string;
+}> {
+	return inputs.flatMap((input) => {
+		if (typeof input === 'string') return [];
+		const normalizedForm = effectiveNormalizedForm(input.normalizedForm);
+		const surfaceForm = input.surfaceForm?.trim();
+		if (!normalizedForm || !surfaceForm) return [];
+		return [{ normalizedForm, surfaceForm }];
+	});
 }
 
 function translationKey(normalizedForm: string, wordId: string): AutoLemmaTranslationKey {
@@ -72,11 +112,12 @@ function findPreservedAnnotation(
 	existingTokens: ExistingLemmaAnnotation[],
 	usedIndexes: Set<number>
 ): Pick<ExistingLemmaAnnotation, 'wordId' | 'inContextTranslation'> | null {
+	const incomingNormalized = effectiveNormalizedForm(incoming.normalizedForm);
 	const sameOrderIndex = existingTokens.findIndex(
 		(existing, index) =>
 			!usedIndexes.has(index) &&
 			existing.tokenOrder === incoming.tokenOrder &&
-			existing.normalizedForm === incoming.normalizedForm &&
+			effectiveNormalizedForm(existing.normalizedForm) === incomingNormalized &&
 			hasAnnotation(existing)
 	);
 
@@ -88,7 +129,7 @@ function findPreservedAnnotation(
 	const sameNormalizedIndex = existingTokens.findIndex(
 		(existing, index) =>
 			!usedIndexes.has(index) &&
-			existing.normalizedForm === incoming.normalizedForm &&
+			effectiveNormalizedForm(existing.normalizedForm) === incomingNormalized &&
 			hasAnnotation(existing)
 	);
 
@@ -101,7 +142,7 @@ function findPreservedAnnotation(
 		(existing, index) =>
 			!usedIndexes.has(index) &&
 			Boolean(existing.wordId) &&
-			existing.word?.kalenjinNormalized === incoming.normalizedForm
+			effectiveNormalizedForm(existing.word?.kalenjinNormalized ?? '') === incomingNormalized
 	);
 
 	if (sameLemmaIndex >= 0) {
@@ -193,30 +234,73 @@ function inferKnownFusedTokenSegments(
 
 async function loadAutoLemmaMatches(
 	db: AutoLemmaDb,
-	normalizedForms: string[]
+	inputs: AutoLemmaLookupInput[]
 ): Promise<Map<string, string>> {
-	const forms = distinct(normalizedForms);
-	if (forms.length === 0) {
+	const requestedForms = new Set(distinct(lookupInputForms(inputs)));
+	const lookupForms = distinct(lookupInputForms(inputs).flatMap(lookupFormVariants));
+	if (requestedForms.size === 0 || lookupForms.length === 0) {
 		return new Map();
 	}
 
+	const surfaceLookups = lookupInputSurfaceForms(inputs);
+	const surfaceRows = surfaceLookups.length
+		? await db.exampleSentenceToken.findMany({
+				where: {
+					OR: surfaceLookups.map(({ normalizedForm, surfaceForm }) => ({
+						surfaceForm: { equals: surfaceForm, mode: 'insensitive' },
+						normalizedForm: { in: lookupFormVariants(normalizedForm) },
+						wordId: { not: null }
+					}))
+				},
+				select: { surfaceForm: true, normalizedForm: true, wordId: true }
+			})
+		: [];
+
+	const surfaceCandidates = new Map<string, Set<string>>();
+	for (const row of surfaceRows) {
+		if (!row.wordId) continue;
+		const normalizedForm = effectiveNormalizedForm(row.normalizedForm);
+		if (!requestedForms.has(normalizedForm)) continue;
+		const wordIds = surfaceCandidates.get(normalizedForm) ?? new Set<string>();
+		wordIds.add(row.wordId);
+		surfaceCandidates.set(normalizedForm, wordIds);
+	}
+
+	const surfaceMatches = new Map<string, string>();
+	for (const [normalizedForm, wordIds] of surfaceCandidates) {
+		if (wordIds.size === 1) {
+			surfaceMatches.set(normalizedForm, [...wordIds][0]);
+		}
+	}
+
 	const rows = await db.observedWordForm.findMany({
-		where: { normalizedForm: { in: forms } },
+		where: { normalizedForm: { in: lookupForms } },
 		orderBy: [{ normalizedForm: 'asc' }, { usageCount: 'desc' }, { wordId: 'asc' }],
 		select: { normalizedForm: true, wordId: true }
 	});
 
 	const candidates = new Map<string, Set<string>>();
 	for (const row of rows) {
-		const wordIds = candidates.get(row.normalizedForm) ?? new Set<string>();
+		const normalizedForm = effectiveNormalizedForm(row.normalizedForm);
+		if (!requestedForms.has(normalizedForm)) continue;
+		const wordIds = candidates.get(normalizedForm) ?? new Set<string>();
 		wordIds.add(row.wordId);
-		candidates.set(row.normalizedForm, wordIds);
+		candidates.set(normalizedForm, wordIds);
 	}
 
 	const matches = new Map<string, string>();
 	for (const [normalizedForm, wordIds] of candidates) {
-		if (wordIds.size === 1) {
+		const surfaceMatch = surfaceMatches.get(normalizedForm);
+		if (surfaceMatch) {
+			matches.set(normalizedForm, surfaceMatch);
+		} else if (wordIds.size === 1) {
 			matches.set(normalizedForm, [...wordIds][0]);
+		}
+	}
+
+	for (const [normalizedForm, wordId] of surfaceMatches) {
+		if (!matches.has(normalizedForm)) {
+			matches.set(normalizedForm, wordId);
 		}
 	}
 
@@ -229,19 +313,33 @@ export async function loadAutoLemmaInContextTranslations(
 ): Promise<Map<AutoLemmaTranslationKey, string>> {
 	const pairs = [
 		...new Map(
-			[...pairsOrMatches].map(([normalizedForm, wordId]) => [
-				translationKey(normalizedForm, wordId),
-				[normalizedForm, wordId] as AutoLemmaTranslationPair
-			])
+			[...pairsOrMatches]
+				.map(([normalizedForm, wordId]) => [effectiveNormalizedForm(normalizedForm), wordId])
+				.filter(([normalizedForm, wordId]) => normalizedForm && wordId)
+				.map(([normalizedForm, wordId]) => [
+					translationKey(normalizedForm, wordId),
+					[normalizedForm, wordId] as AutoLemmaTranslationPair
+				])
 		).values()
 	];
 	if (pairs.length === 0) {
 		return new Map();
 	}
 
+	const lookupPairs = [
+		...new Map(
+			pairs.flatMap(([normalizedForm, wordId]) =>
+				lookupFormVariants(normalizedForm).map((lookupForm) => [
+					translationKey(lookupForm, wordId),
+					[lookupForm, wordId] as AutoLemmaTranslationPair
+				])
+			)
+		).values()
+	];
+
 	const rows = await db.exampleSentenceToken.findMany({
 		where: {
-			OR: pairs.map(([normalizedForm, wordId]) => ({ normalizedForm, wordId })),
+			OR: lookupPairs.map(([normalizedForm, wordId]) => ({ normalizedForm, wordId })),
 			inContextTranslation: { not: null }
 		},
 		orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
@@ -260,7 +358,9 @@ export async function loadAutoLemmaInContextTranslations(
 		if (!row.wordId) continue;
 		const translation = row.inContextTranslation?.trim();
 		if (!translation) continue;
-		const key = translationKey(row.normalizedForm, row.wordId);
+		const normalizedForm = effectiveNormalizedForm(row.normalizedForm);
+		if (!normalizedForm) continue;
+		const key = translationKey(normalizedForm, row.wordId);
 		const values = candidates.get(key) ?? new Map<string, { count: number; firstIndex: number }>();
 		const current = values.get(translation);
 		values.set(translation, {
@@ -285,14 +385,15 @@ async function loadAutoLemmaSegmentPatterns(
 	db: AutoLemmaDb,
 	normalizedForms: string[]
 ): Promise<Map<string, AutoLemmaSegmentPattern>> {
-	const forms = distinct(normalizedForms);
-	if (forms.length === 0) {
+	const requestedForms = new Set(distinct(normalizedForms.map(effectiveNormalizedForm)));
+	const lookupForms = distinct(normalizedForms.flatMap(lookupFormVariants));
+	if (requestedForms.size === 0 || lookupForms.length === 0) {
 		return new Map();
 	}
 
 	const rows = await db.exampleSentenceToken.findMany({
 		where: {
-			normalizedForm: { in: forms },
+			normalizedForm: { in: lookupForms },
 			segments: { some: {} }
 		},
 		select: {
@@ -309,24 +410,30 @@ async function loadAutoLemmaSegmentPatterns(
 
 	const candidates = new Map<string, Map<string, AutoLemmaSegmentPattern>>();
 	for (const row of rows) {
+		const normalizedForm = effectiveNormalizedForm(row.normalizedForm);
+		const segments = row.segments.map((segment) => ({
+			normalizedForm: effectiveNormalizedForm(segment.normalizedForm),
+			wordId: segment.wordId
+		}));
 		if (
-			row.segments.length < 2 ||
-			row.segments.some((segment) => !segment.wordId) ||
-			row.segments.map((segment) => segment.normalizedForm).join('') !== row.normalizedForm
+			!requestedForms.has(normalizedForm) ||
+			segments.length < 2 ||
+			segments.some((segment) => !segment.normalizedForm || !segment.wordId) ||
+			segments.map((segment) => segment.normalizedForm).join('') !== normalizedForm
 		) {
 			continue;
 		}
 
-		const pattern = row.segments.map((segment) => ({
+		const pattern = segments.map((segment) => ({
 			normalizedForm: segment.normalizedForm,
 			wordId: segment.wordId!
 		}));
 		const signature = pattern
 			.map((segment) => `${segment.normalizedForm}\u0000${segment.wordId}`)
 			.join('\u0001');
-		const formCandidates = candidates.get(row.normalizedForm) ?? new Map();
+		const formCandidates = candidates.get(normalizedForm) ?? new Map();
 		formCandidates.set(signature, pattern);
-		candidates.set(row.normalizedForm, formCandidates);
+		candidates.set(normalizedForm, formCandidates);
 	}
 
 	const patterns = new Map<string, AutoLemmaSegmentPattern>();
@@ -350,6 +457,7 @@ export function buildAutoLemmaTokenPlans(
 	let autoLinkedCount = 0;
 
 	const tokens = tokenData.map((incoming): AutoLemmaTokenPlan => {
+		const incomingNormalized = effectiveNormalizedForm(incoming.normalizedForm);
 		const preserved = findPreservedAnnotation(incoming, existingTokens, usedIndexes);
 		const splitSegments = splitMarkedTokenSegments(incoming.surfaceForm);
 
@@ -367,7 +475,7 @@ export function buildAutoLemmaTokenPlans(
 			return {
 				tokenOrder: incoming.tokenOrder,
 				surfaceForm: incoming.surfaceForm,
-				normalizedForm: incoming.normalizedForm,
+				normalizedForm: incomingNormalized,
 				wordId: null,
 				inContextTranslation: preserved?.inContextTranslation?.trim()
 					? preserved.inContextTranslation
@@ -381,8 +489,8 @@ export function buildAutoLemmaTokenPlans(
 			!preserved?.wordId
 				? inferKnownFusedTokenSegments(
 						incoming.surfaceForm,
-						incoming.normalizedForm,
-						segmentPatterns.get(incoming.normalizedForm)
+						incomingNormalized,
+						segmentPatterns.get(incomingNormalized)
 					)
 				: [];
 		if (knownSegments.length > 0) {
@@ -390,7 +498,7 @@ export function buildAutoLemmaTokenPlans(
 			return {
 				tokenOrder: incoming.tokenOrder,
 				surfaceForm: incoming.surfaceForm,
-				normalizedForm: incoming.normalizedForm,
+				normalizedForm: incomingNormalized,
 				wordId: null,
 				inContextTranslation: preserved?.inContextTranslation?.trim()
 					? preserved.inContextTranslation
@@ -400,17 +508,17 @@ export function buildAutoLemmaTokenPlans(
 			};
 		}
 
-		const autoWordId = preserved?.wordId ? null : matches.get(incoming.normalizedForm) ?? null;
+		const autoWordId = preserved?.wordId ? null : matches.get(incomingNormalized) ?? null;
 		if (autoWordId) autoLinkedCount += 1;
 		const translationWordId = preserved?.wordId ?? autoWordId;
 		const autoInContextTranslation = translationWordId
-			? inContextTranslations.get(translationKey(incoming.normalizedForm, translationWordId)) ?? null
+			? inContextTranslations.get(translationKey(incomingNormalized, translationWordId)) ?? null
 			: null;
 
 		return {
 			tokenOrder: incoming.tokenOrder,
 			surfaceForm: incoming.surfaceForm,
-			normalizedForm: incoming.normalizedForm,
+			normalizedForm: incomingNormalized,
 			wordId: preserved?.wordId ?? autoWordId ?? null,
 			inContextTranslation: preserved?.inContextTranslation?.trim()
 				? preserved.inContextTranslation
@@ -432,8 +540,11 @@ export async function resolveAutoLemmaTokenPlans(
 		.filter((token) => !token.surfaceForm.includes('|'))
 		.map((token) => token.normalizedForm);
 	const normalizedForms = tokenData.flatMap((token) => [
-		token.normalizedForm,
-		...splitMarkedTokenSegments(token.surfaceForm).map((segment) => segment.normalizedForm)
+		{ normalizedForm: token.normalizedForm, surfaceForm: token.surfaceForm },
+		...splitMarkedTokenSegments(token.surfaceForm).map((segment) => ({
+			normalizedForm: segment.normalizedForm,
+			surfaceForm: segment.surfaceForm
+		}))
 	]);
 	const existingTranslationPairs: AutoLemmaTranslationPair[] = existingTokens
 		.filter((token) => token.wordId && !token.inContextTranslation?.trim())
@@ -660,24 +771,29 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 
 	const normalizedForms = sentences.flatMap((sentence) =>
 		sentence.tokens.flatMap((token) => [
-			...(token.wordId ? [] : [token.normalizedForm]),
+			...(token.wordId
+				? []
+				: [{ normalizedForm: effectiveNormalizedForm(token.normalizedForm), surfaceForm: token.surfaceForm }]),
 			...(token.wordId || token.segments.length > 0
 				? []
-				: splitMarkedTokenSegments(token.surfaceForm).map((segment) => segment.normalizedForm)),
+				: splitMarkedTokenSegments(token.surfaceForm).map((segment) => ({
+						normalizedForm: segment.normalizedForm,
+						surfaceForm: segment.surfaceForm
+					}))),
 			...token.segments
 				.filter((segment) => !segment.wordId)
-				.map((segment) => segment.normalizedForm)
+				.map((segment) => ({ normalizedForm: effectiveNormalizedForm(segment.normalizedForm) }))
 		])
 	);
 	const existingTranslationPairs: AutoLemmaTranslationPair[] = sentences.flatMap((sentence) =>
 		sentence.tokens
 			.filter((token) => token.wordId && !token.inContextTranslation?.trim())
-			.map((token) => [token.normalizedForm, token.wordId!] as AutoLemmaTranslationPair)
+			.map((token) => [effectiveNormalizedForm(token.normalizedForm), token.wordId!] as AutoLemmaTranslationPair)
 	);
 	const patternForms = sentences.flatMap((sentence) =>
 		sentence.tokens
 			.filter((token) => !token.wordId && token.segments.length === 0 && !token.surfaceForm.includes('|'))
-			.map((token) => token.normalizedForm)
+			.map((token) => effectiveNormalizedForm(token.normalizedForm))
 	);
 	const [matches, segmentPatterns] = await Promise.all([
 		loadAutoLemmaMatches(db, normalizedForms),
@@ -710,9 +826,10 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 		}> = [];
 
 		for (const token of sentence.tokens) {
+			const tokenNormalizedForm = effectiveNormalizedForm(token.normalizedForm);
 			if (token.wordId && !token.inContextTranslation?.trim()) {
 				const translation = inContextTranslations.get(
-					translationKey(token.normalizedForm, token.wordId)
+					translationKey(tokenNormalizedForm, token.wordId)
 				);
 				if (translation) {
 					tokenTranslationUpdates.push({
@@ -738,22 +855,22 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 			if (!token.wordId && token.segments.length === 0) {
 				const knownSegments = inferKnownFusedTokenSegments(
 					token.surfaceForm,
-					token.normalizedForm,
-					segmentPatterns.get(token.normalizedForm)
+					tokenNormalizedForm,
+					segmentPatterns.get(tokenNormalizedForm)
 				);
 				if (knownSegments.length > 0) {
 					segmentCreates.push({ tokenId: token.id, segments: knownSegments });
 					continue;
 				}
 
-				const directWordId = matches.get(token.normalizedForm);
+				const directWordId = matches.get(tokenNormalizedForm);
 				if (directWordId) {
 					tokenUpdates.push({
 						tokenId: token.id,
-						normalizedForm: token.normalizedForm,
+						normalizedForm: tokenNormalizedForm,
 						wordId: directWordId,
 						inContextTranslation:
-							inContextTranslations.get(translationKey(token.normalizedForm, directWordId)) ?? null
+							inContextTranslations.get(translationKey(tokenNormalizedForm, directWordId)) ?? null
 					});
 					continue;
 				}
@@ -761,11 +878,12 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 
 			for (const segment of token.segments) {
 				if (segment.wordId) continue;
-				const wordId = matches.get(segment.normalizedForm);
+				const segmentNormalizedForm = effectiveNormalizedForm(segment.normalizedForm);
+				const wordId = matches.get(segmentNormalizedForm);
 				if (!wordId) continue;
 				segmentUpdates.push({
 					segmentId: segment.id,
-					normalizedForm: segment.normalizedForm,
+					normalizedForm: segmentNormalizedForm,
 					wordId
 				});
 			}

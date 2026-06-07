@@ -14,14 +14,14 @@
 	let { data }: { data: PageData } = $props();
 
 	const METRIC_LABELS: Record<MetricId, string> = {
-		wordsCreated: 'New Words',
-		sentencesCreated: 'New Sentences',
-		wordAudioRecorded: 'New Word Audio',
-		sentenceAudioRecorded: 'New Sentence Audio',
-		cumulativeWords: 'Total Words',
-		cumulativeSentences: 'Total Sentences',
-		cumulativeWordAudio: 'Total Word Audio',
-		cumulativeSentenceAudio: 'Total Sentence Audio'
+		wordsCreated: 'Words',
+		sentencesCreated: 'Sentences',
+		wordAudioRecorded: 'Word Audio',
+		sentenceAudioRecorded: 'Sentence Audio',
+		cumulativeWords: 'Words',
+		cumulativeSentences: 'Sentences',
+		cumulativeWordAudio: 'Word Audio',
+		cumulativeSentenceAudio: 'Sentence Audio'
 	};
 
 	const METRIC_COLORS: Record<MetricId, string> = {
@@ -34,6 +34,22 @@
 		cumulativeWordAudio: '#1d4ed8',
 		cumulativeSentenceAudio: '#9d174d'
 	};
+
+	const METRIC_GROUPS: { label: string; ids: MetricId[] }[] = [
+		{
+			label: 'New',
+			ids: ['wordsCreated', 'sentencesCreated', 'wordAudioRecorded', 'sentenceAudioRecorded']
+		},
+		{
+			label: 'Total',
+			ids: [
+				'cumulativeWords',
+				'cumulativeSentences',
+				'cumulativeWordAudio',
+				'cumulativeSentenceAudio'
+			]
+		}
+	];
 
 	const RANGE_LABELS: Record<RangeId, string> = {
 		past7Days: 'Past 7 Days',
@@ -369,13 +385,10 @@
 	<title>Stats · Admin</title>
 </svelte:head>
 
-<div class="page-head">
+<div class="page-head stats-page-head">
 	<div>
 		<h1>Stats</h1>
-		<p>
-			Activity over time across the dictionary and corpus. Counts use UTC bucket boundaries; very
-			recent buckets may still be filling.
-		</p>
+		<p>Activity over time across the dictionary and corpus.</p>
 	</div>
 </div>
 
@@ -428,18 +441,25 @@
 
 	<fieldset class="metric-toggles">
 		<legend>Filters</legend>
-		{#each data.availableMetrics as id}
-			<label class="metric-toggle">
-				<input
-					type="checkbox"
-					name="metrics"
-					value={id}
-					checked={selected.has(id)}
-					onchange={onChange}
-				/>
-				<span class="metric-swatch" style="background: {METRIC_COLORS[id]}"></span>
-				<span>{METRIC_LABELS[id]}</span>
-			</label>
+		{#each METRIC_GROUPS as group}
+			<div class="metric-row">
+				<span class="metric-row-label">{group.label}</span>
+				<div class="metric-row-options">
+					{#each group.ids.filter((id) => data.availableMetrics.includes(id)) as id}
+						<label class="metric-toggle">
+							<input
+								type="checkbox"
+								name="metrics"
+								value={id}
+								checked={selected.has(id)}
+								onchange={onChange}
+							/>
+							<span class="metric-swatch" style="background: {METRIC_COLORS[id]}"></span>
+							<span>{METRIC_LABELS[id]}</span>
+						</label>
+					{/each}
+				</div>
+			</div>
 		{/each}
 	</fieldset>
 </form>
@@ -610,6 +630,9 @@
 		gap: 12px;
 		margin-bottom: 24px;
 	}
+	.stats-page-head p {
+		max-width: none;
+	}
 	.stat-card {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
@@ -709,9 +732,8 @@
 		border: none;
 		padding: 0;
 		margin: 0;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 14px 18px;
+		display: grid;
+		gap: 10px;
 	}
 	.metric-toggles legend {
 		font-size: 11px;
@@ -721,6 +743,22 @@
 		font-weight: 600;
 		margin-bottom: 8px;
 		width: 100%;
+	}
+	.metric-row {
+		display: grid;
+		grid-template-columns: 72px minmax(0, 1fr);
+		align-items: center;
+		gap: 12px;
+	}
+	.metric-row-label {
+		font-size: 12px;
+		color: var(--ink-mute);
+		font-weight: 600;
+	}
+	.metric-row-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 18px;
 	}
 	.metric-toggle {
 		display: inline-flex;
@@ -739,6 +777,13 @@
 		width: 12px;
 		height: 12px;
 		border-radius: 3px;
+	}
+
+	@media (max-width: 640px) {
+		.metric-row {
+			grid-template-columns: 1fr;
+			gap: 6px;
+		}
 	}
 
 	.chart-card {

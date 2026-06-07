@@ -96,6 +96,7 @@ model User {
   passwordHash                 String
   role                         UserRole
   themePreference              String                   @default("auto")
+  statsFilterPreference        String?
   createdAt                    DateTime                 @default(now())
   updatedAt                    DateTime                 @updatedAt
   sessions                     Session[]

@@ -7,7 +7,8 @@ const editorUser = {
 	username: 'editor',
 	displayName: null,
 	role: 'ADMIN',
-	themePreference: 'auto'
+	themePreference: 'auto',
+	statsFilterPreference: null
 } as const;
 
 const data = {

@@ -73,11 +73,26 @@ export function pickBucketForRange(from: Date, to: Date): Bucket {
 }
 
 async function getEarliestActivityDate(): Promise<Date | null> {
-	const [word, sentence] = await Promise.all([
+	const [word, sentence, wordAudio, sentenceAudio] = await Promise.all([
 		prisma.word.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
-		prisma.exampleSentence.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } })
+		prisma.exampleSentence.findFirst({ orderBy: { createdAt: 'asc' }, select: { createdAt: true } }),
+		prisma.word.findFirst({
+			where: { audioRecordedAt: { not: null } },
+			orderBy: { audioRecordedAt: 'asc' },
+			select: { audioRecordedAt: true }
+		}),
+		prisma.exampleSentence.findFirst({
+			where: { audioRecordedAt: { not: null } },
+			orderBy: { audioRecordedAt: 'asc' },
+			select: { audioRecordedAt: true }
+		})
 	]);
-	const candidates = [word?.createdAt, sentence?.createdAt].filter(
+	const candidates = [
+		word?.createdAt,
+		sentence?.createdAt,
+		wordAudio?.audioRecordedAt,
+		sentenceAudio?.audioRecordedAt
+	].filter(
 		(d): d is Date => d instanceof Date
 	);
 	if (candidates.length === 0) return null;
@@ -142,7 +157,7 @@ function toCumulative(per: SeriesPoint[], baseline: number): SeriesPoint[] {
 
 async function bucketCount(
 	table: 'Word' | 'ExampleSentence',
-	column: 'createdAt',
+	column: 'createdAt' | 'audioRecordedAt',
 	bucket: Bucket,
 	from: Date,
 	to: Date
@@ -172,8 +187,12 @@ export async function loadStats(
 	const [
 		wordsCreatedRows,
 		sentencesCreatedRows,
+		wordAudioRecordedRows,
+		sentenceAudioRecordedRows,
 		baselineWords,
 		baselineSentences,
+		baselineWordAudio,
+		baselineSentenceAudio,
 		totalWords,
 		totalSentences,
 		wordsWithAudio,
@@ -181,8 +200,12 @@ export async function loadStats(
 	] = await Promise.all([
 		bucketCount('Word', 'createdAt', bucket, from, to),
 		bucketCount('ExampleSentence', 'createdAt', bucket, from, to),
+		bucketCount('Word', 'audioRecordedAt', bucket, from, to),
+		bucketCount('ExampleSentence', 'audioRecordedAt', bucket, from, to),
 		prisma.word.count({ where: { createdAt: { lt: from } } }),
 		prisma.exampleSentence.count({ where: { createdAt: { lt: from } } }),
+		prisma.word.count({ where: { audioRecordedAt: { lt: from } } }),
+		prisma.exampleSentence.count({ where: { audioRecordedAt: { lt: from } } }),
 		prisma.word.count(),
 		prisma.exampleSentence.count(),
 		prisma.word.count({ where: { audioUrl: { not: null } } }),
@@ -191,6 +214,8 @@ export async function loadStats(
 
 	const wordsCreated = fillSeries(wordsCreatedRows, labels);
 	const sentencesCreated = fillSeries(sentencesCreatedRows, labels);
+	const wordAudioRecorded = fillSeries(wordAudioRecordedRows, labels);
+	const sentenceAudioRecorded = fillSeries(sentenceAudioRecordedRows, labels);
 
 	return {
 		bucket,
@@ -200,8 +225,12 @@ export async function loadStats(
 		series: {
 			wordsCreated,
 			sentencesCreated,
+			wordAudioRecorded,
+			sentenceAudioRecorded,
 			cumulativeWords: toCumulative(wordsCreated, baselineWords),
-			cumulativeSentences: toCumulative(sentencesCreated, baselineSentences)
+			cumulativeSentences: toCumulative(sentencesCreated, baselineSentences),
+			cumulativeWordAudio: toCumulative(wordAudioRecorded, baselineWordAudio),
+			cumulativeSentenceAudio: toCumulative(sentenceAudioRecorded, baselineSentenceAudio)
 		},
 		overview: {
 			totalWords,

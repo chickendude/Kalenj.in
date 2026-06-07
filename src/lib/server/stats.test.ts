@@ -147,11 +147,15 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 	it('maps each cumulative metric back to its source creation metric', () => {
 		expect(sourceChangeMetric('cumulativeWords')).toBe('wordsCreated');
 		expect(sourceChangeMetric('cumulativeSentences')).toBe('sentencesCreated');
+		expect(sourceChangeMetric('cumulativeWordAudio')).toBe('wordAudioRecorded');
+		expect(sourceChangeMetric('cumulativeSentenceAudio')).toBe('sentenceAudioRecorded');
 	});
 
 	it('maps creation metrics to themselves', () => {
 		expect(sourceChangeMetric('wordsCreated')).toBe('wordsCreated');
 		expect(sourceChangeMetric('sentencesCreated')).toBe('sentencesCreated');
+		expect(sourceChangeMetric('wordAudioRecorded')).toBe('wordAudioRecorded');
+		expect(sourceChangeMetric('sentenceAudioRecorded')).toBe('sentenceAudioRecorded');
 	});
 
 	it('deduplicates source metrics across visible metrics', () => {
@@ -159,9 +163,11 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 			'wordsCreated',
 			'cumulativeWords',
 			'sentencesCreated',
-			'cumulativeSentences'
+			'cumulativeSentences',
+			'wordAudioRecorded',
+			'cumulativeWordAudio'
 		]);
-		expect(result.sort()).toEqual(['sentencesCreated', 'wordsCreated']);
+		expect(result.sort()).toEqual(['sentencesCreated', 'wordAudioRecorded', 'wordsCreated']);
 	});
 
 	it('returns an empty list when no metrics are visible', () => {
@@ -175,11 +181,15 @@ describe('sourceChangeMetric / getEffectiveChangeMetrics', () => {
 
 function makeSeries(
 	wordsCreated: number[],
-	sentencesCreated: number[]
+	sentencesCreated: number[],
+	wordAudioRecorded: number[] = wordsCreated.map(() => 0),
+	sentenceAudioRecorded: number[] = wordsCreated.map(() => 0)
 ): Record<MetricId, SeriesPoint[]> {
 	const labels = wordsCreated.map((_, i) => `bucket-${i}`);
 	let wordsRunning = 0;
 	let sentencesRunning = 0;
+	let wordAudioRunning = 0;
+	let sentenceAudioRunning = 0;
 	const cumulativeWords = wordsCreated.map((c) => {
 		wordsRunning += c;
 		return wordsRunning;
@@ -188,13 +198,25 @@ function makeSeries(
 		sentencesRunning += c;
 		return sentencesRunning;
 	});
+	const cumulativeWordAudio = wordAudioRecorded.map((c) => {
+		wordAudioRunning += c;
+		return wordAudioRunning;
+	});
+	const cumulativeSentenceAudio = sentenceAudioRecorded.map((c) => {
+		sentenceAudioRunning += c;
+		return sentenceAudioRunning;
+	});
 	const toPoints = (counts: number[]): SeriesPoint[] =>
 		counts.map((count, i) => ({ bucket: labels[i], count }));
 	return {
 		wordsCreated: toPoints(wordsCreated),
 		sentencesCreated: toPoints(sentencesCreated),
+		wordAudioRecorded: toPoints(wordAudioRecorded),
+		sentenceAudioRecorded: toPoints(sentenceAudioRecorded),
 		cumulativeWords: toPoints(cumulativeWords),
-		cumulativeSentences: toPoints(cumulativeSentences)
+		cumulativeSentences: toPoints(cumulativeSentences),
+		cumulativeWordAudio: toPoints(cumulativeWordAudio),
+		cumulativeSentenceAudio: toPoints(cumulativeSentenceAudio)
 	};
 }
 
@@ -212,6 +234,15 @@ describe('filterEmptyBucketIndices', () => {
 		expect(idx).toEqual([1, 3]);
 	});
 
+	it('includes audio activity metrics', () => {
+		const series = makeSeries([0, 0, 0], [0, 0, 0], [0, 2, 0], [0, 0, 4]);
+		const idx = filterEmptyBucketIndices(3, series, [
+			'wordAudioRecorded',
+			'sentenceAudioRecorded'
+		]);
+		expect(idx).toEqual([1, 2]);
+	});
+
 	it('returns no indices when no effective metrics are provided', () => {
 		const series = makeSeries([1, 2, 3], [4, 5, 6]);
 		expect(filterEmptyBucketIndices(3, series, [])).toEqual([]);
@@ -222,6 +253,15 @@ describe('filterEmptyBucketIndices', () => {
 		// cumulativeWords → effective is wordsCreated → bucket 1 has activity
 		const effective = getEffectiveChangeMetrics(['cumulativeWords']);
 		expect(filterEmptyBucketIndices(3, series, effective)).toEqual([1]);
+	});
+
+	it('returns indices for cumulative audio selections using their source activity', () => {
+		const series = makeSeries([0, 0, 0], [0, 0, 0], [0, 2, 0], [0, 0, 4]);
+		const effective = getEffectiveChangeMetrics([
+			'cumulativeWordAudio',
+			'cumulativeSentenceAudio'
+		]);
+		expect(filterEmptyBucketIndices(3, series, effective)).toEqual([1, 2]);
 	});
 });
 

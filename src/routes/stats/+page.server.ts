@@ -1,19 +1,20 @@
 import {
-	loadStats,
 	METRIC_IDS,
+	loadStats,
 	pickBucketForRange,
 	rangeBounds,
-	RANGE_IDS,
-	type MetricId,
-	type RangeId
+	type MetricId
 } from '$lib/server/stats';
+import {
+	buildStatsFilterParams,
+	parseStatsFilterPreference,
+	parseStatsMetrics,
+	parseStatsRange,
+	statsUrlHasFilterParams
+} from '$lib/stats-preferences';
 import type { PageServerLoad } from './$types';
 
 const PAGE_SIZE = 30;
-
-function parseRange(raw: string | null): RangeId {
-	return RANGE_IDS.find((r) => r === raw) ?? 'past30Days';
-}
 
 function parsePage(raw: string | null): number {
 	const n = Number(raw);
@@ -21,8 +22,11 @@ function parsePage(raw: string | null): number {
 	return Math.floor(n);
 }
 
-export const load: PageServerLoad = async ({ url }) => {
-	const range = parseRange(url.searchParams.get('range'));
+export const load: PageServerLoad = async ({ locals, url }) => {
+	const savedParams = parseStatsFilterPreference(locals?.user?.statsFilterPreference);
+	const sourceParams =
+		statsUrlHasFilterParams(url.searchParams) || !savedParams ? url.searchParams : savedParams;
+	const range = parseStatsRange(sourceParams.get('range'));
 	const page = parsePage(url.searchParams.get('page'));
 
 	const { from, to } = await rangeBounds(range);
@@ -30,13 +34,13 @@ export const load: PageServerLoad = async ({ url }) => {
 
 	// `f=1` is a hidden marker the form always submits — distinguishes "user actively
 	// chose this metric subset (possibly empty)" from "URL didn't mention metrics, default to all".
-	const filtersTouched = url.searchParams.has('f');
-	const requestedMetrics = url.searchParams.getAll('metrics');
+	const filtersTouched = sourceParams.has('f');
 	const selectedMetrics: MetricId[] = filtersTouched
-		? METRIC_IDS.filter((id) => requestedMetrics.includes(id))
+		? parseStatsMetrics(sourceParams.getAll('metrics'))
 		: [...METRIC_IDS];
 
 	const stats = await loadStats(bucket, from, to);
+	const activeFilterPreference = buildStatsFilterParams(range, selectedMetrics).toString();
 
 	return {
 		stats,
@@ -44,6 +48,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		page,
 		pageSize: PAGE_SIZE,
 		selectedMetrics,
+		activeFilterPreference,
 		availableMetrics: [...METRIC_IDS]
 	};
 };

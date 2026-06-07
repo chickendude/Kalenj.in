@@ -1,5 +1,7 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { statsUrlHasFilterParams } from '$lib/stats-preferences';
 	import {
 		cumulativeCellValue,
 		filterEmptyBucketIndices,
@@ -12,18 +14,42 @@
 	let { data }: { data: PageData } = $props();
 
 	const METRIC_LABELS: Record<MetricId, string> = {
-		wordsCreated: 'New Words',
-		sentencesCreated: 'New Corpus Sentences',
-		cumulativeWords: 'Total Words',
-		cumulativeSentences: 'Total Corpus Sentences'
+		wordsCreated: 'Words',
+		sentencesCreated: 'Sentences',
+		wordAudioRecorded: 'Word Audio',
+		sentenceAudioRecorded: 'Sentence Audio',
+		cumulativeWords: 'Words',
+		cumulativeSentences: 'Sentences',
+		cumulativeWordAudio: 'Word Audio',
+		cumulativeSentenceAudio: 'Sentence Audio'
 	};
 
 	const METRIC_COLORS: Record<MetricId, string> = {
 		wordsCreated: '#365e4a',
 		sentencesCreated: '#c47a3a',
+		wordAudioRecorded: '#2563eb',
+		sentenceAudioRecorded: '#be185d',
 		cumulativeWords: '#1e3a2c',
-		cumulativeSentences: '#7a4a18'
+		cumulativeSentences: '#7a4a18',
+		cumulativeWordAudio: '#1d4ed8',
+		cumulativeSentenceAudio: '#9d174d'
 	};
+
+	const METRIC_GROUPS: { label: string; ids: MetricId[] }[] = [
+		{
+			label: 'New',
+			ids: ['wordsCreated', 'sentencesCreated', 'wordAudioRecorded', 'sentenceAudioRecorded']
+		},
+		{
+			label: 'Total',
+			ids: [
+				'cumulativeWords',
+				'cumulativeSentences',
+				'cumulativeWordAudio',
+				'cumulativeSentenceAudio'
+			]
+		}
+	];
 
 	const RANGE_LABELS: Record<RangeId, string> = {
 		past7Days: 'Past 7 Days',
@@ -54,6 +80,7 @@
 
 	const stats = $derived(data.stats);
 	const selected = $derived(new Set(data.selectedMetrics));
+	const ANON_STATS_FILTER_STORAGE_KEY = 'statsFilters';
 
 	// Buckets are UTC-aligned (Postgres `date_trunc` with UTC inputs) so format in UTC
 	// to avoid off-by-one labels in non-UTC timezones.
@@ -192,7 +219,7 @@
 		hoverIndex = Math.max(0, Math.min(total - 1, idx));
 	}
 
-	function submitForm(form: HTMLFormElement) {
+	async function submitForm(form: HTMLFormElement) {
 		const formData = new FormData(form);
 		const params = new URLSearchParams();
 		for (const [key, value] of formData) {
@@ -201,13 +228,21 @@
 			if (key === 'page') continue;
 			params.append(key, value);
 		}
-		goto(`?${params.toString()}`, { noScroll: true, keepFocus: true });
+		const qs = params.toString();
+		if (!data.user) {
+			saveAnonymousStatsFilters(qs);
+			await refreshStatsFromUrl(qs);
+			return;
+		}
+		const saved = await saveStatsFilters(qs);
+		if (saved) await refreshStatsFromPreferences();
+		else await refreshStatsFromUrl(qs);
 	}
 
 	function onChange(event: Event) {
 		const target = event.currentTarget as HTMLInputElement;
 		const form = target.closest('form');
-		if (form) submitForm(form);
+		if (form) void submitForm(form);
 	}
 
 	function gotoPage(p: number) {
@@ -217,6 +252,90 @@
 		const qs = params.toString();
 		goto(qs ? `?${qs}` : '?', { noScroll: true, keepFocus: true });
 	}
+
+	async function saveStatsFilters(qs: string): Promise<boolean> {
+		const params = new URLSearchParams(qs);
+		const body = new FormData();
+		body.set('range', params.get('range') ?? data.range);
+		for (const id of params.getAll('metrics')) body.append('metrics', id);
+		try {
+			const response = await fetch('/stats/preferences', { method: 'POST', body });
+			if (!response.ok) {
+				console.warn('Failed to save stats filters', response.status);
+				return false;
+			}
+			return true;
+		} catch (err) {
+			console.warn('Failed to save stats filters', err);
+			return false;
+		}
+	}
+
+	function saveAnonymousStatsFilters(qs: string) {
+		try {
+			localStorage.setItem(ANON_STATS_FILTER_STORAGE_KEY, qs);
+		} catch {
+			// Ignore storage failures; URL filters still work for this page view.
+		}
+	}
+
+	function readAnonymousStatsFilters(): string | null {
+		try {
+			return localStorage.getItem(ANON_STATS_FILTER_STORAGE_KEY);
+		} catch {
+			return null;
+		}
+	}
+
+	function statsUrlWithFilterParams(qs: string): string {
+		const params = new URLSearchParams(window.location.search);
+		for (const key of ['f', 'range', 'metrics', 'page']) params.delete(key);
+		new URLSearchParams(qs).forEach((value, key) => params.append(key, value));
+		return `${window.location.pathname}?${params.toString()}`;
+	}
+
+	function statsUrlWithoutFilterParams(): string {
+		const params = new URLSearchParams(window.location.search);
+		for (const key of ['f', 'range', 'metrics', 'page']) params.delete(key);
+		const qs = params.toString();
+		return qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+	}
+
+	async function refreshStatsFromPreferences() {
+		const nextUrl = statsUrlWithoutFilterParams();
+		const currentUrl = `${window.location.pathname}${window.location.search}`;
+		if (nextUrl !== currentUrl) {
+			await goto(nextUrl, { noScroll: true, keepFocus: true, replaceState: true });
+			return;
+		}
+		await invalidateAll();
+	}
+
+	async function refreshStatsFromUrl(qs: string) {
+		const nextUrl = statsUrlWithFilterParams(qs);
+		const currentUrl = `${window.location.pathname}${window.location.search}`;
+		if (nextUrl !== currentUrl) {
+			await goto(nextUrl, { noScroll: true, keepFocus: true, replaceState: true });
+			return;
+		}
+		await invalidateAll();
+	}
+
+	onMount(() => {
+		const current = new URLSearchParams(window.location.search);
+		if (data.user && statsUrlHasFilterParams(current)) {
+			void saveStatsFilters(data.activeFilterPreference).then(refreshStatsFromPreferences);
+			return;
+		}
+		if (!data.user && statsUrlHasFilterParams(current)) {
+			saveAnonymousStatsFilters(data.activeFilterPreference);
+			return;
+		}
+		if (!data.user) {
+			const saved = readAnonymousStatsFilters();
+			if (saved) void refreshStatsFromUrl(saved);
+		}
+	});
 
 	const audioWordPct = $derived(
 		stats.overview.totalWords === 0
@@ -266,13 +385,10 @@
 	<title>Stats · Admin</title>
 </svelte:head>
 
-<div class="page-head">
+<div class="page-head stats-page-head">
 	<div>
 		<h1>Stats</h1>
-		<p>
-			Activity over time across the dictionary and corpus. Counts use UTC bucket boundaries; very
-			recent buckets may still be filling.
-		</p>
+		<p>Activity over time across the dictionary and corpus.</p>
 	</div>
 </div>
 
@@ -325,18 +441,25 @@
 
 	<fieldset class="metric-toggles">
 		<legend>Filters</legend>
-		{#each data.availableMetrics as id}
-			<label class="metric-toggle">
-				<input
-					type="checkbox"
-					name="metrics"
-					value={id}
-					checked={selected.has(id)}
-					onchange={onChange}
-				/>
-				<span class="metric-swatch" style="background: {METRIC_COLORS[id]}"></span>
-				<span>{METRIC_LABELS[id]}</span>
-			</label>
+		{#each METRIC_GROUPS as group}
+			<div class="metric-row">
+				<span class="metric-row-label">{group.label}</span>
+				<div class="metric-row-options">
+					{#each group.ids.filter((id) => data.availableMetrics.includes(id)) as id}
+						<label class="metric-toggle">
+							<input
+								type="checkbox"
+								name="metrics"
+								value={id}
+								checked={selected.has(id)}
+								onchange={onChange}
+							/>
+							<span class="metric-swatch" style="background: {METRIC_COLORS[id]}"></span>
+							<span>{METRIC_LABELS[id]}</span>
+						</label>
+					{/each}
+				</div>
+			</div>
 		{/each}
 	</fieldset>
 </form>
@@ -507,6 +630,9 @@
 		gap: 12px;
 		margin-bottom: 24px;
 	}
+	.stats-page-head p {
+		max-width: none;
+	}
 	.stat-card {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
@@ -606,9 +732,8 @@
 		border: none;
 		padding: 0;
 		margin: 0;
-		display: flex;
-		flex-wrap: wrap;
-		gap: 14px 18px;
+		display: grid;
+		gap: 10px;
 	}
 	.metric-toggles legend {
 		font-size: 11px;
@@ -618,6 +743,22 @@
 		font-weight: 600;
 		margin-bottom: 8px;
 		width: 100%;
+	}
+	.metric-row {
+		display: grid;
+		grid-template-columns: 72px minmax(0, 1fr);
+		align-items: center;
+		gap: 12px;
+	}
+	.metric-row-label {
+		font-size: 12px;
+		color: var(--ink-mute);
+		font-weight: 600;
+	}
+	.metric-row-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 10px 18px;
 	}
 	.metric-toggle {
 		display: inline-flex;
@@ -636,6 +777,13 @@
 		width: 12px;
 		height: 12px;
 		border-radius: 3px;
+	}
+
+	@media (max-width: 640px) {
+		.metric-row {
+			grid-template-columns: 1fr;
+			gap: 6px;
+		}
 	}
 
 	.chart-card {

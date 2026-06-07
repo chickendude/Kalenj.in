@@ -26,6 +26,7 @@ export type ValidatedSession = {
 		displayName: string | null;
 		role: 'ADMIN' | 'MANAGER' | 'USER';
 		themePreference: 'light' | 'dark' | 'auto';
+		statsFilterPreference: string | null;
 	};
 	renewed: boolean;
 };
@@ -55,7 +56,8 @@ export async function validateSession(token: string): Promise<ValidatedSession |
 			username: session.user.username,
 			displayName: session.user.displayName,
 			role: session.user.role as 'ADMIN' | 'MANAGER' | 'USER',
-			themePreference: normalizeThemePreference(session.user.themePreference)
+			themePreference: normalizeThemePreference(session.user.themePreference),
+			statsFilterPreference: session.user.statsFilterPreference
 		},
 		renewed
 	};

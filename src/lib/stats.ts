@@ -25,8 +25,12 @@ export const RANGE_IDS: RangeId[] = [
 export const METRIC_IDS = [
 	'wordsCreated',
 	'sentencesCreated',
+	'wordAudioRecorded',
+	'sentenceAudioRecorded',
 	'cumulativeWords',
-	'cumulativeSentences'
+	'cumulativeSentences',
+	'cumulativeWordAudio',
+	'cumulativeSentenceAudio'
 ] as const;
 
 export type MetricId = (typeof METRIC_IDS)[number];
@@ -37,7 +41,9 @@ export type SeriesPoint = { bucket: string; count: number };
 // "source of change" used to detect whether a bucket had real activity.
 const CUMULATIVE_SOURCE: Partial<Record<MetricId, MetricId>> = {
 	cumulativeWords: 'wordsCreated',
-	cumulativeSentences: 'sentencesCreated'
+	cumulativeSentences: 'sentencesCreated',
+	cumulativeWordAudio: 'wordAudioRecorded',
+	cumulativeSentenceAudio: 'sentenceAudioRecorded'
 };
 
 export function sourceChangeMetric(id: MetricId): MetricId {

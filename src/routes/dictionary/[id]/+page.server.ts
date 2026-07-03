@@ -201,6 +201,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSingularOnlyRaw = readText(formData, 'isSingularOnly');
 		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 
@@ -212,6 +213,7 @@ export const actions: Actions = {
 			partOfSpeech: partOfSpeechRaw,
 			pluralForm: pluralFormRaw,
 			isPluralOnly: isPluralOnlyRaw === 'on',
+			isSingularOnly: isSingularOnlyRaw === 'on',
 			isSwahiliLoan: isSwahiliLoanRaw === 'on',
 			alternativePluralForms
 		};
@@ -236,9 +238,10 @@ export const actions: Actions = {
 
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
 		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
 		const pluralForm =
-			canHavePlural && !isPluralOnly && combinedPluralForms
+			canHavePlural && !isPluralOnly && !isSingularOnly && combinedPluralForms
 				? combinedPluralForms
 				: null;
 
@@ -274,6 +277,7 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm,
 					isPluralOnly,
+					isSingularOnly,
 					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
 					imageUrl: newImageUrl

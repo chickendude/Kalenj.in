@@ -35,6 +35,7 @@ export function buildWordSelect() {
 		partOfSpeech: true,
 		pluralForm: true,
 		isPluralOnly: true,
+		isSingularOnly: true,
 		isSwahiliLoan: true,
 		presentAnee: true,
 		presentInyee: true,
@@ -63,6 +64,7 @@ export type LemmaWordInput = {
 	partOfSpeech?: PartOfSpeech | null;
 	pluralForm?: string | null;
 	isPluralOnly?: boolean;
+	isSingularOnly?: boolean;
 	isSwahiliLoan?: boolean;
 	presentTense?: PresentTenseConjugations | null;
 	/** `undefined` leaves the image untouched, a string sets a new URL, `null` clears it. */
@@ -93,9 +95,12 @@ export async function createOrUpdateLinkedWord(
 	const canHavePlural =
 		input.partOfSpeech === 'NOUN' || input.partOfSpeech === 'ADJECTIVE';
 	const isPluralOnlyProvided = input.isPluralOnly !== undefined;
+	const isSingularOnlyProvided = input.isSingularOnly !== undefined;
 	const isPluralOnly = canHavePlural && input.isPluralOnly === true;
+	// Plural-only and singular-only are mutually exclusive; plural-only wins.
+	const isSingularOnly = canHavePlural && !isPluralOnly && input.isSingularOnly === true;
 	const { pluralForm, pluralFormNormalized } =
-		canHavePlural && !isPluralOnly
+		canHavePlural && !isPluralOnly && !isSingularOnly
 			? preparePluralForms(input.pluralForm ?? '')
 			: { pluralForm: null, pluralFormNormalized: null };
 	const presentTense: PresentTenseConjugations =
@@ -104,6 +109,9 @@ export async function createOrUpdateLinkedWord(
 			: EMPTY_PRESENT_TENSE;
 	const isPluralOnlyPatch = isPluralOnlyProvided || !canHavePlural
 		? { isPluralOnly }
+		: {};
+	const isSingularOnlyPatch = isSingularOnlyProvided || !canHavePlural
+		? { isSingularOnly }
 		: {};
 	const isSwahiliLoanPatch =
 		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
@@ -128,6 +136,7 @@ export async function createOrUpdateLinkedWord(
 				pluralForm,
 				pluralFormNormalized,
 				...isPluralOnlyPatch,
+				...isSingularOnlyPatch,
 				...isSwahiliLoanPatch,
 				...presentTense,
 				...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
@@ -151,6 +160,7 @@ export async function createOrUpdateLinkedWord(
 			pluralForm,
 			pluralFormNormalized,
 			isPluralOnly,
+			isSingularOnly,
 			...isSwahiliLoanPatch,
 			...presentTense,
 			imageUrl: input.imageUrl ?? null,

@@ -27,6 +27,7 @@
 		createAlternativeSpellings: string;
 		createPluralForm: string;
 		createIsPluralOnly: boolean;
+		createIsSingularOnly: boolean;
 		createAlternativePluralForms: string;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
@@ -93,6 +94,7 @@
 	const currentPosNeedsPlural = $derived(currentPos === 'NOUN' || currentPos === 'ADJECTIVE');
 	const pluralFormValue = $derived(draft?.createPluralForm ?? '');
 	const isPluralOnlyValue = $derived(draft?.createIsPluralOnly ?? false);
+	const isSingularOnlyValue = $derived(draft?.createIsSingularOnly ?? false);
 
 	$effect(() => {
 		if (!posOtherOpen) return;
@@ -233,7 +235,9 @@
 	<input
 		type="hidden"
 		name="pluralForm"
-		value={currentPosNeedsPlural && !isPluralOnlyValue ? pluralFormValue : ''}
+		value={currentPosNeedsPlural && !isPluralOnlyValue && !isSingularOnlyValue
+			? pluralFormValue
+			: ''}
 	/>
 	<input
 		type="hidden"
@@ -242,8 +246,13 @@
 	/>
 	<input
 		type="hidden"
+		name="isSingularOnly"
+		value={currentPosNeedsPlural && isSingularOnlyValue ? 'on' : ''}
+	/>
+	<input
+		type="hidden"
 		name="alternativePluralForms"
-		value={currentPosNeedsPlural && !isPluralOnlyValue
+		value={currentPosNeedsPlural && !isPluralOnlyValue && !isSingularOnlyValue
 			? draft?.createAlternativePluralForms ?? ''
 			: ''}
 	/>
@@ -295,7 +304,7 @@
 						id="lemma-field-plural"
 						class="input"
 						placeholder="e.g. chego"
-						disabled={isPluralOnlyValue}
+						disabled={isPluralOnlyValue || isSingularOnlyValue}
 						value={pluralFormValue}
 						oninput={(event) =>
 							onDraftChange(
@@ -310,7 +319,7 @@
 						id="lemma-field-plural-alt"
 						class="input"
 						placeholder="comma, separated"
-						disabled={isPluralOnlyValue}
+						disabled={isPluralOnlyValue || isSingularOnlyValue}
 						value={draft?.createAlternativePluralForms ?? ''}
 						oninput={(event) =>
 							onDraftChange(
@@ -320,18 +329,32 @@
 					/>
 				</div>
 			</div>
-			<label class="plural-only-toggle">
-				<input
-					type="checkbox"
-					checked={isPluralOnlyValue}
-					onchange={(event) =>
-						onDraftChange(
-							'createIsPluralOnly',
-							(event.currentTarget as HTMLInputElement).checked
-						)}
-				/>
-				<span>Plural-only</span>
-			</label>
+			<div class="form-only-toggles">
+				<label class="plural-only-toggle">
+					<input
+						type="checkbox"
+						checked={isPluralOnlyValue}
+						onchange={(event) => {
+							const checked = (event.currentTarget as HTMLInputElement).checked;
+							onDraftChange('createIsPluralOnly', checked);
+							if (checked) onDraftChange('createIsSingularOnly', false);
+						}}
+					/>
+					<span>Plural-only</span>
+				</label>
+				<label class="plural-only-toggle">
+					<input
+						type="checkbox"
+						checked={isSingularOnlyValue}
+						onchange={(event) => {
+							const checked = (event.currentTarget as HTMLInputElement).checked;
+							onDraftChange('createIsSingularOnly', checked);
+							if (checked) onDraftChange('createIsPluralOnly', false);
+						}}
+					/>
+					<span>Singular-only</span>
+				</label>
+			</div>
 		</div>
 	{/if}
 
@@ -528,13 +551,18 @@
 		color: var(--ink-mute);
 		cursor: not-allowed;
 	}
+	.form-only-toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 20px;
+		margin-top: 10px;
+	}
 	.plural-only-toggle {
 		align-items: center;
 		color: var(--ink-soft);
 		display: inline-flex;
 		font-size: 13px;
 		gap: 8px;
-		margin-top: 10px;
 	}
 	.plural-only-toggle input {
 		accent-color: var(--brand);

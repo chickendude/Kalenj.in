@@ -145,6 +145,7 @@ model Word {
   pluralForm              String?
   pluralFormNormalized    String?
   isPluralOnly            Boolean                       @default(false)
+  isSingularOnly          Boolean                       @default(false)
   isSwahiliLoan           Boolean                       @default(false)
   presentAnee             String?
   presentInyee            String?
@@ -439,6 +440,7 @@ model WordSuggestion {
   alternativeSpellings   String?
   pluralForm             String?
   isPluralOnly           Boolean          @default(false)
+  isSingularOnly         Boolean          @default(false)
   alternativePluralForms String?
   presentAnee            String?
   presentInyee           String?

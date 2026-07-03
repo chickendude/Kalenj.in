@@ -80,6 +80,7 @@ export const actions: Actions = {
 					alternativeSpellings: String(formData.get('alternativeSpellings') ?? ''),
 					pluralForm: String(formData.get('pluralForm') ?? ''),
 					isPluralOnly: String(formData.get('isPluralOnly') ?? '') === 'on',
+					isSingularOnly: String(formData.get('isSingularOnly') ?? '') === 'on',
 					alternativePluralForms: String(formData.get('alternativePluralForms') ?? ''),
 					presentAnee: String(formData.get('presentAnee') ?? ''),
 					presentInyee: String(formData.get('presentInyee') ?? ''),

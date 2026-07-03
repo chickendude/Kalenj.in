@@ -22,6 +22,7 @@
 		partOfSpeech = $bindable<PartOfSpeech | ''>(''),
 		pluralForm = $bindable(''),
 		isPluralOnly = $bindable(false),
+		isSingularOnly = $bindable(false),
 		alternativePluralForms = $bindable(''),
 		presentAnee = $bindable(''),
 		presentInyee = $bindable(''),
@@ -42,6 +43,7 @@
 		partOfSpeech?: PartOfSpeech | '';
 		pluralForm?: string;
 		isPluralOnly?: boolean;
+		isSingularOnly?: boolean;
 		alternativePluralForms?: string;
 		presentAnee?: string;
 		presentInyee?: string;
@@ -102,6 +104,7 @@
 		if (partOfSpeech !== 'NOUN' && partOfSpeech !== 'ADJECTIVE') {
 			pluralForm = '';
 			isPluralOnly = false;
+			isSingularOnly = false;
 			alternativePluralForms = '';
 		}
 		if (partOfSpeech !== 'VERB') {
@@ -134,12 +137,17 @@
 
 <div class="lemma-fields">
 	<input type="hidden" name="partOfSpeech" value={partOfSpeech} />
-	<input type="hidden" name="pluralForm" value={needsPlural && !isPluralOnly ? pluralForm : ''} />
+	<input
+		type="hidden"
+		name="pluralForm"
+		value={needsPlural && !isPluralOnly && !isSingularOnly ? pluralForm : ''}
+	/>
 	<input type="hidden" name="isPluralOnly" value={needsPlural && isPluralOnly ? 'on' : ''} />
+	<input type="hidden" name="isSingularOnly" value={needsPlural && isSingularOnly ? 'on' : ''} />
 	<input
 		type="hidden"
 		name="alternativePluralForms"
-		value={needsPlural && !isPluralOnly ? alternativePluralForms : ''}
+		value={needsPlural && !isPluralOnly && !isSingularOnly ? alternativePluralForms : ''}
 	/>
 	<input type="hidden" name="presentAnee" value={needsConjugations ? presentAnee : ''} />
 	<input type="hidden" name="presentInyee" value={needsConjugations ? presentInyee : ''} />
@@ -242,7 +250,7 @@
 							id="{idPrefix}-plural"
 							class="input"
 							placeholder="e.g. chego"
-							disabled={isPluralOnly}
+							disabled={isPluralOnly || isSingularOnly}
 							autocomplete="off"
 							bind:value={pluralForm}
 						/>
@@ -253,19 +261,34 @@
 							id="{idPrefix}-plural-alt"
 							class="input"
 							placeholder="comma, separated"
-							disabled={isPluralOnly}
+							disabled={isPluralOnly || isSingularOnly}
 							autocomplete="off"
 							bind:value={alternativePluralForms}
 						/>
 					</div>
 				</div>
-				<label class="plural-only-toggle">
-					<input
-						type="checkbox"
-						bind:checked={isPluralOnly}
-					/>
-					<span>Plural-only</span>
-				</label>
+				<div class="form-only-toggles">
+					<label class="plural-only-toggle">
+						<input
+							type="checkbox"
+							bind:checked={isPluralOnly}
+							onchange={() => {
+								if (isPluralOnly) isSingularOnly = false;
+							}}
+						/>
+						<span>Plural-only</span>
+					</label>
+					<label class="plural-only-toggle">
+						<input
+							type="checkbox"
+							bind:checked={isSingularOnly}
+							onchange={() => {
+								if (isSingularOnly) isPluralOnly = false;
+							}}
+						/>
+						<span>Singular-only</span>
+					</label>
+				</div>
 			{:else if needsConjugations}
 				<div class="conjugation-sub">Present tense</div>
 				<div class="conjugation-grid">
@@ -433,13 +456,18 @@
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 	}
+	.form-only-toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 20px;
+		margin-top: 10px;
+	}
 	.plural-only-toggle {
 		align-items: center;
 		color: var(--ink-soft);
 		display: inline-flex;
 		font-size: 13px;
 		gap: 8px;
-		margin-top: 10px;
 	}
 	.plural-only-toggle input {
 		accent-color: var(--brand);

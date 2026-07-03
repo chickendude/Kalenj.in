@@ -79,7 +79,9 @@
 	</header>
 
 	{#if data.missingPlurals.items.length === 0}
-		<p class="empty-state">All nouns and adjectives have plurals (or are marked plural-only). 🎉</p>
+		<p class="empty-state">
+			All nouns and adjectives have plurals (or are marked plural- or singular-only). 🎉
+		</p>
 	{:else}
 		<div class="table-scroll">
 			<table class="cleanup-table">

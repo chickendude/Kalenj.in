@@ -52,6 +52,7 @@
 			alternativeSpellings: s.alternativeSpellings ?? '',
 			pluralForm: s.pluralForm ?? '',
 			isPluralOnly: s.isPluralOnly ?? false,
+			isSingularOnly: s.isSingularOnly ?? false,
 			alternativePluralForms: s.alternativePluralForms ?? '',
 			presentAnee: s.presentAnee ?? '',
 			presentInyee: s.presentInyee ?? '',

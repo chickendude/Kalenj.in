@@ -110,6 +110,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSingularOnlyRaw = readText(formData, 'isSingularOnly');
 		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 		const relatedWordIds = [
@@ -130,9 +131,12 @@ export const actions: Actions = {
 		const partOfSpeech = partOfSpeechRaw && isPartOfSpeech(partOfSpeechRaw) ? partOfSpeechRaw : null;
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
 		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
 		const pluralForm =
-			canHavePlural && !isPluralOnly && combinedPluralForms ? combinedPluralForms : null;
+			canHavePlural && !isPluralOnly && !isSingularOnly && combinedPluralForms
+				? combinedPluralForms
+				: null;
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
 
@@ -186,6 +190,7 @@ export const actions: Actions = {
 					partOfSpeech,
 					pluralForm,
 					isPluralOnly,
+					isSingularOnly,
 					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
 					imageUrl

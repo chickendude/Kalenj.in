@@ -20,6 +20,7 @@ function makeWord(overrides: Partial<{
 		pluralForm: overrides.pluralForm ?? null,
 		pluralFormNormalized: overrides.pluralFormNormalized ?? null,
 		isPluralOnly: false,
+		isSingularOnly: false,
 		isSwahiliLoan: false,
 		presentAnee: null,
 		presentInyee: null,

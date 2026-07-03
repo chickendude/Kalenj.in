@@ -12,6 +12,7 @@ function noun(overrides: Partial<WordLikeForMissing> = {}): WordLikeForMissing {
 		partOfSpeech: 'NOUN',
 		pluralForm: null,
 		isPluralOnly: false,
+		isSingularOnly: false,
 		presentAnee: null,
 		presentInyee: null,
 		presentInee: null,
@@ -57,6 +58,10 @@ describe('matchesMissing — plural filter', () => {
 
 	it('does not match a plural-only noun', () => {
 		expect(matchesMissing(noun({ isPluralOnly: true }), 'plural')).toBe(false);
+	});
+
+	it('does not match a singular-only noun', () => {
+		expect(matchesMissing(noun({ isSingularOnly: true }), 'plural')).toBe(false);
 	});
 
 	it('does not match a verb', () => {
@@ -108,6 +113,7 @@ describe('missingWhereClause', () => {
 		expect(missingWhereClause('plural')).toEqual({
 			partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
 			isPluralOnly: false,
+			isSingularOnly: false,
 			pluralForm: null
 		});
 	});

@@ -17,6 +17,7 @@ type WordRow = {
 	partOfSpeech: PartOfSpeech | null;
 	pluralForm: string | null;
 	isPluralOnly: boolean;
+	isSingularOnly: boolean;
 	audioUrl: string | null;
 	pluralAudioUrl: string | null;
 };
@@ -32,8 +33,16 @@ export type RecordingTarget = {
 	kind: 'singular' | 'plural';
 };
 
-function pluralEligible(word: { partOfSpeech: PartOfSpeech | null; isPluralOnly: boolean }): boolean {
-	return (word.partOfSpeech === 'NOUN' || word.partOfSpeech === 'ADJECTIVE') && !word.isPluralOnly;
+function pluralEligible(word: {
+	partOfSpeech: PartOfSpeech | null;
+	isPluralOnly: boolean;
+	isSingularOnly: boolean;
+}): boolean {
+	return (
+		(word.partOfSpeech === 'NOUN' || word.partOfSpeech === 'ADJECTIVE') &&
+		!word.isPluralOnly &&
+		!word.isSingularOnly
+	);
 }
 
 function buildTargets(words: WordRow[]): RecordingTarget[] {
@@ -74,6 +83,7 @@ function missingAudioWhere(): Prisma.WordWhereInput {
 			{
 				partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
 				isPluralOnly: false,
+				isSingularOnly: false,
 				pluralForm: { not: null },
 				pluralAudioUrl: null
 			}
@@ -99,6 +109,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const pluralMissingWhereBase: Prisma.WordWhereInput = {
 		partOfSpeech: pos ?? { in: ['NOUN', 'ADJECTIVE'] },
 		isPluralOnly: false,
+		isSingularOnly: false,
 		pluralForm: { not: null },
 		pluralAudioUrl: null
 	};
@@ -123,6 +134,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			partOfSpeech: w.partOfSpeech,
 			pluralForm: w.pluralForm,
 			isPluralOnly: w.isPluralOnly,
+			isSingularOnly: w.isSingularOnly,
 			audioUrl: w.audioUrl,
 			pluralAudioUrl: w.pluralAudioUrl
 		}));
@@ -146,6 +158,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					partOfSpeech: true,
 					pluralForm: true,
 					isPluralOnly: true,
+					isSingularOnly: true,
 					audioUrl: true,
 					pluralAudioUrl: true
 				}

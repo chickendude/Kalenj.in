@@ -13,6 +13,7 @@ describe('buildWordSelect', () => {
 			partOfSpeech: true,
 			pluralForm: true,
 			isPluralOnly: true,
+			isSingularOnly: true,
 			isSwahiliLoan: true,
 			imageUrl: true
 		});

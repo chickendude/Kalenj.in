@@ -2,6 +2,7 @@
 	import { goto, invalidateAll } from '$app/navigation';
 	import { onMount } from 'svelte';
 	import { statsUrlHasFilterParams } from '$lib/stats-preferences';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 	import {
 		cumulativeCellValue,
 		filterEmptyBucketIndices,
@@ -59,6 +60,16 @@
 		thisMonth: 'This Month',
 		thisYear: 'This Year',
 		allTime: 'All Time'
+	};
+
+	const RANGE_SHORT_LABELS: Record<RangeId, string> = {
+		past7Days: '7D',
+		past30Days: '30D',
+		pastYear: '1Y',
+		thisWeek: '1W',
+		thisMonth: '1M',
+		thisYear: 'YTD',
+		allTime: 'All'
 	};
 
 	const RANGES: RangeId[] = [
@@ -424,16 +435,18 @@
 			<span class="control-label">Range</span>
 			<div class="period-buttons" role="radiogroup" aria-label="Range">
 				{#each RANGES as r}
-					<label class="period-btn" class:active={data.range === r}>
-						<input
-							type="radio"
-							name="range"
-							value={r}
-							checked={data.range === r}
-							onchange={onChange}
-						/>
-						{RANGE_LABELS[r]}
-					</label>
+					<Tooltip label={RANGE_LABELS[r]} placement="bottom">
+						<label class="period-btn" class:active={data.range === r}>
+							<input
+								type="radio"
+								name="range"
+								value={r}
+								checked={data.range === r}
+								onchange={onChange}
+							/>
+							{RANGE_SHORT_LABELS[r]}
+						</label>
+					</Tooltip>
 				{/each}
 			</div>
 		</div>
@@ -693,23 +706,36 @@
 	}
 	.period-buttons {
 		display: inline-flex;
+		max-width: 100%;
 		border: 1px solid var(--line);
 		border-radius: var(--radius);
-		overflow: hidden;
 		background: var(--bg-raised);
 	}
+	/* Each range button is wrapped in a Tooltip, which renders a
+	   .tooltip-host span between .period-buttons and the label. Segment
+	   separators and end rounding live on that wrapper. */
+	.period-buttons :global(.tooltip-host) {
+		border-right: 1px solid var(--line);
+	}
+	.period-buttons :global(.tooltip-host:last-child) {
+		border-right: none;
+	}
 	.period-btn {
-		padding: 11px 18px;
+		padding: 11px 16px;
 		background: transparent;
 		color: var(--ink);
 		font-size: 14px;
 		font-weight: 500;
 		cursor: pointer;
 		transition: background 0.15s;
-		border-right: 1px solid var(--line);
 	}
-	.period-btn:last-child {
-		border-right: none;
+	.period-buttons :global(.tooltip-host:first-child .period-btn) {
+		border-top-left-radius: var(--radius);
+		border-bottom-left-radius: var(--radius);
+	}
+	.period-buttons :global(.tooltip-host:last-child .period-btn) {
+		border-top-right-radius: var(--radius);
+		border-bottom-right-radius: var(--radius);
 	}
 	.period-btn:hover {
 		background: var(--surface);

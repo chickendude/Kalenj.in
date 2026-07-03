@@ -20,6 +20,13 @@ const PAGE_SIZE = 25;
 const LEMMA_STATUS_FILTERS = ['all', 'missing', 'complete'] as const;
 type LemmaStatusFilter = (typeof LEMMA_STATUS_FILTERS)[number];
 
+const PROOFREAD_VIEWS = ['queue', 'story'] as const;
+type ProofreadView = (typeof PROOFREAD_VIEWS)[number];
+const VIEW_STATUS = {
+	queue: 'NEEDS_PROOFREAD',
+	story: 'STORY_ONLY'
+} as const satisfies Record<ProofreadView, ExampleSentenceStatus>;
+
 type LemmaStats = {
 	linkedUnits: number;
 	totalUnits: number;
@@ -76,6 +83,10 @@ function parseLemmaStatus(value: string | null): LemmaStatusFilter {
 		: 'all';
 }
 
+function parseView(value: string | null): ProofreadView {
+	return PROOFREAD_VIEWS.includes(value as ProofreadView) ? (value as ProofreadView) : 'queue';
+}
+
 function lemmaStatsForSentence(
 	sentence: QueueSentenceForStats,
 	ignoredForms: Set<string>
@@ -104,8 +115,9 @@ function completionRatio(stats: LemmaStats): number {
 	return stats.totalUnits === 0 ? 0 : stats.linkedUnits / stats.totalUnits;
 }
 
-function buildPageHref(page: number, lemmaStatus: LemmaStatusFilter): string {
+function buildPageHref(page: number, lemmaStatus: LemmaStatusFilter, view: ProofreadView): string {
 	const params = new URLSearchParams();
+	if (view !== 'queue') params.set('view', view);
 	if (page > 1) params.set('page', String(page));
 	if (lemmaStatus !== 'all') params.set('lemmaStatus', lemmaStatus);
 	const query = params.toString();
@@ -153,11 +165,13 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	requireEditor(locals);
 	const isAdmin = locals.user?.role === 'ADMIN';
 	const lemmaStatus = parseLemmaStatus(url.searchParams.get('lemmaStatus'));
+	const view = parseView(url.searchParams.get('view'));
+	const otherView: ProofreadView = view === 'queue' ? 'story' : 'queue';
 	const requestedPage = parsePage(url.searchParams.get('page'));
 
-	const [queueSentences, words, ignoredForms] = await Promise.all([
+	const [queueSentences, words, ignoredForms, otherViewCount] = await Promise.all([
 		prisma.exampleSentence.findMany({
-			where: { status: 'NEEDS_PROOFREAD' },
+			where: { status: VIEW_STATUS[view] },
 			select: {
 				id: true,
 				updatedAt: true,
@@ -178,7 +192,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			orderBy: [{ kalenjin: 'asc' }, { translations: 'asc' }],
 			take: 500
 		}),
-		prisma.ignoredWordForm.findMany({ select: { normalizedForm: true } })
+		prisma.ignoredWordForm.findMany({ select: { normalizedForm: true } }),
+		prisma.exampleSentence.count({ where: { status: VIEW_STATUS[otherView] } })
 	]);
 	const ignoredSet = new Set(ignoredForms.map((entry) => entry.normalizedForm));
 	const queuedWithStats = queueSentences.map((sentence) => ({
@@ -193,6 +208,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			return true;
 		})
 		.sort((a, b) => {
+			// Story-only sentences are sorted newest-first so an accidental mark is easy to find.
+			if (view === 'story') {
+				return b.updatedAt.getTime() - a.updatedAt.getTime();
+			}
 			const ratioDiff = completionRatio(b.lemmaStats) - completionRatio(a.lemmaStats);
 			if (ratioDiff !== 0) return ratioDiff;
 			const totalDiff = a.lemmaStats.totalUnits - b.lemmaStats.totalUnits;
@@ -229,14 +248,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		pageSize: PAGE_SIZE,
 		totalPages,
 		lemmaStatus,
+		view,
+		viewCounts: {
+			queue: view === 'queue' ? queuedWithStats.length : otherViewCount,
+			story: view === 'story' ? queuedWithStats.length : otherViewCount
+		},
 		statusCounts: {
 			all: queuedWithStats.length,
 			missing: queuedWithStats.filter((sentence) => sentence.lemmaStats.missingUnits > 0).length,
 			complete: queuedWithStats.filter((sentence) => sentence.lemmaStats.missingUnits === 0).length
 		},
 		pageHref: {
-			prev: page > 1 ? buildPageHref(page - 1, lemmaStatus) : null,
-			next: page < totalPages ? buildPageHref(page + 1, lemmaStatus) : null
+			prev: page > 1 ? buildPageHref(page - 1, lemmaStatus, view) : null,
+			next: page < totalPages ? buildPageHref(page + 1, lemmaStatus, view) : null
 		},
 		sentences,
 		total,

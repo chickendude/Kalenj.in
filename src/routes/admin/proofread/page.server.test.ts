@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => {
 		exampleSentence: {
 			findMany: vi.fn(),
 			update: vi.fn(),
-			updateMany: vi.fn()
+			updateMany: vi.fn(),
+			count: vi.fn()
 		},
 		word: {
 			findMany: vi.fn()
@@ -40,6 +41,7 @@ describe('lemma proofread page loader', () => {
 			}
 		}
 		mocks.prisma.exampleSentence.findMany.mockResolvedValue([]);
+		mocks.prisma.exampleSentence.count.mockResolvedValue(0);
 		mocks.prisma.word.findMany.mockResolvedValue([]);
 		mocks.prisma.ignoredWordForm.findMany.mockResolvedValue([]);
 	});
@@ -64,6 +66,24 @@ describe('lemma proofread page loader', () => {
 				where: { status: 'NEEDS_PROOFREAD' }
 			})
 		);
+	});
+
+	it('loads story-only sentences for the story view', async () => {
+		const result = (await load({
+			locals: editorLocals,
+			url: new URL('http://localhost/admin/proofread?view=story')
+		} as never)) as { view: string };
+
+		expect(result.view).toBe('story');
+		expect(mocks.prisma.exampleSentence.findMany).toHaveBeenNthCalledWith(
+			1,
+			expect.objectContaining({
+				where: { status: 'STORY_ONLY' }
+			})
+		);
+		expect(mocks.prisma.exampleSentence.count).toHaveBeenCalledWith({
+			where: { status: 'NEEDS_PROOFREAD' }
+		});
 	});
 
 	it('sorts by lemma completeness and paginates the visible queue', async () => {

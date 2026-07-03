@@ -120,40 +120,70 @@
 
 <h1 class="sr-only">Proofread</h1>
 
-<nav class="proofread-tabs" aria-label="Lemma proofread filters">
-	{#each statusTabs as tab}
-		<a href={tab.href} class:active={tab.active}>
-			<span>{tab.label}</span>
-			<span>{tab.count.toLocaleString()}</span>
-		</a>
-	{/each}
-	<form
-		bind:this={autoLemmaForm}
-		method="POST"
-		action="?/autoLemmatize"
-		use:enhance
-		onsubmit={requestAutoLemma}
-	>
-		<button type="button" class="btn" onclick={openAutoLemmaDialog}>Run across corpus</button>
-	</form>
+<nav class="proofread-views" aria-label="Sentence status">
+	<a href="/admin/proofread" class:active={data.view === 'queue'}>
+		<span>Proofread queue</span>
+		<span>{data.viewCounts.queue.toLocaleString()}</span>
+	</a>
+	<a href="/admin/proofread?view=story" class:active={data.view === 'story'}>
+		<span>Story only</span>
+		<span>{data.viewCounts.story.toLocaleString()}</span>
+	</a>
 </nav>
+
+{#if data.view === 'queue'}
+	<nav class="proofread-tabs" aria-label="Lemma proofread filters">
+		{#each statusTabs as tab}
+			<a href={tab.href} class:active={tab.active}>
+				<span>{tab.label}</span>
+				<span>{tab.count.toLocaleString()}</span>
+			</a>
+		{/each}
+		<form
+			bind:this={autoLemmaForm}
+			method="POST"
+			action="?/autoLemmatize"
+			use:enhance
+			onsubmit={requestAutoLemma}
+		>
+			<button type="button" class="btn" onclick={openAutoLemmaDialog}>Run across corpus</button>
+		</form>
+	</nav>
+{/if}
 
 <section class="proofread-summary">
 	<div>
 		<span class="summary-number">{data.total.toLocaleString()}</span>
-		<span class="summary-label">sentence{data.total === 1 ? '' : 's'} to proofread</span>
+		<span class="summary-label">
+			{#if data.view === 'story'}
+				story-only sentence{data.total === 1 ? '' : 's'}
+			{:else}
+				sentence{data.total === 1 ? '' : 's'} to proofread
+			{/if}
+		</span>
 	</div>
 	{#if data.total > 0}
 		<p>
-			Page {data.page.toLocaleString()} of {data.totalPages.toLocaleString()} · sorted by lemma completeness.
+			Page {data.page.toLocaleString()} of {data.totalPages.toLocaleString()} · sorted by {data.view ===
+			'story'
+				? 'most recently changed'
+				: 'lemma completeness'}.
 		</p>
 	{/if}
 </section>
 
 {#if data.sentences.length === 0}
 	<section class="form-card proofread-empty">
-		<h2>No proofread queue</h2>
-		<p>Automatic lemma matches that need staff review will appear here.</p>
+		{#if data.view === 'story'}
+			<h2>No story-only sentences</h2>
+			<p>
+				Sentences you exclude from the corpus appear here, so you can add them back or return them to
+				the proofread queue.
+			</p>
+		{:else}
+			<h2>No proofread queue</h2>
+			<p>Automatic lemma matches that need staff review will appear here.</p>
+		{/if}
 	</section>
 {:else}
 	<div class="proofread-list">
@@ -208,55 +238,110 @@
 							</svg>
 							<span class="icon-btn-tooltip" role="tooltip">Open in corpus</span>
 						</a>
-						<form method="POST" action="?/setSentenceStatus" use:enhance>
-							<input type="hidden" name="sentenceId" value={sentence.id} />
-							<button
-								type="submit"
-								name="status"
-								value="STORY_ONLY"
-								class="icon-btn icon-btn--ignore"
-								aria-label="Mark story-only (exclude from corpus)"
-							>
-								<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-									<path
-										d="M3 2.5h6.5c1 0 1.8.8 1.8 1.8v9.4c-.8-.6-1.7-.9-2.7-.9H3V2.5Z"
-										stroke="currentColor"
-										stroke-width="1.4"
-										stroke-linejoin="round"
-									/>
-									<path
-										d="M5 5.5h4M5 7.5h4M5 9.5h2.5"
-										stroke="currentColor"
-										stroke-width="1.4"
-										stroke-linecap="round"
-									/>
-								</svg>
-								<span class="icon-btn-tooltip" role="tooltip">
-									Mark story-only — keeps the sentence in the story but excludes it from the corpus.
-								</span>
-							</button>
-						</form>
-						<form method="POST" action="?/setSentenceStatus" use:enhance>
-							<input type="hidden" name="sentenceId" value={sentence.id} />
-							<button
-								type="submit"
-								name="status"
-								value="IN_CORPUS"
-								class="icon-btn icon-btn--confirm"
-								aria-label="Mark proofread"
-							>
-								<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-									<path
-										d="M3.5 8.5l3 3 6-7"
-										stroke="currentColor"
-										stroke-width="1.8"
-										stroke-linecap="round"
-										stroke-linejoin="round"
-									/>
-								</svg>
-								<span class="icon-btn-tooltip" role="tooltip">Mark proofread</span>
-							</button>
-						</form>
+						{#if data.view === 'story'}
+							<form method="POST" action="?/setSentenceStatus" use:enhance>
+								<input type="hidden" name="sentenceId" value={sentence.id} />
+								<button
+									type="submit"
+									name="status"
+									value="NEEDS_PROOFREAD"
+									class="icon-btn icon-btn--restore"
+									aria-label="Return to proofread queue"
+								>
+									<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+										<path
+											d="M3 8a5 5 0 1 1 1.6 3.7"
+											stroke="currentColor"
+											stroke-width="1.4"
+											stroke-linecap="round"
+										/>
+										<path
+											d="M3 4.5V8h3.5"
+											stroke="currentColor"
+											stroke-width="1.4"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+									<span class="icon-btn-tooltip" role="tooltip">
+										Return to the proofread queue for review.
+									</span>
+								</button>
+							</form>
+							<form method="POST" action="?/setSentenceStatus" use:enhance>
+								<input type="hidden" name="sentenceId" value={sentence.id} />
+								<button
+									type="submit"
+									name="status"
+									value="IN_CORPUS"
+									class="icon-btn icon-btn--confirm"
+									aria-label="Add back to corpus"
+								>
+									<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+										<path
+											d="M3.5 8.5l3 3 6-7"
+											stroke="currentColor"
+											stroke-width="1.8"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+									<span class="icon-btn-tooltip" role="tooltip">
+										Add back to the corpus — undoes story-only.
+									</span>
+								</button>
+							</form>
+						{:else}
+							<form method="POST" action="?/setSentenceStatus" use:enhance>
+								<input type="hidden" name="sentenceId" value={sentence.id} />
+								<button
+									type="submit"
+									name="status"
+									value="STORY_ONLY"
+									class="icon-btn icon-btn--ignore"
+									aria-label="Mark story-only (exclude from corpus)"
+								>
+									<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+										<path
+											d="M3 2.5h6.5c1 0 1.8.8 1.8 1.8v9.4c-.8-.6-1.7-.9-2.7-.9H3V2.5Z"
+											stroke="currentColor"
+											stroke-width="1.4"
+											stroke-linejoin="round"
+										/>
+										<path
+											d="M5 5.5h4M5 7.5h4M5 9.5h2.5"
+											stroke="currentColor"
+											stroke-width="1.4"
+											stroke-linecap="round"
+										/>
+									</svg>
+									<span class="icon-btn-tooltip" role="tooltip">
+										Mark story-only — keeps the sentence in the story but excludes it from the corpus.
+									</span>
+								</button>
+							</form>
+							<form method="POST" action="?/setSentenceStatus" use:enhance>
+								<input type="hidden" name="sentenceId" value={sentence.id} />
+								<button
+									type="submit"
+									name="status"
+									value="IN_CORPUS"
+									class="icon-btn icon-btn--confirm"
+									aria-label="Mark proofread"
+								>
+									<svg width="20" height="20" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+										<path
+											d="M3.5 8.5l3 3 6-7"
+											stroke="currentColor"
+											stroke-width="1.8"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+									<span class="icon-btn-tooltip" role="tooltip">Mark proofread</span>
+								</button>
+							</form>
+						{/if}
 					</div>
 				</header>
 
@@ -350,6 +435,12 @@
 		border-color: color-mix(in oklab, var(--success, #2e7d32) 55%, transparent);
 		color: var(--success, #2e7d32);
 	}
+	.icon-btn--restore:hover,
+	.icon-btn--restore:focus-visible {
+		background: var(--accent-soft);
+		border-color: var(--accent);
+		color: var(--brand-ink);
+	}
 	.icon-btn:focus-visible {
 		outline: 2px solid currentColor;
 		outline-offset: 2px;
@@ -385,6 +476,30 @@
 	.icon-btn:hover .icon-btn-tooltip,
 	.icon-btn:focus-visible .icon-btn-tooltip {
 		opacity: 1;
+	}
+	.proofread-views {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px;
+		margin: 0 0 12px;
+	}
+	.proofread-views a {
+		align-items: center;
+		border: 1px solid var(--line-soft);
+		border-radius: 6px;
+		color: var(--ink);
+		display: inline-flex;
+		font-size: 13px;
+		font-weight: 500;
+		gap: 8px;
+		padding: 7px 12px;
+		text-decoration: none;
+	}
+	.proofread-views a.active {
+		background: var(--accent-soft);
+		border-color: var(--accent);
+		color: var(--brand-ink);
 	}
 	.proofread-tabs {
 		align-items: center;

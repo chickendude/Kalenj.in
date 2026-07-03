@@ -40,6 +40,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 	const missingPluralWhere: Prisma.WordWhereInput = {
 		partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
 		isPluralOnly: false,
+		isSingularOnly: false,
 		OR: [{ pluralForm: null }, { pluralForm: '' }]
 	};
 

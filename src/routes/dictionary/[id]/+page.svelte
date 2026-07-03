@@ -72,6 +72,9 @@
 	let isPluralOnly = $state(
 		untrack(() => Boolean((values as { isPluralOnly?: boolean }).isPluralOnly))
 	);
+	let isSingularOnly = $state(
+		untrack(() => Boolean((values as { isSingularOnly?: boolean }).isSingularOnly))
+	);
 	let isSwahiliLoan = $state(
 		untrack(() => Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan))
 	);
@@ -119,6 +122,9 @@
 		isPluralOnly = Boolean((values as { isPluralOnly?: boolean }).isPluralOnly);
 	});
 	$effect(() => {
+		isSingularOnly = Boolean((values as { isSingularOnly?: boolean }).isSingularOnly);
+	});
+	$effect(() => {
 		isSwahiliLoan = Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan);
 	});
 	$effect(() => {
@@ -153,6 +159,7 @@
 			pluralFormValue !== savedPluralForms.pluralForm ||
 			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
 			isPluralOnly !== data.word.isPluralOnly ||
+			isSingularOnly !== data.word.isSingularOnly ||
 			isSwahiliLoan !== data.word.isSwahiliLoan ||
 			imageDirty ||
 			presentAnee !== (data.word.presentAnee ?? '') ||
@@ -171,6 +178,10 @@
 	const showPluralOnly = $derived(
 		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
 			data.word.isPluralOnly
+	);
+	const showSingularOnly = $derived(
+		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
+			data.word.isSingularOnly
 	);
 	const showConjugations = $derived(
 		(data.word.partOfSpeech === 'VERB' &&
@@ -311,7 +322,7 @@
 						audioUrl={data.word.audioUrl}
 						label={`Play pronunciation of ${kalenjinValue}`}
 					/>
-					{#if partOfSpeechValue || isSwahiliLoan || showPlural || showPluralOnly}
+					{#if partOfSpeechValue || isSwahiliLoan || showPlural || showPluralOnly || showSingularOnly}
 						<div class="entry-title-pills">
 							{#if partOfSpeechValue}
 								<PartOfSpeechInline value={partOfSpeechValue} />
@@ -339,6 +350,8 @@
 								</span>
 							{:else if showPluralOnly}
 								<WordPill text="pl" tooltip="Plural-only" lowercase abbreviation />
+							{:else if showSingularOnly}
+								<WordPill text="sg" tooltip="Singular-only" lowercase abbreviation />
 							{/if}
 						</div>
 					{/if}
@@ -560,7 +573,7 @@
 										type="text"
 										class="side-input"
 										placeholder="e.g. chego"
-										disabled={isPluralOnly}
+										disabled={isPluralOnly || isSingularOnly}
 										bind:value={pluralFormValue}
 									/>
 								</div>
@@ -572,22 +585,39 @@
 										type="text"
 										class="side-input"
 										placeholder="comma, separated"
-										disabled={isPluralOnly}
+										disabled={isPluralOnly || isSingularOnly}
 										bind:value={alternativePluralFormsValue}
 									/>
 								</div>
 							</div>
-							<label class="plural-only-toggle">
-								<input
-									type="checkbox"
-									name="isPluralOnly"
-									bind:checked={isPluralOnly}
-								/>
-								<span>Plural-only</span>
-							</label>
+							<div class="form-only-toggles">
+								<label class="plural-only-toggle">
+									<input
+										type="checkbox"
+										name="isPluralOnly"
+										bind:checked={isPluralOnly}
+										onchange={() => {
+											if (isPluralOnly) isSingularOnly = false;
+										}}
+									/>
+									<span>Plural-only</span>
+								</label>
+								<label class="plural-only-toggle">
+									<input
+										type="checkbox"
+										name="isSingularOnly"
+										bind:checked={isSingularOnly}
+										onchange={() => {
+											if (isSingularOnly) isPluralOnly = false;
+										}}
+									/>
+									<span>Singular-only</span>
+								</label>
+							</div>
 						{:else}
 							<input type="hidden" name="pluralForm" value="" />
 							<input type="hidden" name="isPluralOnly" value="" />
+							<input type="hidden" name="isSingularOnly" value="" />
 							<input type="hidden" name="alternativePluralForms" value="" />
 						{/if}
 						{#if needsConjugationInputs}
@@ -1065,13 +1095,18 @@
 		letter-spacing: 0.12em;
 		text-transform: uppercase;
 	}
+	.form-only-toggles {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 6px 20px;
+		margin-top: 8px;
+	}
 	.plural-only-toggle {
 		align-items: center;
 		color: var(--ink-soft);
 		display: inline-flex;
 		font-size: 13px;
 		gap: 8px;
-		margin-top: 8px;
 	}
 	.plural-only-toggle input {
 		accent-color: var(--brand);

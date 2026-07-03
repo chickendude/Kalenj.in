@@ -10,6 +10,7 @@ export type WordLikeForMissing = {
 	partOfSpeech: PartOfSpeech | null;
 	pluralForm: string | null;
 	isPluralOnly: boolean;
+	isSingularOnly: boolean;
 	presentAnee: string | null;
 	presentInyee: string | null;
 	presentInee: string | null;
@@ -23,6 +24,7 @@ export function matchesMissing(word: WordLikeForMissing, missing: MissingFilter)
 		return (
 			(word.partOfSpeech === 'NOUN' || word.partOfSpeech === 'ADJECTIVE') &&
 			!word.isPluralOnly &&
+			!word.isSingularOnly &&
 			!word.pluralForm
 		);
 	}
@@ -45,6 +47,7 @@ export function missingWhereClause(missing: MissingFilter): Prisma.WordWhereInpu
 		return {
 			partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
 			isPluralOnly: false,
+			isSingularOnly: false,
 			pluralForm: null
 		};
 	}

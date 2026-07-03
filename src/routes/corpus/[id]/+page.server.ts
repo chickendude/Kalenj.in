@@ -297,6 +297,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSingularOnlyRaw = readText(formData, 'isSingularOnly');
 		const alternativePluralForms = readOptionalText(formData, 'alternativePluralForms');
 
 		if (!sentenceId || !tokenId || !kalenjin || !translations) {
@@ -319,6 +320,7 @@ export const actions: Actions = {
 
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
 
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
@@ -351,10 +353,11 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm:
-						canHavePlural && !isPluralOnly
+						canHavePlural && !isPluralOnly && !isSingularOnly
 							? combinePluralFormVariants(pluralForm, alternativePluralForms)
 							: null,
 					isPluralOnly,
+					isSingularOnly,
 					presentTense,
 					...(imageUrl !== undefined ? { imageUrl } : {})
 				});

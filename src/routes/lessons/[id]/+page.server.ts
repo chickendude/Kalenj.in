@@ -903,6 +903,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
+		const isSingularOnlyRaw = readText(formData, 'isSingularOnly');
 		const alternativePluralForms = readText(formData, 'alternativePluralForms');
 		const sentenceKalenjin = readText(formData, 'sentenceKalenjin');
 		const sentenceEnglish = readText(formData, 'sentenceEnglish');
@@ -947,9 +948,10 @@ export const actions: Actions = {
 			: null;
 		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 		const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+		const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
 		const combinedPluralForms = combinePluralFormVariants(pluralFormRaw, alternativePluralForms);
 		const pluralForm =
-			canHavePlural && !isPluralOnly && combinedPluralForms
+			canHavePlural && !isPluralOnly && !isSingularOnly && combinedPluralForms
 				? combinedPluralForms
 				: null;
 		const presentTense =
@@ -1032,6 +1034,7 @@ export const actions: Actions = {
 							partOfSpeech,
 							pluralForm,
 							isPluralOnly,
+							isSingularOnly,
 							presentTense,
 							imageUrl: wordImageUrl
 						});
@@ -1285,6 +1288,7 @@ export const actions: Actions = {
 		const partOfSpeechRaw = readOptionalText(formData, 'partOfSpeech');
 		const pluralForm = readOptionalText(formData, 'pluralForm');
 		const isPluralOnlyRawLesson = readText(formData, 'isPluralOnly');
+		const isSingularOnlyRawLesson = readText(formData, 'isSingularOnly');
 		const alternativePluralForms = readOptionalText(formData, 'alternativePluralForms');
 
 		if (!lessonWordId || !tokenId || !kalenjin || !translations) {
@@ -1328,6 +1332,8 @@ export const actions: Actions = {
 				const canHavePlural =
 					partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 				const isPluralOnly = canHavePlural && isPluralOnlyRawLesson === 'on';
+				const isSingularOnly =
+					canHavePlural && !isPluralOnly && isSingularOnlyRawLesson === 'on';
 				const word = await createOrUpdateLinkedWord(tx, {
 					wordId,
 					kalenjin,
@@ -1336,10 +1342,11 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm:
-						canHavePlural && !isPluralOnly
+						canHavePlural && !isPluralOnly && !isSingularOnly
 							? combinePluralFormVariants(pluralForm, alternativePluralForms)
 							: null,
 					isPluralOnly,
+					isSingularOnly,
 					presentTense,
 					...(imageUrl !== undefined ? { imageUrl } : {})
 				});

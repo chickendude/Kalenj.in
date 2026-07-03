@@ -26,6 +26,7 @@
 		partOfSpeech?: PartOfSpeech | '';
 		pluralForm?: string;
 		isPluralOnly?: boolean;
+		isSingularOnly?: boolean;
 		isSwahiliLoan?: boolean;
 		alternativePluralForms?: string;
 		presentAnee?: string;
@@ -89,6 +90,7 @@
 	let partOfSpeech = $state<PartOfSpeech | ''>('');
 	let pluralForm = $state('');
 	let isPluralOnly = $state(false);
+	let isSingularOnly = $state(false);
 	let isSwahiliLoan = $state(false);
 	let alternativePluralForms = $state('');
 	let presentAnee = $state('');
@@ -191,6 +193,7 @@
 		if (!keepPartOfSpeech) partOfSpeech = '';
 		pluralForm = '';
 		isPluralOnly = false;
+		isSingularOnly = false;
 		isSwahiliLoan = false;
 		alternativePluralForms = '';
 		presentAnee = '';
@@ -215,6 +218,7 @@
 		if (values.partOfSpeech !== undefined) partOfSpeech = values.partOfSpeech;
 		if (values.pluralForm !== undefined) pluralForm = values.pluralForm;
 		if (values.isPluralOnly !== undefined) isPluralOnly = values.isPluralOnly;
+		if (values.isSingularOnly !== undefined) isSingularOnly = values.isSingularOnly;
 		if (values.isSwahiliLoan !== undefined) isSwahiliLoan = values.isSwahiliLoan;
 		if (values.alternativePluralForms !== undefined)
 			alternativePluralForms = values.alternativePluralForms;
@@ -373,6 +377,7 @@
 					bind:partOfSpeech
 					bind:pluralForm
 					bind:isPluralOnly
+					bind:isSingularOnly
 					bind:alternativePluralForms
 					bind:presentAnee
 					bind:presentInyee

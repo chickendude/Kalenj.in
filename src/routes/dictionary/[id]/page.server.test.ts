@@ -45,6 +45,7 @@ function updateWordRequest(values: Record<string, string> = {}) {
 	fd.set('partOfSpeech', values.partOfSpeech ?? '');
 	fd.set('pluralForm', values.pluralForm ?? '');
 	fd.set('isPluralOnly', values.isPluralOnly ?? '');
+	fd.set('isSingularOnly', values.isSingularOnly ?? '');
 	fd.set('isSwahiliLoan', values.isSwahiliLoan ?? '');
 	fd.set('alternativePluralForms', values.alternativePluralForms ?? '');
 	return new Request('http://localhost/dictionary/che', { method: 'POST', body: fd });

@@ -53,6 +53,7 @@
 	let partOfSpeech = $state<PartOfSpeech | ''>('');
 	let pluralForm = $state('');
 	let isPluralOnly = $state(false);
+	let isSingularOnly = $state(false);
 	let alternativePluralForms = $state('');
 	let presentAnee = $state('');
 	let presentInyee = $state('');
@@ -74,6 +75,7 @@
 		partOfSpeech = '';
 		pluralForm = '';
 		isPluralOnly = false;
+		isSingularOnly = false;
 		alternativePluralForms = '';
 		presentAnee = '';
 		presentInyee = '';
@@ -101,6 +103,7 @@
 		alternativeSpellings: string;
 		pluralForm: string;
 		isPluralOnly: boolean;
+		isSingularOnly: boolean;
 		alternativePluralForms: string;
 		presentAnee: string;
 		presentInyee: string;
@@ -129,6 +132,7 @@
 				partOfSpeech = (values.partOfSpeech as PartOfSpeech | '') || '';
 				pluralForm = values.pluralForm;
 				isPluralOnly = values.isPluralOnly;
+				isSingularOnly = values.isSingularOnly;
 				alternativePluralForms = values.alternativePluralForms;
 				presentAnee = values.presentAnee;
 				presentInyee = values.presentInyee;
@@ -157,6 +161,7 @@
 			partOfSpeech = (s.partOfSpeech ?? '') as PartOfSpeech | '';
 			pluralForm = s.pluralForm ?? '';
 			isPluralOnly = s.isPluralOnly ?? false;
+			isSingularOnly = s.isSingularOnly ?? false;
 			alternativePluralForms = s.alternativePluralForms ?? '';
 			presentAnee = s.presentAnee ?? '';
 			presentInyee = s.presentInyee ?? '';
@@ -400,6 +405,7 @@
 			bind:partOfSpeech
 			bind:pluralForm
 			bind:isPluralOnly
+			bind:isSingularOnly
 			bind:alternativePluralForms
 			bind:presentAnee
 			bind:presentInyee

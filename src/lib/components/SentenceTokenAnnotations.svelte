@@ -40,6 +40,7 @@
 			pluralForm?: string | null;
 			imageUrl?: string | null;
 			isPluralOnly?: boolean | null;
+			isSingularOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -66,6 +67,7 @@
 			pluralForm?: string | null;
 			imageUrl?: string | null;
 			isPluralOnly?: boolean | null;
+			isSingularOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -83,6 +85,7 @@
 		createAlternativeSpellings: string;
 		createPluralForm: string;
 		createIsPluralOnly: boolean;
+		createIsSingularOnly: boolean;
 		createAlternativePluralForms: string;
 		createPartOfSpeech: PartOfSpeech | '';
 	};
@@ -109,6 +112,7 @@
 			partOfSpeech?: PartOfSpeech | null;
 			pluralForm?: string | null;
 			isPluralOnly?: boolean | null;
+			isSingularOnly?: boolean | null;
 			spellings?: Array<{
 				id?: string;
 				spelling: string;
@@ -276,6 +280,7 @@
 				createPluralForm: tokenPluralForms.pluralForm,
 				createAlternativePluralForms: tokenPluralForms.alternativePluralForms,
 				createIsPluralOnly: Boolean(token.word?.isPluralOnly),
+				createIsSingularOnly: Boolean(token.word?.isSingularOnly),
 				createPartOfSpeech: token.word?.partOfSpeech ?? ''
 			};
 
@@ -291,6 +296,7 @@
 					createPluralForm: segmentPluralForms.pluralForm,
 					createAlternativePluralForms: segmentPluralForms.alternativePluralForms,
 					createIsPluralOnly: Boolean(segment.word?.isPluralOnly),
+					createIsSingularOnly: Boolean(segment.word?.isSingularOnly),
 					createPartOfSpeech: segment.word?.partOfSpeech ?? ''
 				};
 			}
@@ -920,6 +926,10 @@
 						: drafts[tokenUpdate.tokenId]?.createAlternativePluralForms ?? '',
 				createIsPluralOnly:
 					tokenUpdate.word?.isPluralOnly ?? drafts[tokenUpdate.tokenId]?.createIsPluralOnly ?? false,
+				createIsSingularOnly:
+					tokenUpdate.word?.isSingularOnly ??
+					drafts[tokenUpdate.tokenId]?.createIsSingularOnly ??
+					false,
 				createPartOfSpeech:
 					tokenUpdate.word?.partOfSpeech ?? drafts[tokenUpdate.tokenId]?.createPartOfSpeech ?? ''
 			};
@@ -955,6 +965,8 @@
 							: drafts[segment.id]?.createAlternativePluralForms ?? '',
 					createIsPluralOnly:
 						segment.word?.isPluralOnly ?? drafts[segment.id]?.createIsPluralOnly ?? false,
+					createIsSingularOnly:
+						segment.word?.isSingularOnly ?? drafts[segment.id]?.createIsSingularOnly ?? false,
 					createPartOfSpeech:
 						segment.word?.partOfSpeech ?? drafts[segment.id]?.createPartOfSpeech ?? ''
 				};

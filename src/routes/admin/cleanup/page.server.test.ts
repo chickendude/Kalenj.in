@@ -145,6 +145,7 @@ describe('cleanup page loader — query shapes', () => {
 		const expectedWhere = {
 			partOfSpeech: { in: ['NOUN', 'ADJECTIVE'] },
 			isPluralOnly: false,
+			isSingularOnly: false,
 			OR: [{ pluralForm: null }, { pluralForm: '' }]
 		};
 		expect(mocks.prisma.word.count).toHaveBeenCalledWith({ where: expectedWhere });

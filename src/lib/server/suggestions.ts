@@ -16,6 +16,7 @@ export type WordSuggestionInput = {
 	alternativeSpellings: string | null;
 	pluralForm: string | null;
 	isPluralOnly: boolean;
+	isSingularOnly: boolean;
 	alternativePluralForms: string | null;
 	presentAnee: string | null;
 	presentInyee: string | null;
@@ -72,6 +73,7 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 	const alternativeSpellings = readTrimmed(formData, 'alternativeSpellings');
 	const pluralFormRaw = readTrimmed(formData, 'pluralForm');
 	const isPluralOnlyRaw = readTrimmed(formData, 'isPluralOnly');
+	const isSingularOnlyRaw = readTrimmed(formData, 'isSingularOnly');
 	const alternativePluralForms = readTrimmed(formData, 'alternativePluralForms');
 	const presentAnee = readTrimmed(formData, 'presentAnee');
 	const presentInyee = readTrimmed(formData, 'presentInyee');
@@ -123,6 +125,8 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 
 	const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
 	const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
+	// Plural-only and singular-only are mutually exclusive; plural-only wins.
+	const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
 	const isVerb = partOfSpeech === 'VERB';
 
 	return {
@@ -133,10 +137,14 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 			partOfSpeech,
 			notes: notes || null,
 			alternativeSpellings: alternativeSpellings || null,
-			pluralForm: canHavePlural && !isPluralOnly ? pluralFormRaw || null : null,
+			pluralForm:
+				canHavePlural && !isPluralOnly && !isSingularOnly ? pluralFormRaw || null : null,
 			isPluralOnly,
+			isSingularOnly,
 			alternativePluralForms:
-				canHavePlural && !isPluralOnly ? alternativePluralForms || null : null,
+				canHavePlural && !isPluralOnly && !isSingularOnly
+					? alternativePluralForms || null
+					: null,
 			presentAnee: isVerb ? presentAnee || null : null,
 			presentInyee: isVerb ? presentInyee || null : null,
 			presentInee: isVerb ? presentInee || null : null,

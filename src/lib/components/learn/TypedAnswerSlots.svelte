@@ -35,6 +35,8 @@
 	const words = $derived.by(() => {
 		const groups: Slot[][] = [];
 		let typedIndex = 0;
+		// Only the first empty slot carries the caret.
+		let caretPlaced = false;
 		for (const targetWord of target.split(' ')) {
 			const slots: Slot[] = [];
 			for (const char of targetWord) {
@@ -44,7 +46,8 @@
 				}
 				const typedChar = typed[typedIndex];
 				if (typedChar === undefined) {
-					slots.push({ char, state: 'pending', caret: active && typedIndex === typed.length });
+					slots.push({ char, state: 'pending', caret: active && !caretPlaced });
+					caretPlaced = true;
 				} else {
 					slots.push({
 						char: typedChar,

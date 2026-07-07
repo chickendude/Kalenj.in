@@ -328,6 +328,7 @@
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg, 10px);
+		display: grid;
 		min-height: 320px;
 		padding: 2rem;
 	}

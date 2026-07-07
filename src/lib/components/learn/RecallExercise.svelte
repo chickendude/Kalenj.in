@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AudioPlayButton from '$lib/components/AudioPlayButton.svelte';
+	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
 	import TypedAnswerSlots from '$lib/components/learn/TypedAnswerSlots.svelte';
 	import { playCorrectSound, playIncorrectSound } from '$lib/learn/feedback-sounds';
@@ -28,24 +29,36 @@
 		onResult: (result: RecallResult) => void;
 	} = $props();
 
-	const target = $derived(blanks.target);
-	/** Characters the learner actually types: letters/digits only — punctuation is shown for them. */
-	const typeableTarget = $derived(typeableText(target));
 	const prompt = $derived(stripWordLinks(lessonWord.translations));
 	const sentence = $derived(blanks.kind === 'sentence' ? (lessonWord.sentence ?? null) : null);
 	const isAudioMode = $derived(mode === 'audio' && Boolean(sentence?.audioUrl));
 	const sentenceTranslation = $derived(
 		lessonWord.sentenceTranslation?.trim() || lessonWord.sentence?.english || ''
 	);
-	const blankTokenOrders = $derived(
-		blanks.kind === 'sentence' ? new Set(blanks.blankTokenOrders) : new Set<number>()
-	);
 	const orderedTokens = $derived(
 		sentence ? [...sentence.tokens].sort((a, b) => a.tokenOrder - b.tokenOrder) : []
 	);
+	// Dictation covers the whole sentence — every token becomes a blank.
+	const effectiveBlanks = $derived(
+		isAudioMode && sentence
+			? {
+					kind: 'sentence' as const,
+					blankTokenOrders: orderedTokens.map((token) => token.tokenOrder),
+					target: orderedTokens.map((token) => token.surfaceForm).join(' ')
+				}
+			: blanks
+	);
+	const target = $derived(effectiveBlanks.target);
+	/** Characters the learner actually types: letters/digits only — punctuation is shown for them. */
+	const typeableTarget = $derived(typeableText(target));
+	const blankTokenOrders = $derived(
+		effectiveBlanks.kind === 'sentence'
+			? new Set(effectiveBlanks.blankTokenOrders)
+			: new Set<number>()
+	);
 	/** Consecutive blanked tokens collapse into the single slot group. */
 	const firstBlankTokenOrder = $derived(
-		blanks.kind === 'sentence' ? Math.min(...blanks.blankTokenOrders) : -1
+		effectiveBlanks.kind === 'sentence' ? Math.min(...effectiveBlanks.blankTokenOrders) : -1
 	);
 
 	let typed = $state('');
@@ -64,7 +77,8 @@
 
 	const accepted = $derived(acceptableAnswers(lessonWord, target));
 	const showGrading = $derived(done || (gradedAttempt !== null && gradedAttempt === typed));
-	const slotsLabel = $derived(!isAudioMode || done ? prompt : null);
+	// Once answered, the sentence renders with hover pop-up definitions instead.
+	const slotsLabel = $derived(!done && !isAudioMode ? prompt : null);
 
 	// Text drills show the full sentence translation up front; dictation keeps
 	// it hidden so the challenge stays on the listening.
@@ -187,8 +201,15 @@
 		</div>
 	{/if}
 
-	<div class="recall-sentence" class:word-only={blanks.kind !== 'sentence'}>
-		{#if blanks.kind === 'sentence'}
+	<div class="recall-sentence" class:word-only={effectiveBlanks.kind !== 'sentence'}>
+		{#if done && sentence}
+			<TokenHoverPreview
+				sentenceId={sentence.id}
+				sentenceText={sentence.kalenjin}
+				tokens={sentence.tokens}
+				onTokenClick={() => {}}
+			/>
+		{:else if effectiveBlanks.kind === 'sentence'}
 			{#each orderedTokens as token (token.id)}
 				{#if blankTokenOrders.has(token.tokenOrder)}
 					{#if token.tokenOrder === firstBlankTokenOrder}
@@ -284,6 +305,7 @@
 					audioUrl={sentence.audioUrl}
 					size="sm"
 					label="Play sentence audio"
+					autoplay
 				/>
 			{/if}
 		{/if}
@@ -292,9 +314,11 @@
 
 <style>
 	.recall {
-		display: grid;
+		align-items: start;
+		display: flex;
+		flex-direction: column;
 		gap: 0.9rem;
-		justify-items: start;
+		height: 100%;
 		text-align: left;
 	}
 
@@ -372,7 +396,8 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem;
-		margin-top: 0.3rem;
+		margin-top: auto;
+		padding-top: 0.9rem;
 		width: 100%;
 	}
 

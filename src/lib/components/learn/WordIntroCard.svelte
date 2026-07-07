@@ -59,7 +59,6 @@
 
 	{#if lessonWord.sentence}
 		<div class="example">
-			<div class="detail-label">Example</div>
 			<SentenceRevealCard
 				sentence={lessonWord.sentence}
 				translationOverride={lessonWord.sentenceTranslation}

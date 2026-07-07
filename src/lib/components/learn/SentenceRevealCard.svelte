@@ -72,7 +72,6 @@
 	{/if}
 	{#if revealed}
 		<div class="translation">
-			<div class="translation-label">Translation</div>
 			<p class="translation-text">{translation}</p>
 		</div>
 		{#if grammarNotes?.trim()}
@@ -125,14 +124,6 @@
 	.translation {
 		display: grid;
 		gap: 0.2rem;
-	}
-
-	.translation-label {
-		color: var(--ink-mute);
-		font-size: 11px;
-		font-weight: 700;
-		letter-spacing: 0.08em;
-		text-transform: uppercase;
 	}
 
 	.translation-text {

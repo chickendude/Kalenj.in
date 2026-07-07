@@ -1,5 +1,6 @@
 import type { PartOfSpeech } from '@prisma/client';
 import { isPartOfSpeech } from '$lib/parts-of-speech';
+import { combinePluralFormVariants } from '$lib/plural-form-variants';
 
 export const MAX_KALENJIN_LENGTH = 1000;
 export const MAX_TRANSLATIONS_LENGTH = 500;
@@ -15,6 +16,7 @@ export type WordSuggestionInput = {
 	notes: string | null;
 	alternativeSpellings: string | null;
 	pluralForm: string | null;
+	incertainForm: string | null;
 	isPluralOnly: boolean;
 	isSingularOnly: boolean;
 	alternativePluralForms: string | null;
@@ -72,6 +74,8 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 	const notes = readTrimmed(formData, 'notes');
 	const alternativeSpellings = readTrimmed(formData, 'alternativeSpellings');
 	const pluralFormRaw = readTrimmed(formData, 'pluralForm');
+	const incertainFormRaw = readTrimmed(formData, 'incertainForm');
+	const alternativeIncertainForms = readTrimmed(formData, 'alternativeIncertainForms');
 	const isPluralOnlyRaw = readTrimmed(formData, 'isPluralOnly');
 	const isSingularOnlyRaw = readTrimmed(formData, 'isSingularOnly');
 	const alternativePluralForms = readTrimmed(formData, 'alternativePluralForms');
@@ -108,6 +112,18 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 			error: `Plural form is too long (max ${MAX_PLURAL_LENGTH} characters).`
 		};
 	}
+	if (incertainFormRaw.length > MAX_PLURAL_LENGTH) {
+		return {
+			ok: false,
+			error: `Incertain form is too long (max ${MAX_PLURAL_LENGTH} characters).`
+		};
+	}
+	if (alternativeIncertainForms.length > MAX_ALT_SPELLINGS_LENGTH) {
+		return {
+			ok: false,
+			error: `Alternative incertain forms are too long (max ${MAX_ALT_SPELLINGS_LENGTH} characters).`
+		};
+	}
 	if (alternativePluralForms.length > MAX_ALT_SPELLINGS_LENGTH) {
 		return {
 			ok: false,
@@ -127,6 +143,8 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 	const isPluralOnly = canHavePlural && isPluralOnlyRaw === 'on';
 	// Plural-only and singular-only are mutually exclusive; plural-only wins.
 	const isSingularOnly = canHavePlural && !isPluralOnly && isSingularOnlyRaw === 'on';
+	// The incertain singular is noun-only and can't exist on a plural-only noun.
+	const canHaveIncertain = partOfSpeech === 'NOUN' && !isPluralOnly;
 	const isVerb = partOfSpeech === 'VERB';
 
 	return {
@@ -139,6 +157,9 @@ export function parseWordSuggestion(formData: FormData): SuggestionParseResult<W
 			alternativeSpellings: alternativeSpellings || null,
 			pluralForm:
 				canHavePlural && !isPluralOnly && !isSingularOnly ? pluralFormRaw || null : null,
+			incertainForm: canHaveIncertain
+				? combinePluralFormVariants(incertainFormRaw, alternativeIncertainForms) || null
+				: null,
 			isPluralOnly,
 			isSingularOnly,
 			alternativePluralForms:

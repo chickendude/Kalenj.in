@@ -16,21 +16,23 @@ type WordRow = {
 	translations: string;
 	partOfSpeech: PartOfSpeech | null;
 	pluralForm: string | null;
+	incertainForm: string | null;
 	isPluralOnly: boolean;
 	isSingularOnly: boolean;
 	audioUrl: string | null;
 	pluralAudioUrl: string | null;
+	incertainAudioUrl: string | null;
 };
 
 export type RecordingTarget = {
 	id: string;
 	targetId: string;
-	targetType: 'word' | 'word-plural';
+	targetType: 'word' | 'word-plural' | 'word-incertain';
 	primary: string;
 	secondary: string;
 	wordKalenjin: string;
 	wordSlug: string;
-	kind: 'singular' | 'plural';
+	kind: 'singular' | 'plural' | 'incertain';
 };
 
 function pluralEligible(word: {
@@ -43,6 +45,13 @@ function pluralEligible(word: {
 		!word.isPluralOnly &&
 		!word.isSingularOnly
 	);
+}
+
+function incertainEligible(word: {
+	partOfSpeech: PartOfSpeech | null;
+	isPluralOnly: boolean;
+}): boolean {
+	return word.partOfSpeech === 'NOUN' && !word.isPluralOnly;
 }
 
 function buildTargets(words: WordRow[]): RecordingTarget[] {
@@ -72,6 +81,18 @@ function buildTargets(words: WordRow[]): RecordingTarget[] {
 				kind: 'plural'
 			});
 		}
+		if (incertainEligible(word) && word.incertainForm && !word.incertainAudioUrl) {
+			targets.push({
+				id: `${word.id}:incertain`,
+				targetId: word.id,
+				targetType: 'word-incertain',
+				primary: word.incertainForm,
+				secondary: `incertain of ${word.kalenjin} — ${word.translations}`,
+				wordKalenjin: word.kalenjin,
+				wordSlug: word.slug,
+				kind: 'incertain'
+			});
+		}
 	}
 	return targets;
 }
@@ -86,6 +107,12 @@ function missingAudioWhere(): Prisma.WordWhereInput {
 				isSingularOnly: false,
 				pluralForm: { not: null },
 				pluralAudioUrl: null
+			},
+			{
+				partOfSpeech: 'NOUN',
+				isPluralOnly: false,
+				incertainForm: { not: null },
+				incertainAudioUrl: null
 			}
 		]
 	};
@@ -113,7 +140,14 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		pluralForm: { not: null },
 		pluralAudioUrl: null
 	};
+	const incertainMissingWhereBase: Prisma.WordWhereInput = {
+		partOfSpeech: 'NOUN',
+		isPluralOnly: false,
+		incertainForm: { not: null },
+		incertainAudioUrl: null
+	};
 	const pluralEligibleByFilter = !pos || pos === 'NOUN' || pos === 'ADJECTIVE';
+	const incertainEligibleByFilter = !pos || pos === 'NOUN';
 
 	let words: WordRow[];
 	let totalTargets: number;
@@ -123,7 +157,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		const scoped = searched.filter(
 			(w) =>
 				!w.audioUrl ||
-				(pluralEligible(w) && w.pluralForm && !w.pluralAudioUrl)
+				(pluralEligible(w) && w.pluralForm && !w.pluralAudioUrl) ||
+				(incertainEligible(w) && w.incertainForm && !w.incertainAudioUrl)
 		);
 		const posFiltered = filterByPartOfSpeech(scoped, pos);
 		words = posFiltered.map((w) => ({
@@ -133,38 +168,46 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			translations: w.translations,
 			partOfSpeech: w.partOfSpeech,
 			pluralForm: w.pluralForm,
+			incertainForm: w.incertainForm,
 			isPluralOnly: w.isPluralOnly,
 			isSingularOnly: w.isSingularOnly,
 			audioUrl: w.audioUrl,
-			pluralAudioUrl: w.pluralAudioUrl
+			pluralAudioUrl: w.pluralAudioUrl,
+			incertainAudioUrl: w.incertainAudioUrl
 		}));
 		const targetsForCount = buildTargets(words);
 		totalTargets = targetsForCount.length;
 	} else {
-		const [singularMissingCount, pluralMissingCount, rows] = await Promise.all([
-			prisma.word.count({ where: singularMissingWhere }),
-			pluralEligibleByFilter
-				? prisma.word.count({ where: pluralMissingWhereBase })
-				: Promise.resolve(0),
-			prisma.word.findMany({
-				where: filterWhere,
-				orderBy: [{ kalenjin: 'asc' }],
-				take: FETCH_LIMIT,
-				select: {
-					id: true,
-					kalenjin: true,
-					slug: true,
-					translations: true,
-					partOfSpeech: true,
-					pluralForm: true,
-					isPluralOnly: true,
-					isSingularOnly: true,
-					audioUrl: true,
-					pluralAudioUrl: true
-				}
-			})
-		]);
-		totalTargets = singularMissingCount + pluralMissingCount;
+		const [singularMissingCount, pluralMissingCount, incertainMissingCount, rows] =
+			await Promise.all([
+				prisma.word.count({ where: singularMissingWhere }),
+				pluralEligibleByFilter
+					? prisma.word.count({ where: pluralMissingWhereBase })
+					: Promise.resolve(0),
+				incertainEligibleByFilter
+					? prisma.word.count({ where: incertainMissingWhereBase })
+					: Promise.resolve(0),
+				prisma.word.findMany({
+					where: filterWhere,
+					orderBy: [{ kalenjin: 'asc' }],
+					take: FETCH_LIMIT,
+					select: {
+						id: true,
+						kalenjin: true,
+						slug: true,
+						translations: true,
+						partOfSpeech: true,
+						pluralForm: true,
+						incertainForm: true,
+						isPluralOnly: true,
+						isSingularOnly: true,
+						audioUrl: true,
+						pluralAudioUrl: true,
+						incertainAudioUrl: true
+					}
+				})
+			]);
+		totalTargets = singularMissingCount + pluralMissingCount + incertainMissingCount;
 		words = rows;
 	}
 

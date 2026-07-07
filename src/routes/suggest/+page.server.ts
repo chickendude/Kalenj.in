@@ -79,6 +79,8 @@ export const actions: Actions = {
 					notes: String(formData.get('notes') ?? ''),
 					alternativeSpellings: String(formData.get('alternativeSpellings') ?? ''),
 					pluralForm: String(formData.get('pluralForm') ?? ''),
+					incertainForm: String(formData.get('incertainForm') ?? ''),
+					alternativeIncertainForms: String(formData.get('alternativeIncertainForms') ?? ''),
 					isPluralOnly: String(formData.get('isPluralOnly') ?? '') === 'on',
 					isSingularOnly: String(formData.get('isSingularOnly') ?? '') === 'on',
 					alternativePluralForms: String(formData.get('alternativePluralForms') ?? ''),

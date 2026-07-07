@@ -103,6 +103,7 @@ model User {
   emailVerificationTokens      EmailVerificationToken[]
   recordedWordAudio            Word[]                   @relation("WordAudioRecorder")
   recordedWordPluralAudio      Word[]                   @relation("WordPluralAudioRecorder")
+  recordedWordIncertainAudio   Word[]                   @relation("WordIncertainAudioRecorder")
   recordedSentenceAudio        ExampleSentence[]        @relation("ExampleSentenceAudioRecorder")
   submittedWordSuggestions     WordSuggestion[]         @relation("WordSuggestionSubmitter")
   reviewedWordSuggestions      WordSuggestion[]         @relation("WordSuggestionReviewer")
@@ -144,6 +145,8 @@ model Word {
   notes                   String?
   pluralForm              String?
   pluralFormNormalized    String?
+  incertainForm           String?
+  incertainFormNormalized String?
   isPluralOnly            Boolean                       @default(false)
   isSingularOnly          Boolean                       @default(false)
   isSwahiliLoan           Boolean                       @default(false)
@@ -162,6 +165,10 @@ model Word {
   pluralAudioRecordedById String?
   pluralAudioRecordedAt   DateTime?
   pluralAudioRecordedBy   User?                         @relation("WordPluralAudioRecorder", fields: [pluralAudioRecordedById], references: [id], onDelete: SetNull)
+  incertainAudioUrl          String?
+  incertainAudioRecordedById String?
+  incertainAudioRecordedAt   DateTime?
+  incertainAudioRecordedBy   User?                      @relation("WordIncertainAudioRecorder", fields: [incertainAudioRecordedById], references: [id], onDelete: SetNull)
   createdAt               DateTime                      @default(now())
   updatedAt               DateTime                      @updatedAt
   sentences               WordSentence[]
@@ -179,9 +186,11 @@ model Word {
   @@index([kalenjin])
   @@index([kalenjinNormalized])
   @@index([pluralFormNormalized])
+  @@index([incertainFormNormalized])
   @@index([translations])
   @@index([kalenjinNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_kalenjinNormalized_trgm_idx")
   @@index([pluralFormNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_pluralFormNormalized_trgm_idx")
+  @@index([incertainFormNormalized(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_incertainFormNormalized_trgm_idx")
   @@index([translations(ops: raw("gin_trgm_ops"))], type: Gin, map: "Word_translations_trgm_idx")
 }
 
@@ -439,6 +448,7 @@ model WordSuggestion {
   notes                  String?
   alternativeSpellings   String?
   pluralForm             String?
+  incertainForm          String?
   isPluralOnly           Boolean          @default(false)
   isSingularOnly         Boolean          @default(false)
   alternativePluralForms String?

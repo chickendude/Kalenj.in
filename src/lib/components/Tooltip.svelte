@@ -47,7 +47,7 @@
 		position: absolute;
 		text-align: center;
 		transition: opacity 0.12s ease-out;
-		white-space: normal;
+		white-space: pre-line;
 		overflow-wrap: anywhere;
 		width: max-content;
 		z-index: 50;

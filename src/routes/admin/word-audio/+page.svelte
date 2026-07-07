@@ -34,7 +34,7 @@
 	type RecorderItem = {
 		id: string;
 		targetId: string;
-		targetType: 'word' | 'word-plural';
+		targetType: 'word' | 'word-plural' | 'word-incertain';
 		primary: string;
 		secondary: string;
 		href?: string;
@@ -131,7 +131,12 @@
 				kalenjin: target.wordKalenjin,
 				slug: target.wordSlug
 			}),
-			badge: target.kind === 'plural' ? 'Plural' : undefined
+			badge:
+				target.kind === 'plural'
+					? 'Plural'
+					: target.kind === 'incertain'
+						? 'Incertain'
+						: undefined
 		}));
 	}
 
@@ -308,6 +313,8 @@
 							<td class="col-word">
 								{#if target.kind === 'plural'}
 									<span class="form-badge">Plural</span>
+								{:else if target.kind === 'incertain'}
+									<span class="form-badge">Incertain</span>
 								{/if}
 								<a
 									href={dictionaryEntryHref({

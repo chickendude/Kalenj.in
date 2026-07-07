@@ -41,7 +41,11 @@
 			const slots: Slot[] = [];
 			for (const char of targetWord) {
 				if (!isTypeableChar(char)) {
-					slots.push({ char, state: 'given', caret: false });
+					// Apostrophes stay hidden — showing them gives away letters
+					// like ng'. They're never typed and never marked wrong.
+					if (normalizeAnswerChar(char) !== "'") {
+						slots.push({ char, state: 'given', caret: false });
+					}
 					continue;
 				}
 				const typedChar = typed[typedIndex];

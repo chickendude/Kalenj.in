@@ -1,7 +1,6 @@
 import { error, json } from '@sveltejs/kit';
 import { isVocabularyLessonType } from '$lib/course';
 import { prisma } from '$lib/server/prisma';
-import { generateUniqueLessonSlug } from '$lib/server/lesson-slugs';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -30,7 +29,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 
 	const lesson = await prisma.lesson.findUnique({
 		where: { id: params.id },
-		select: { id: true, type: true, storyId: true, title: true }
+		select: { id: true, type: true, storyId: true }
 	});
 
 	if (!lesson) {
@@ -42,13 +41,11 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			error(400, 'Title is required.');
 		}
 
+		// Slugs are position-based (lesson-N/story-N), so renames don't touch them.
 		await prisma.$transaction(async (tx) => {
-			// Renames refresh the slug (no alias history, like dictionary slugs).
-			const slug =
-				lesson.title === value ? undefined : await generateUniqueLessonSlug(tx, value, lesson.id);
 			await tx.lesson.update({
 				where: { id: lesson.id },
-				data: { title: value, ...(slug ? { slug } : {}) }
+				data: { title: value }
 			});
 
 			if (lesson.storyId) {

@@ -1,52 +1,47 @@
-import { Prisma, type PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import type { Prisma, PrismaClient } from '@prisma/client';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
-export function slugifyLessonTitle(title: string): string {
-	const slug = title
-		.normalize('NFKD')
-		.replace(/[̀-ͯ]/g, '')
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, '-')
-		.replace(/^-+|-+$/g, '')
-		.replace(/-{2,}/g, '-');
+/**
+ * Lesson slugs are systematic, not title-based (titles aren't unique):
+ * vocabulary lessons are `lesson-1`, `lesson-2`, … and story lessons
+ * `story-1`, `story-2`, …, each numbered by course position (level, then
+ * lessonOrder, drafts included so publishing doesn't renumber anything).
+ *
+ * Because the numbers depend on position, callers must re-sync after any
+ * structural change — creating, deleting, reordering, or re-typing a lesson —
+ * inside the same transaction.
+ */
+export async function syncLessonSlugs(client: PrismaLike): Promise<void> {
+	const lessons = await client.lesson.findMany({
+		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }],
+		select: { id: true, type: true, slug: true }
+	});
 
-	return slug || 'lesson';
+	let lessonCount = 0;
+	let storyCount = 0;
+	const changed: Array<{ id: string; slug: string }> = [];
+	for (const lesson of lessons) {
+		const slug =
+			lesson.type === 'STORY' ? `story-${++storyCount}` : `lesson-${++lessonCount}`;
+		if (slug !== lesson.slug) changed.push({ id: lesson.id, slug });
+	}
+	if (changed.length === 0) return;
+
+	// Two phases so renumbering can't trip the unique index mid-shift.
+	for (const entry of changed) {
+		await client.lesson.update({
+			where: { id: entry.id },
+			data: { slug: `tmp-${entry.id}` }
+		});
+	}
+	for (const entry of changed) {
+		await client.lesson.update({ where: { id: entry.id }, data: { slug: entry.slug } });
+	}
 }
 
-/**
- * Slug generation for lessons, mirroring generateUniqueWordSlug: advisory
- * lock on the base slug, then the first free `base`, `base-1`, `base-2`, ...
- */
-export async function generateUniqueLessonSlug(
-	client: PrismaLike,
-	title: string,
-	excludeLessonId?: string | null
-): Promise<string> {
-	const baseSlug = slugifyLessonTitle(title);
-	await client.$executeRaw(
-		Prisma.sql`SELECT pg_advisory_xact_lock(hashtext(${`lesson-slug:${baseSlug}`})::bigint)`
-	);
-	const existing = await client.lesson.findMany({
-		where: {
-			OR: [{ slug: baseSlug }, { slug: { startsWith: `${baseSlug}-` } }],
-			...(excludeLessonId ? { id: { not: excludeLessonId } } : {})
-		},
-		select: { slug: true }
-	});
-	const suffixPattern = new RegExp(
-		`^${baseSlug.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:-\\d+)?$`
-	);
-	const used = new Set(
-		existing.map((lesson) => lesson.slug).filter((slug) => suffixPattern.test(slug))
-	);
-
-	let suffix = 0;
-	let candidate = baseSlug;
-	while (used.has(candidate)) {
-		suffix += 1;
-		candidate = `${baseSlug}-${suffix}`;
-	}
-
-	return candidate;
+/** Unique throwaway slug for a freshly created lesson, replaced by the sync. */
+export function placeholderLessonSlug(): string {
+	return `pending-${randomUUID()}`;
 }

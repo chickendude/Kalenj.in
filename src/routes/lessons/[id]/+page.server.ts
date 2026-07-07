@@ -9,7 +9,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
-import { generateUniqueLessonSlug } from '$lib/server/lesson-slugs';
+import { syncLessonSlugs } from '$lib/server/lesson-slugs';
 import {
 	findMatchingExampleSentence,
 	formatSentenceInUseError
@@ -700,19 +700,12 @@ export const actions: Actions = {
 			await prisma.$transaction(async (tx) => {
 				const existingLesson = await tx.lesson.findUnique({
 					where: { id: params.id },
-					select: { storyId: true, level: true, title: true }
+					select: { storyId: true, level: true }
 				});
 
 				if (!existingLesson) {
 					throw new Error('Lesson not found.');
 				}
-
-				// Renames refresh the slug (no alias history — same tradeoff as
-				// dictionary slugs).
-				const slug =
-					existingLesson.title === title
-						? undefined
-						: await generateUniqueLessonSlug(tx, title, params.id);
 
 				let nextStoryId: string | null = null;
 
@@ -735,7 +728,6 @@ export const actions: Actions = {
 					where: { id: params.id },
 					data: {
 						title,
-						...(slug ? { slug } : {}),
 						level: existingLesson.level,
 						lessonOrder,
 						type,
@@ -744,6 +736,9 @@ export const actions: Actions = {
 						storyId: nextStoryId
 					}
 				});
+
+				// Order or type may have changed — renumber lesson-N/story-N slugs.
+				await syncLessonSlugs(tx);
 			});
 		} catch (updateError) {
 			return fail(400, {
@@ -796,6 +791,8 @@ export const actions: Actions = {
 
 		await prisma.$transaction(async (tx) => {
 			await tx.lesson.delete({ where: { id: params.id } });
+			// Later lessons move up a position — renumber lesson-N/story-N slugs.
+			await syncLessonSlugs(tx);
 
 			if (storyId) {
 				await tx.story.delete({ where: { id: storyId } });

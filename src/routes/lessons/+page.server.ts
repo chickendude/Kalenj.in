@@ -15,7 +15,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
-import { generateUniqueLessonSlug } from '$lib/server/lesson-slugs';
+import { placeholderLessonSlug, syncLessonSlugs } from '$lib/server/lesson-slugs';
 import { validateStoryImportText } from '$lib/story-import';
 import { syncStorySentences } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
@@ -124,10 +124,10 @@ async function createLessonRecord(
 		await syncStorySentences(tx, story.id, storyImportText);
 	}
 
-	return tx.lesson.create({
+	const lesson = await tx.lesson.create({
 		data: {
 			title,
-			slug: await generateUniqueLessonSlug(tx, title),
+			slug: placeholderLessonSlug(),
 			level,
 			lessonOrder,
 			type,
@@ -136,6 +136,10 @@ async function createLessonRecord(
 			storyId: story?.id ?? null
 		}
 	});
+
+	// Positions shifted (or a new one appeared) — renumber lesson-N/story-N.
+	await syncLessonSlugs(tx);
+	return lesson;
 }
 
 async function getUninstructedWordsByLessonId(

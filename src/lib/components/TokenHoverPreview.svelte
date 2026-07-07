@@ -2,6 +2,7 @@
 	import { onMount, tick } from 'svelte';
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { getSentenceTimeAnnotation } from '$lib/time-annotations';
+	import { renderWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
 
 	type TokenWord = {
@@ -259,7 +260,9 @@
 				<span class="lemma-line"
 					><em>{popup.kalenjin}</em
 					>{#if popup.english}<span class="lemma-sep" aria-hidden="true">|</span><span
-							>{popup.english}</span
+							><!-- eslint-disable-next-line svelte/no-at-html-tags — renderWordLinks escapes HTML -->{@html renderWordLinks(
+								popup.english
+							)}</span
 						>{/if}</span
 				>
 				{#if popup.westernTime}
@@ -525,6 +528,17 @@
 	.lemma-sep {
 		margin: 0 0.3rem;
 		color: color-mix(in oklab, var(--tooltip-ink) 60%, transparent);
+	}
+
+	.lemma-line :global(a) {
+		color: inherit;
+		text-decoration: underline;
+		text-decoration-color: color-mix(in oklab, var(--tooltip-ink) 45%, transparent);
+		text-underline-offset: 2px;
+	}
+
+	.lemma-line :global(a:hover) {
+		text-decoration-color: currentColor;
 	}
 
 	.tooltip-entry-link {

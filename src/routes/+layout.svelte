@@ -40,7 +40,10 @@
 			{ href: '/corpus', label: 'Corpus' }
 		];
 		if (data.user) {
-			items.push({ href: '/lessons', label: 'Lessons' });
+			items.push({ href: '/learn', label: 'Learn' });
+			if (data.user.role === 'ADMIN' || data.user.role === 'MANAGER') {
+				items.push({ href: '/lessons', label: 'Lessons' });
+			}
 			if (data.user.role === 'USER') {
 				items.push({ href: '/suggest', label: 'Contribute' });
 			}

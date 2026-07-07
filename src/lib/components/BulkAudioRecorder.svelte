@@ -8,7 +8,7 @@
 	import BulkConfirmDialog from './BulkConfirmDialog.svelte';
 
 	type TargetType = 'word' | 'sentence';
-	type ItemTargetType = 'word' | 'word-plural' | 'sentence';
+	type ItemTargetType = 'word' | 'word-plural' | 'word-incertain' | 'sentence';
 
 	type RecorderItem = {
 		id: string;

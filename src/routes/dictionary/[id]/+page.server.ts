@@ -200,6 +200,8 @@ export const actions: Actions = {
 		const notes = readText(formData, 'notes');
 		const partOfSpeechRaw = readText(formData, 'partOfSpeech');
 		const pluralFormRaw = readText(formData, 'pluralForm');
+		const incertainFormRaw = readText(formData, 'incertainForm');
+		const alternativeIncertainForms = readText(formData, 'alternativeIncertainForms');
 		const isPluralOnlyRaw = readText(formData, 'isPluralOnly');
 		const isSingularOnlyRaw = readText(formData, 'isSingularOnly');
 		const isSwahiliLoanRaw = readText(formData, 'isSwahiliLoan');
@@ -212,6 +214,8 @@ export const actions: Actions = {
 			notes,
 			partOfSpeech: partOfSpeechRaw,
 			pluralForm: pluralFormRaw,
+			incertainForm: incertainFormRaw,
+			alternativeIncertainForms,
 			isPluralOnly: isPluralOnlyRaw === 'on',
 			isSingularOnly: isSingularOnlyRaw === 'on',
 			isSwahiliLoan: isSwahiliLoanRaw === 'on',
@@ -244,6 +248,13 @@ export const actions: Actions = {
 			canHavePlural && !isPluralOnly && !isSingularOnly && combinedPluralForms
 				? combinedPluralForms
 				: null;
+		const canHaveIncertain = partOfSpeech === 'NOUN' && !isPluralOnly;
+		const combinedIncertainForms = combinePluralFormVariants(
+			incertainFormRaw,
+			alternativeIncertainForms
+		);
+		const incertainForm =
+			canHaveIncertain && combinedIncertainForms ? combinedIncertainForms : null;
 
 		const presentTense =
 			partOfSpeech === 'VERB' ? readPresentTenseFromFormData(formData) : null;
@@ -276,6 +287,7 @@ export const actions: Actions = {
 					alternativeSpellings,
 					partOfSpeech,
 					pluralForm,
+					incertainForm,
 					isPluralOnly,
 					isSingularOnly,
 					isSwahiliLoan: isSwahiliLoanRaw === 'on',

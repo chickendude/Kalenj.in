@@ -29,6 +29,8 @@
 		isSingularOnly?: boolean;
 		isSwahiliLoan?: boolean;
 		alternativePluralForms?: string;
+		incertainForm?: string;
+		alternativeIncertainForms?: string;
 		presentAnee?: string;
 		presentInyee?: string;
 		presentInee?: string;
@@ -93,6 +95,8 @@
 	let isSingularOnly = $state(false);
 	let isSwahiliLoan = $state(false);
 	let alternativePluralForms = $state('');
+	let incertainForm = $state('');
+	let alternativeIncertainForms = $state('');
 	let presentAnee = $state('');
 	let presentInyee = $state('');
 	let presentInee = $state('');
@@ -196,6 +200,8 @@
 		isSingularOnly = false;
 		isSwahiliLoan = false;
 		alternativePluralForms = '';
+		incertainForm = '';
+		alternativeIncertainForms = '';
 		presentAnee = '';
 		presentInyee = '';
 		presentInee = '';
@@ -222,6 +228,9 @@
 		if (values.isSwahiliLoan !== undefined) isSwahiliLoan = values.isSwahiliLoan;
 		if (values.alternativePluralForms !== undefined)
 			alternativePluralForms = values.alternativePluralForms;
+		if (values.incertainForm !== undefined) incertainForm = values.incertainForm;
+		if (values.alternativeIncertainForms !== undefined)
+			alternativeIncertainForms = values.alternativeIncertainForms;
 		if (values.presentAnee !== undefined) presentAnee = values.presentAnee;
 		if (values.presentInyee !== undefined) presentInyee = values.presentInyee;
 		if (values.presentInee !== undefined) presentInee = values.presentInee;
@@ -379,6 +388,8 @@
 					bind:isPluralOnly
 					bind:isSingularOnly
 					bind:alternativePluralForms
+					bind:incertainForm
+					bind:alternativeIncertainForms
 					bind:presentAnee
 					bind:presentInyee
 					bind:presentInee

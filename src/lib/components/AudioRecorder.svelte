@@ -6,7 +6,7 @@
 	import { toast } from '$lib/stores/toast.svelte';
 
 	type Props = {
-		targetType: 'word' | 'word-plural' | 'sentence';
+		targetType: 'word' | 'word-plural' | 'word-incertain' | 'sentence';
 		targetId: string;
 		currentAudioUrl: string | null | undefined;
 	};

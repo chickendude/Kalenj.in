@@ -34,6 +34,12 @@ const TARGET_LIMITS: Record<
 		minProcessedSec: 0.15,
 		maxProcessedSec: 6
 	},
+	'word-incertain': {
+		minSegmentSec: 0.2,
+		maxSegmentSec: 8,
+		minProcessedSec: 0.15,
+		maxProcessedSec: 6
+	},
 	sentence: {
 		minSegmentSec: 0.4,
 		maxSegmentSec: 25,

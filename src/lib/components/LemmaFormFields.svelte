@@ -24,6 +24,8 @@
 		isPluralOnly = $bindable(false),
 		isSingularOnly = $bindable(false),
 		alternativePluralForms = $bindable(''),
+		incertainForm = $bindable(''),
+		alternativeIncertainForms = $bindable(''),
 		presentAnee = $bindable(''),
 		presentInyee = $bindable(''),
 		presentInee = $bindable(''),
@@ -45,6 +47,8 @@
 		isPluralOnly?: boolean;
 		isSingularOnly?: boolean;
 		alternativePluralForms?: string;
+		incertainForm?: string;
+		alternativeIncertainForms?: string;
 		presentAnee?: string;
 		presentInyee?: string;
 		presentInee?: string;
@@ -65,6 +69,7 @@
 		Boolean(partOfSpeech) && (OTHER_POS as readonly string[]).includes(partOfSpeech)
 	);
 	const needsPlural = $derived(partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE');
+	const needsIncertain = $derived(partOfSpeech === 'NOUN');
 	const needsConjugations = $derived(partOfSpeech === 'VERB');
 	const needsAdditional = $derived(needsPlural || needsConjugations);
 
@@ -107,6 +112,10 @@
 			isSingularOnly = false;
 			alternativePluralForms = '';
 		}
+		if (partOfSpeech !== 'NOUN') {
+			incertainForm = '';
+			alternativeIncertainForms = '';
+		}
 		if (partOfSpeech !== 'VERB') {
 			clearConjugations();
 		}
@@ -148,6 +157,16 @@
 		type="hidden"
 		name="alternativePluralForms"
 		value={needsPlural && !isPluralOnly && !isSingularOnly ? alternativePluralForms : ''}
+	/>
+	<input
+		type="hidden"
+		name="incertainForm"
+		value={needsIncertain && !isPluralOnly ? incertainForm : ''}
+	/>
+	<input
+		type="hidden"
+		name="alternativeIncertainForms"
+		value={needsIncertain && !isPluralOnly ? alternativeIncertainForms : ''}
 	/>
 	<input type="hidden" name="presentAnee" value={needsConjugations ? presentAnee : ''} />
 	<input type="hidden" name="presentInyee" value={needsConjugations ? presentInyee : ''} />
@@ -243,6 +262,32 @@
 				<span class="lemma-forms-label">Additional Forms</span>
 			</div>
 			{#if needsPlural}
+				{#if needsIncertain}
+					<div class="lemma-form-grid">
+						<div class="field">
+							<label for="{idPrefix}-incertain">Incertain Singular</label>
+							<input
+								id="{idPrefix}-incertain"
+								class="input"
+								placeholder="e.g. inganan"
+								disabled={isPluralOnly}
+								autocomplete="off"
+								bind:value={incertainForm}
+							/>
+						</div>
+						<div class="field">
+							<label for="{idPrefix}-incertain-alt">Alternative</label>
+							<input
+								id="{idPrefix}-incertain-alt"
+								class="input"
+								placeholder="comma, separated"
+								disabled={isPluralOnly}
+								autocomplete="off"
+								bind:value={alternativeIncertainForms}
+							/>
+						</div>
+					</div>
+				{/if}
 				<div class="lemma-form-grid">
 					<div class="field">
 						<label for="{idPrefix}-plural">Plural</label>

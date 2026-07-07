@@ -3,6 +3,7 @@
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import AddWordDialog, { type AddWordInitial } from '$lib/components/AddWordDialog.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dictionaryEntryHref } from '$lib/word-url';
 	import { invalidateAll } from '$app/navigation';
@@ -54,6 +55,9 @@
 			isPluralOnly: s.isPluralOnly ?? false,
 			isSingularOnly: s.isSingularOnly ?? false,
 			alternativePluralForms: s.alternativePluralForms ?? '',
+			incertainForm: splitPluralFormVariants(s.incertainForm ?? '').pluralForm,
+			alternativeIncertainForms: splitPluralFormVariants(s.incertainForm ?? '')
+				.alternativePluralForms,
 			presentAnee: s.presentAnee ?? '',
 			presentInyee: s.presentInyee ?? '',
 			presentInee: s.presentInee ?? '',

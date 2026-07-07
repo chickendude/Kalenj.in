@@ -5,6 +5,7 @@
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import LemmaFormFields from '$lib/components/LemmaFormFields.svelte';
 	import Modal from '$lib/components/Modal.svelte';
+	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { PartOfSpeech, SentenceSuggestion, WordSuggestion } from '@prisma/client';
@@ -55,6 +56,8 @@
 	let isPluralOnly = $state(false);
 	let isSingularOnly = $state(false);
 	let alternativePluralForms = $state('');
+	let incertainForm = $state('');
+	let alternativeIncertainForms = $state('');
 	let presentAnee = $state('');
 	let presentInyee = $state('');
 	let presentInee = $state('');
@@ -77,6 +80,8 @@
 		isPluralOnly = false;
 		isSingularOnly = false;
 		alternativePluralForms = '';
+		incertainForm = '';
+		alternativeIncertainForms = '';
 		presentAnee = '';
 		presentInyee = '';
 		presentInee = '';
@@ -105,6 +110,8 @@
 		isPluralOnly: boolean;
 		isSingularOnly: boolean;
 		alternativePluralForms: string;
+		incertainForm: string;
+		alternativeIncertainForms: string;
 		presentAnee: string;
 		presentInyee: string;
 		presentInee: string;
@@ -134,6 +141,8 @@
 				isPluralOnly = values.isPluralOnly;
 				isSingularOnly = values.isSingularOnly;
 				alternativePluralForms = values.alternativePluralForms;
+				incertainForm = values.incertainForm;
+				alternativeIncertainForms = values.alternativeIncertainForms;
 				presentAnee = values.presentAnee;
 				presentInyee = values.presentInyee;
 				presentInee = values.presentInee;
@@ -163,6 +172,11 @@
 			isPluralOnly = s.isPluralOnly ?? false;
 			isSingularOnly = s.isSingularOnly ?? false;
 			alternativePluralForms = s.alternativePluralForms ?? '';
+			{
+				const incertainVariants = splitPluralFormVariants(s.incertainForm ?? '');
+				incertainForm = incertainVariants.pluralForm;
+				alternativeIncertainForms = incertainVariants.alternativePluralForms;
+			}
 			presentAnee = s.presentAnee ?? '';
 			presentInyee = s.presentInyee ?? '';
 			presentInee = s.presentInee ?? '';
@@ -407,6 +421,8 @@
 			bind:isPluralOnly
 			bind:isSingularOnly
 			bind:alternativePluralForms
+			bind:incertainForm
+			bind:alternativeIncertainForms
 			bind:presentAnee
 			bind:presentInyee
 			bind:presentInee

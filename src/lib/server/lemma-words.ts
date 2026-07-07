@@ -1,5 +1,9 @@
 import { Prisma, type PartOfSpeech } from '@prisma/client';
-import { prepareAlternativeSpellings, preparePluralForms } from './kalenjin-word-search';
+import {
+	prepareAlternativeSpellings,
+	prepareIncertainForm,
+	preparePluralForms
+} from './kalenjin-word-search';
 import { normalizeLemma } from './normalize-lemma';
 import { generateUniqueWordSlug } from './word-slugs';
 
@@ -34,6 +38,9 @@ export function buildWordSelect() {
 		notes: true,
 		partOfSpeech: true,
 		pluralForm: true,
+		incertainForm: true,
+		incertainFormNormalized: true,
+		incertainAudioUrl: true,
 		isPluralOnly: true,
 		isSingularOnly: true,
 		isSwahiliLoan: true,
@@ -63,6 +70,7 @@ export type LemmaWordInput = {
 	alternativeSpellings?: string | null;
 	partOfSpeech?: PartOfSpeech | null;
 	pluralForm?: string | null;
+	incertainForm?: string | null;
 	isPluralOnly?: boolean;
 	isSingularOnly?: boolean;
 	isSwahiliLoan?: boolean;
@@ -103,6 +111,14 @@ export async function createOrUpdateLinkedWord(
 		canHavePlural && !isPluralOnly && !isSingularOnly
 			? preparePluralForms(input.pluralForm ?? '')
 			: { pluralForm: null, pluralFormNormalized: null };
+	// The incertain singular is a noun-only alternate; a plural-only noun has no
+	// singular at all, so it cannot carry one.
+	const canHaveIncertain = input.partOfSpeech === 'NOUN';
+	const incertainProvided = input.incertainForm !== undefined;
+	const { incertainForm, incertainFormNormalized } =
+		canHaveIncertain && !isPluralOnly
+			? prepareIncertainForm(input.incertainForm ?? '')
+			: { incertainForm: null, incertainFormNormalized: null };
 	const presentTense: PresentTenseConjugations =
 		input.partOfSpeech === 'VERB' && input.presentTense
 			? input.presentTense
@@ -113,6 +129,12 @@ export async function createOrUpdateLinkedWord(
 	const isSingularOnlyPatch = isSingularOnlyProvided || !canHavePlural
 		? { isSingularOnly }
 		: {};
+	// Set it when explicitly provided, or force-clear it when the word can no
+	// longer hold one; otherwise leave the stored value untouched.
+	const incertainPatch =
+		incertainProvided || !canHaveIncertain || isPluralOnly
+			? { incertainForm, incertainFormNormalized }
+			: {};
 	const isSwahiliLoanPatch =
 		input.isSwahiliLoan !== undefined ? { isSwahiliLoan: input.isSwahiliLoan === true } : {};
 
@@ -135,6 +157,7 @@ export async function createOrUpdateLinkedWord(
 				partOfSpeech: input.partOfSpeech ?? null,
 				pluralForm,
 				pluralFormNormalized,
+				...incertainPatch,
 				...isPluralOnlyPatch,
 				...isSingularOnlyPatch,
 				...isSwahiliLoanPatch,
@@ -159,6 +182,8 @@ export async function createOrUpdateLinkedWord(
 			partOfSpeech: input.partOfSpeech ?? null,
 			pluralForm,
 			pluralFormNormalized,
+			incertainForm,
+			incertainFormNormalized,
 			isPluralOnly,
 			isSingularOnly,
 			...isSwahiliLoanPatch,

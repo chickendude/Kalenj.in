@@ -75,6 +75,21 @@
 	let isSingularOnly = $state(
 		untrack(() => Boolean((values as { isSingularOnly?: boolean }).isSingularOnly))
 	);
+	let incertainFormValue = $state(
+		untrack(
+			() =>
+				splitPluralFormVariants((values as { incertainForm?: string | null }).incertainForm ?? '')
+					.pluralForm
+		)
+	);
+	let alternativeIncertainFormsValue = $state(
+		untrack(() => {
+			const { alternativePluralForms } = splitPluralFormVariants(
+				(values as { incertainForm?: string | null }).incertainForm ?? ''
+			);
+			return (form?.values?.alternativeIncertainForms ?? alternativePluralForms) as string;
+		})
+	);
 	let isSwahiliLoan = $state(
 		untrack(() => Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan))
 	);
@@ -125,6 +140,14 @@
 		isSingularOnly = Boolean((values as { isSingularOnly?: boolean }).isSingularOnly);
 	});
 	$effect(() => {
+		const { pluralForm, alternativePluralForms } = splitPluralFormVariants(
+			(values as { incertainForm?: string | null }).incertainForm ?? ''
+		);
+		incertainFormValue = pluralForm;
+		alternativeIncertainFormsValue =
+			(form?.values?.alternativeIncertainForms ?? alternativePluralForms) as string;
+	});
+	$effect(() => {
 		isSwahiliLoan = Boolean((values as { isSwahiliLoan?: boolean }).isSwahiliLoan);
 	});
 	$effect(() => {
@@ -147,6 +170,7 @@
 			.filter((s) => s.length > 0)
 	);
 	const savedPluralForms = $derived(splitPluralFormVariants(data.word.pluralForm ?? ''));
+	const savedIncertainForms = $derived(splitPluralFormVariants(data.word.incertainForm ?? ''));
 	const savedAlternativeSpellings = $derived(
 		data.word.spellings.map((spelling) => spelling.spelling).join(', ')
 	);
@@ -160,6 +184,8 @@
 			alternativePluralFormsValue !== savedPluralForms.alternativePluralForms ||
 			isPluralOnly !== data.word.isPluralOnly ||
 			isSingularOnly !== data.word.isSingularOnly ||
+			incertainFormValue !== savedIncertainForms.pluralForm ||
+			alternativeIncertainFormsValue !== savedIncertainForms.alternativePluralForms ||
 			isSwahiliLoan !== data.word.isSwahiliLoan ||
 			imageDirty ||
 			presentAnee !== (data.word.presentAnee ?? '') ||
@@ -183,6 +209,9 @@
 		(data.word.partOfSpeech === 'NOUN' || data.word.partOfSpeech === 'ADJECTIVE') &&
 			data.word.isSingularOnly
 	);
+	const showIncertain = $derived(
+		data.word.partOfSpeech === 'NOUN' && Boolean(data.word.incertainForm)
+	);
 	const showConjugations = $derived(
 		(data.word.partOfSpeech === 'VERB' &&
 			[
@@ -204,6 +233,7 @@
 	const needsPluralInput = $derived(
 		partOfSpeechValue === 'NOUN' || partOfSpeechValue === 'ADJECTIVE'
 	);
+	const needsIncertainInput = $derived(partOfSpeechValue === 'NOUN');
 	const needsConjugationInputs = $derived(partOfSpeechValue === 'VERB');
 
 	let relatedQuery = $state('');
@@ -322,7 +352,67 @@
 						audioUrl={data.word.audioUrl}
 						label={`Play pronunciation of ${kalenjinValue}`}
 					/>
-					{#if partOfSpeechValue || isSwahiliLoan || showPlural || showPluralOnly || showSingularOnly}
+					{#if showIncertain || showPlural}
+						<div class="entry-forms">
+							{#if showIncertain}
+								{@const incertainVariants = splitPluralFormVariants(data.word.incertainForm)}
+								{@const primaryIncertain = incertainVariants.pluralForm}
+								{@const altIncertain = incertainVariants.alternativePluralForms}
+								<span class="entry-form">
+									<span class="entry-form-top">
+										{#if altIncertain}
+											<Tooltip label={altIncertain}>
+												<span class="entry-form-word">{primaryIncertain}</span>
+											</Tooltip>
+										{:else}
+											<span class="entry-form-word">{primaryIncertain}</span>
+										{/if}
+										{#if data.word.incertainAudioUrl}
+											<AudioPlayButton
+												audioUrl={data.word.incertainAudioUrl}
+												size="sm"
+												label={`Play incertain pronunciation of ${primaryIncertain}`}
+											/>
+										{/if}
+									</span>
+									<span class="entry-form-label-slot">
+										<Tooltip label="Incertain singular">
+											<span class="entry-form-label">inc.</span>
+										</Tooltip>
+									</span>
+								</span>
+							{/if}
+							{#if showPlural}
+								{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
+								{@const primaryPlural = pluralVariants.pluralForm}
+								{@const altPlurals = pluralVariants.alternativePluralForms}
+								<span class="entry-form">
+									<span class="entry-form-top">
+										{#if altPlurals}
+											<Tooltip label={altPlurals}>
+												<span class="entry-form-word">{primaryPlural}</span>
+											</Tooltip>
+										{:else}
+											<span class="entry-form-word">{primaryPlural}</span>
+										{/if}
+										{#if data.word.pluralAudioUrl}
+											<AudioPlayButton
+												audioUrl={data.word.pluralAudioUrl}
+												size="sm"
+												label={`Play plural pronunciation of ${primaryPlural}`}
+											/>
+										{/if}
+									</span>
+									<span class="entry-form-label-slot">
+										<Tooltip label="Plural">
+											<span class="entry-form-label">pl.</span>
+										</Tooltip>
+									</span>
+								</span>
+							{/if}
+						</div>
+					{/if}
+					{#if partOfSpeechValue || isSwahiliLoan || showPluralOnly || showSingularOnly}
 						<div class="entry-title-pills">
 							{#if partOfSpeechValue}
 								<PartOfSpeechInline value={partOfSpeechValue} />
@@ -330,25 +420,7 @@
 							{#if isSwahiliLoan}
 								<SwahiliLoanIndicator />
 							{/if}
-							{#if showPlural}
-								{@const pluralVariants = splitPluralFormVariants(data.word.pluralForm)}
-								{@const primaryPlural = pluralVariants.pluralForm}
-								{@const altPlurals = pluralVariants.alternativePluralForms}
-								<span class="plural-chip">
-									<span class="plural-label">Plural</span>
-									<span class="plural-value">{primaryPlural}</span>
-									{#if data.word.pluralAudioUrl}
-										<AudioPlayButton
-											audioUrl={data.word.pluralAudioUrl}
-											size="sm"
-											label={`Play plural pronunciation of ${primaryPlural}`}
-										/>
-									{/if}
-									{#if altPlurals}
-										<span class="plural-value plural-value-alt">, {altPlurals}</span>
-									{/if}
-								</span>
-							{:else if showPluralOnly}
+							{#if showPluralOnly}
 								<WordPill text="pl" tooltip="Plural-only" lowercase abbreviation />
 							{:else if showSingularOnly}
 								<WordPill text="sg" tooltip="Singular-only" lowercase abbreviation />
@@ -498,6 +570,19 @@
 					</SidePanel>
 				{/if}
 
+				{#if showIncertain}
+					<SidePanel title="Incertain pronunciation">
+						<p class="plural-recorder-hint">
+							For <em>{data.word.incertainForm}</em>.
+						</p>
+						<AudioRecorder
+							targetType="word-incertain"
+							targetId={data.word.id}
+							currentAudioUrl={data.word.incertainAudioUrl}
+						/>
+					</SidePanel>
+				{/if}
+
 				<SidePanel title="Edit entry" extraClass={editEntryDirty ? 'side-card--dirty' : ''}>
 					{#snippet actions()}
 						<SwahiliLoanToggle form="word-edit-form" bind:checked={isSwahiliLoan} />
@@ -564,6 +649,37 @@
 							</select>
 						</div>
 						{#if needsPluralInput}
+							{#if needsIncertainInput}
+								<div class="side-field-grid">
+									<div class="side-field">
+										<label for="incertainForm">Inc. Singular</label>
+										<input
+											id="incertainForm"
+											name="incertainForm"
+											type="text"
+											class="side-input"
+											placeholder="e.g. inganan"
+											disabled={isPluralOnly}
+											bind:value={incertainFormValue}
+										/>
+									</div>
+									<div class="side-field">
+										<label for="alternativeIncertainForms">Alt. Incertain</label>
+										<input
+											id="alternativeIncertainForms"
+											name="alternativeIncertainForms"
+											type="text"
+											class="side-input"
+											placeholder="comma, separated"
+											disabled={isPluralOnly}
+											bind:value={alternativeIncertainFormsValue}
+										/>
+									</div>
+								</div>
+							{:else}
+								<input type="hidden" name="incertainForm" value="" />
+								<input type="hidden" name="alternativeIncertainForms" value="" />
+							{/if}
 							<div class="side-field-grid">
 								<div class="side-field">
 									<label for="pluralForm">Plural</label>
@@ -619,6 +735,8 @@
 							<input type="hidden" name="isPluralOnly" value="" />
 							<input type="hidden" name="isSingularOnly" value="" />
 							<input type="hidden" name="alternativePluralForms" value="" />
+							<input type="hidden" name="incertainForm" value="" />
+							<input type="hidden" name="alternativeIncertainForms" value="" />
 						{/if}
 						{#if needsConjugationInputs}
 							<div class="side-field">
@@ -1030,14 +1148,66 @@
 		margin: 0.75em 0;
 	}
 
-	.plural-chip {
-		align-items: center;
-		background: color-mix(in oklch, var(--accent) 14%, transparent);
-		border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--line));
-		border-radius: 999px;
+	/* Align the headword row on the main word's baseline via an inline formatting
+	   context (flex baseline doesn't align a huge word with tiny siblings). The
+	   form words and pills sit on teta's baseline; inc./pl. labels hang below;
+	   the play button stays vertically centered. font-size:0 collapses the
+	   whitespace between inline-block children so spacing is controlled by margin. */
+	.entry-title {
+		display: block;
+		font-size: 0;
+	}
+	.entry-title h1 {
+		display: inline-block;
+		vertical-align: baseline;
+	}
+	.entry-title > :global(.audio-btn) {
+		margin: 0 8px 0 14px;
+		vertical-align: middle;
+	}
+	.entry-forms {
+		align-items: baseline;
 		display: inline-flex;
-		gap: 6px;
-		padding: 2px 4px 2px 10px;
+		flex-wrap: wrap;
+		gap: 4px 20px;
+		margin-left: 14px;
+		vertical-align: baseline;
+	}
+	.entry-title-pills {
+		margin-left: 16px;
+		vertical-align: baseline;
+	}
+	.entry-form {
+		cursor: default;
+		display: inline-block;
+		position: relative;
+	}
+	.entry-form-top {
+		align-items: center;
+		display: inline-flex;
+		gap: 8px;
+	}
+	.entry-form-label-slot {
+		left: 0;
+		position: absolute;
+		top: 100%;
+	}
+	.entry-form-word {
+		color: var(--ink);
+		font-family: var(--font-display);
+		font-size: 22px;
+		font-weight: 500;
+		line-height: 1.1;
+		text-decoration: underline dotted color-mix(in oklch, var(--ink-mute) 55%, transparent);
+		text-underline-offset: 4px;
+	}
+	.entry-form-label {
+		color: var(--ink-mute);
+		cursor: help;
+		font-size: 11px;
+		font-weight: 500;
+		letter-spacing: 0.04em;
+		line-height: 1.2;
 	}
 	.plural-recorder-hint {
 		color: var(--ink-mute);
@@ -1048,22 +1218,6 @@
 		color: var(--ink);
 		font-family: var(--font-display);
 		font-style: normal;
-	}
-	.plural-label {
-		color: var(--ink-mute);
-		font-size: 10px;
-		font-weight: 600;
-		letter-spacing: 0.12em;
-		text-transform: uppercase;
-	}
-	.plural-value {
-		color: var(--ink);
-		font-family: var(--font-display);
-		font-size: 14px;
-		font-weight: 500;
-	}
-	.plural-value-alt {
-		margin-left: -4px;
 	}
 	.conjugation-grid {
 		display: grid;

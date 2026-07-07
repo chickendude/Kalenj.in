@@ -31,6 +31,7 @@
 	let currentIndex = $state(0);
 	let resumePromptOpen = $state(false);
 	let recallAnswered = $state(false);
+	let recallOutcome = $state<'correct' | 'incorrect' | null>(null);
 	let completing = $state(false);
 	let completionStats = $state<CompletionStats | null>(null);
 	let completeFailed = $state(false);
@@ -83,6 +84,7 @@
 	function goTo(index: number) {
 		currentIndex = clampStepIndex(index, steps.length);
 		recallAnswered = false;
+		recallOutcome = null;
 		const next = steps[currentIndex];
 		if (next?.kind === 'complete') {
 			void completeNow();
@@ -103,6 +105,7 @@
 
 	function handleRecallResult(lessonWordId: string, result: import('$lib/srs').RecallResult) {
 		recallAnswered = true;
+		recallOutcome = result.correct && !result.revealed ? 'correct' : 'incorrect';
 		// A miss marks the word's SRS card due for review (fire-and-forget);
 		// clean answers never advance the schedule from inside a lesson. Any
 		// wrong submission counts, even if the learner got there in the end.
@@ -203,7 +206,11 @@
 		</div>
 	{:else if step}
 		{#key currentIndex}
-			<div class="player-card">
+			<div
+				class="player-card"
+				class:outcome-correct={recallOutcome === 'correct'}
+				class:outcome-incorrect={recallOutcome === 'incorrect'}
+			>
 				{#if step.kind === 'grammar'}
 					<GrammarInterstitial markdown={step.markdown} title={step.title} />
 				{:else if step.kind === 'section'}
@@ -331,6 +338,19 @@
 		display: grid;
 		min-height: 320px;
 		padding: 2rem;
+		transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+	}
+
+	.player-card.outcome-correct {
+		background: color-mix(in oklab, var(--brand) 7%, var(--bg-raised));
+		border-color: var(--brand);
+		box-shadow: 0 0 0 1px var(--brand);
+	}
+
+	.player-card.outcome-incorrect {
+		background: color-mix(in oklab, oklch(0.55 0.19 25) 7%, var(--bg-raised));
+		border-color: oklch(0.55 0.19 25);
+		box-shadow: 0 0 0 1px oklch(0.55 0.19 25);
 	}
 
 	.resume-card {

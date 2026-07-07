@@ -292,10 +292,9 @@
 				Check
 			</button>
 		{:else}
-			<div class="result" class:success={correct} role="status">
-				{#if correct}
-					{wrongSubmits > 0 || usedHint ? 'Correct — keep practising this one.' : 'Correct!'}
-				{:else}
+			<div class="result" role="status">
+				<span class="visually-hidden">{correct ? 'Correct' : `The answer was ${target}`}</span>
+				{#if !correct && !sentence}
 					The answer was <strong>{target}</strong>
 				{/if}
 			</div>
@@ -414,8 +413,12 @@
 		font-size: 0.98rem;
 	}
 
-	.result.success {
-		color: var(--brand);
-		font-weight: 600;
+	.visually-hidden {
+		clip: rect(0 0 0 0);
+		height: 1px;
+		overflow: hidden;
+		position: absolute;
+		white-space: nowrap;
+		width: 1px;
 	}
 </style>

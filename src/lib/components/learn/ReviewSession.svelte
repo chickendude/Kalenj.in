@@ -34,6 +34,7 @@
 	let reviewedCount = $state(0);
 	let suggested = $state<ReviewGrade | null>(null);
 	let answered = $state(false);
+	let outcome = $state<'correct' | 'incorrect' | null>(null);
 	let posting = $state(false);
 	/** Bumps to remount the exercise when the same card comes back via AGAIN. */
 	let attempt = $state(0);
@@ -79,6 +80,7 @@
 	function handleRecallResult(result: RecallResult) {
 		suggested = suggestedGradeFromRecall(result);
 		answered = true;
+		outcome = result.correct && !result.revealed ? 'correct' : 'incorrect';
 	}
 
 	function handleFlashRevealed() {
@@ -111,6 +113,7 @@
 			}
 			answered = false;
 			suggested = null;
+			outcome = null;
 			attempt += 1;
 		} catch {
 			toast.error('Could not save that review. Check your connection.', 4500);
@@ -149,7 +152,11 @@
 		</header>
 
 		{#key `${card.id}:${attempt}`}
-			<div class="review-card">
+			<div
+				class="review-card"
+				class:outcome-correct={outcome === 'correct'}
+				class:outcome-incorrect={outcome === 'incorrect'}
+			>
 				{#if exerciseLessonWord && recallBlanks}
 					<RecallExercise
 						lessonWord={exerciseLessonWord}
@@ -256,6 +263,19 @@
 		display: grid;
 		min-height: 280px;
 		padding: 2rem;
+		transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+	}
+
+	.review-card.outcome-correct {
+		background: color-mix(in oklab, var(--brand) 7%, var(--bg-raised));
+		border-color: var(--brand);
+		box-shadow: 0 0 0 1px var(--brand);
+	}
+
+	.review-card.outcome-incorrect {
+		background: color-mix(in oklab, oklch(0.55 0.19 25) 7%, var(--bg-raised));
+		border-color: oklch(0.55 0.19 25);
+		box-shadow: 0 0 0 1px oklch(0.55 0.19 25);
 	}
 
 	.review-foot {

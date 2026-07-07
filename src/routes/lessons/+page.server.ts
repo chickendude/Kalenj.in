@@ -15,6 +15,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { generateUniqueLessonSlug } from '$lib/server/lesson-slugs';
 import { validateStoryImportText } from '$lib/story-import';
 import { syncStorySentences } from '$lib/server/story-sync';
 import { requireEditor } from '$lib/server/guards';
@@ -126,6 +127,7 @@ async function createLessonRecord(
 	return tx.lesson.create({
 		data: {
 			title,
+			slug: await generateUniqueLessonSlug(tx, title),
 			level,
 			lessonOrder,
 			type,

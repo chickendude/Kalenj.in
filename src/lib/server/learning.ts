@@ -68,6 +68,7 @@ export type LessonState = 'locked' | 'available' | 'in_progress' | 'completed';
 
 export type DashboardLesson = {
 	id: string;
+	slug: string;
 	title: string;
 	type: 'VOCABULARY' | 'STORY';
 	vocabularyType: string | null;
@@ -76,6 +77,22 @@ export type DashboardLesson = {
 	state: LessonState;
 	lastStepIndex: number;
 };
+
+/**
+ * Learn URLs use lesson slugs; ids keep working as a fallback (matching the
+ * dictionary's slug-or-id resolution).
+ */
+export async function resolveLessonId(segment: string): Promise<string | null> {
+	const trimmed = segment.trim();
+	if (!trimmed) return null;
+	const bySlug = await prisma.lesson.findUnique({
+		where: { slug: trimmed.toLowerCase() },
+		select: { id: true }
+	});
+	if (bySlug) return bySlug.id;
+	const byId = await prisma.lesson.findUnique({ where: { id: trimmed }, select: { id: true } });
+	return byId?.id ?? null;
+}
 
 // ---------------------------------------------------------------------------
 // Activity (XP + streak)
@@ -177,6 +194,7 @@ export async function getLearnDashboard(userId: string) {
 			orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }],
 			select: {
 				id: true,
+				slug: true,
 				level: true,
 				title: true,
 				type: true,
@@ -222,6 +240,7 @@ export async function getLearnDashboard(userId: string) {
 		}
 		group.lessons.push({
 			id: lesson.id,
+			slug: lesson.slug,
 			title: lesson.title,
 			type: lesson.type,
 			vocabularyType: lesson.vocabularyType,
@@ -273,7 +292,9 @@ async function assertLessonUnlocked(
 	if (previousProgress?.status !== 'COMPLETED') throw error(404, 'Not Found');
 }
 
-export async function getPlayableLesson(lessonId: string, userId: string) {
+export async function getPlayableLesson(segment: string, userId: string) {
+	const lessonId = await resolveLessonId(segment);
+	if (!lessonId) throw error(404, 'Lesson not found');
 	const lesson = await prisma.lesson.findUnique({
 		where: { id: lessonId },
 		include: PLAYABLE_LESSON_INCLUDE
@@ -281,20 +302,20 @@ export async function getPlayableLesson(lessonId: string, userId: string) {
 	if (!lesson || lesson.status !== 'PUBLISHED') throw error(404, 'Lesson not found');
 	await assertLessonUnlocked(lesson, userId);
 
-	const [progress, nextLesson] = await Promise.all([
+	const [progress, nextLessonSlug] = await Promise.all([
 		prisma.lessonProgress.findUnique({
 			where: { userId_lessonId: { userId, lessonId } },
 			select: { status: true, lastStepIndex: true }
 		}),
-		getNextLessonId(lesson)
+		getNextLessonSlug(lesson)
 	]);
 
-	return { lesson, progress, nextLessonId: nextLesson };
+	return { lesson, progress, nextLessonSlug };
 }
 
 const CEFR_ORDER: CefrLevel[] = ['A1', 'A2', 'B1', 'B2', 'C1'];
 
-async function getNextLessonId(lesson: {
+async function getNextLessonSlug(lesson: {
 	id: string;
 	level: CefrLevel;
 	lessonOrder: number;
@@ -306,18 +327,18 @@ async function getNextLessonId(lesson: {
 			lessonOrder: { gt: lesson.lessonOrder }
 		},
 		orderBy: { lessonOrder: 'asc' },
-		select: { id: true }
+		select: { slug: true }
 	});
-	if (sameLevel) return sameLevel.id;
+	if (sameLevel) return sameLevel.slug;
 
 	const laterLevels = CEFR_ORDER.slice(CEFR_ORDER.indexOf(lesson.level) + 1);
 	if (laterLevels.length === 0) return null;
 	const nextLevel = await prisma.lesson.findFirst({
 		where: { status: 'PUBLISHED', level: { in: laterLevels } },
 		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }],
-		select: { id: true }
+		select: { slug: true }
 	});
-	return nextLevel?.id ?? null;
+	return nextLevel?.slug ?? null;
 }
 
 /** Record how far the learner has got; never demotes a COMPLETED lesson. */
@@ -416,13 +437,13 @@ export async function completeLesson(userId: string, lessonId: string) {
 		return { newCards: created.count, awardedXp: xp };
 	});
 
-	const [streak, totalXp, nextLessonId] = await Promise.all([
+	const [streak, totalXp, nextLessonSlug] = await Promise.all([
 		getStreak(userId),
 		getTotalXp(userId),
-		getNextLessonId(lesson)
+		getNextLessonSlug(lesson)
 	]);
 
-	return { newCards, xp: awardedXp, streak, totalXp, nextLessonId };
+	return { newCards, xp: awardedXp, streak, totalXp, nextLessonSlug };
 }
 
 // ---------------------------------------------------------------------------
@@ -644,11 +665,14 @@ async function sentencesForLessons(lessonIds: string[]): Promise<Map<string, Lis
 	return bySentenceLesson;
 }
 
-/** Playlist scope: one segment per selected lesson, in course order. */
-export async function getPlaylistSegments(lessonIds: string[]): Promise<ListeningSegment[]> {
-	if (lessonIds.length === 0) return [];
+/** Playlist scope: one segment per selected lesson (slugs or ids), in course order. */
+export async function getPlaylistSegments(lessonSegments: string[]): Promise<ListeningSegment[]> {
+	if (lessonSegments.length === 0) return [];
 	const ordered = await prisma.lesson.findMany({
-		where: { id: { in: lessonIds }, status: 'PUBLISHED' },
+		where: {
+			OR: [{ id: { in: lessonSegments } }, { slug: { in: lessonSegments } }],
+			status: 'PUBLISHED'
+		},
 		orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }],
 		select: { id: true, title: true }
 	});
@@ -865,6 +889,7 @@ export async function getListeningPickerData(userId: string) {
 			orderBy: [{ level: 'asc' }, { lessonOrder: 'asc' }],
 			select: {
 				id: true,
+				slug: true,
 				level: true,
 				title: true,
 				type: true,
@@ -882,6 +907,7 @@ export async function getListeningPickerData(userId: string) {
 	const options = lessons
 		.map((lesson) => ({
 			id: lesson.id,
+			slug: lesson.slug,
 			level: lesson.level,
 			title: lesson.title,
 			type: lesson.type,

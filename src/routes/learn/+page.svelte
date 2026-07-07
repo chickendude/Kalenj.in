@@ -86,7 +86,7 @@
 								</span>
 							</div>
 						{:else}
-							<a class="lesson-node" href="/learn/{lesson.id}">
+							<a class="lesson-node" href="/learn/{lesson.slug}">
 								<span class="node-marker" aria-hidden="true">
 									{#if lesson.type === 'STORY'}📖{:else if lesson.state === 'completed'}✓{:else}★{/if}
 								</span>

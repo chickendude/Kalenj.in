@@ -310,18 +310,18 @@
 			</div>
 			<div class="scope-grid">
 				{#each group.options as option (option.id)}
-					<div class="scope-card" class:selected={playlistSelected.has(option.id)}>
+					<div class="scope-card" class:selected={playlistSelected.has(option.slug)}>
 						<label class="playlist-check">
 							<input
 								type="checkbox"
-								checked={playlistSelected.has(option.id)}
-								onchange={() => togglePlaylist(option.id)}
+								checked={playlistSelected.has(option.slug)}
+								onchange={() => togglePlaylist(option.slug)}
 								aria-label={`Add ${option.title} to playlist`}
 							/>
 						</label>
 						<a
 							class="scope-card-body"
-							href="/learn/listen?scope={option.type === 'STORY' ? 'story' : 'lesson'}&lessonId={option.id}&{settingsQuery}"
+							href="/learn/listen?scope={option.type === 'STORY' ? 'story' : 'lesson'}&lessonId={option.slug}&{settingsQuery}"
 						>
 							<span class="scope-title">
 								{#if option.type === 'STORY'}📖{/if}

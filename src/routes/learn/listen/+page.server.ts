@@ -7,6 +7,7 @@ import {
 	getPlaylistSegments,
 	getProgramDaySession,
 	parseProgramPattern,
+	resolveLessonId,
 	saveListeningProgram,
 	type ListeningScope,
 	type ListeningSegment
@@ -59,8 +60,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	if (scopeParam === 'lesson' || scopeParam === 'story') {
-		const lessonId = url.searchParams.get('lessonId')?.trim() ?? '';
-		if (!lessonId) error(400, 'Missing lesson.');
+		const segment = url.searchParams.get('lessonId')?.trim() ?? '';
+		if (!segment) error(400, 'Missing lesson.');
+		const lessonId = await resolveLessonId(segment);
+		if (!lessonId) error(404, 'Lesson not found.');
 		const scope: ListeningScope = { kind: scopeParam, lessonId };
 		const [sentences, lesson] = await Promise.all([
 			getListeningSentences(user.id, scope),

@@ -9,6 +9,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { generateUniqueLessonSlug } from '$lib/server/lesson-slugs';
 import {
 	findMatchingExampleSentence,
 	formatSentenceInUseError
@@ -699,12 +700,19 @@ export const actions: Actions = {
 			await prisma.$transaction(async (tx) => {
 				const existingLesson = await tx.lesson.findUnique({
 					where: { id: params.id },
-					select: { storyId: true, level: true }
+					select: { storyId: true, level: true, title: true }
 				});
 
 				if (!existingLesson) {
 					throw new Error('Lesson not found.');
 				}
+
+				// Renames refresh the slug (no alias history — same tradeoff as
+				// dictionary slugs).
+				const slug =
+					existingLesson.title === title
+						? undefined
+						: await generateUniqueLessonSlug(tx, title, params.id);
 
 				let nextStoryId: string | null = null;
 
@@ -727,6 +735,7 @@ export const actions: Actions = {
 					where: { id: params.id },
 					data: {
 						title,
+						...(slug ? { slug } : {}),
 						level: existingLesson.level,
 						lessonOrder,
 						type,

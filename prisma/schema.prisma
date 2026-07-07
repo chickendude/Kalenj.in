@@ -405,6 +405,7 @@ model Lesson {
   id              String                @id @default(cuid())
   level           CefrLevel
   title           String
+  slug            String                @unique
   lessonOrder     Int
   type            CourseLessonType
   vocabularyType  VocabularyLessonType?

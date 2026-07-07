@@ -4,7 +4,7 @@
 		xp: number;
 		streak: number;
 		totalXp: number;
-		nextLessonId: string | null;
+		nextLessonSlug: string | null;
 	};
 
 	let {
@@ -48,8 +48,8 @@
 	</div>
 
 	<div class="celebration-actions">
-		{#if stats.nextLessonId}
-			<a class="btn" href="/learn/{stats.nextLessonId}">Next lesson</a>
+		{#if stats.nextLessonSlug}
+			<a class="btn" href="/learn/{stats.nextLessonSlug}">Next lesson</a>
 		{/if}
 		<a class="btn ghost" href="/learn">Back to lessons</a>
 	</div>

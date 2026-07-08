@@ -4,14 +4,14 @@ import { prisma } from '$lib/server/prisma';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
-type Field = 'title' | 'vocabularyType' | 'grammarMarkdown';
+type Field = 'title' | 'vocabularyType' | 'grammarMarkdown' | 'status';
 
 type Payload = {
 	field?: Field;
 	value?: string;
 };
 
-const ALLOWED_FIELDS: readonly Field[] = ['title', 'vocabularyType', 'grammarMarkdown'];
+const ALLOWED_FIELDS: readonly Field[] = ['title', 'vocabularyType', 'grammarMarkdown', 'status'];
 
 function clean(value: unknown): string {
 	return String(value ?? '').trim();
@@ -57,6 +57,19 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 		});
 
 		return json({ title: value });
+	}
+
+	if (field === 'status') {
+		if (value !== 'DRAFT' && value !== 'PUBLISHED') {
+			error(400, 'Invalid status.');
+		}
+
+		await prisma.lesson.update({
+			where: { id: lesson.id },
+			data: { status: value }
+		});
+
+		return json({ status: value });
 	}
 
 	if (field === 'vocabularyType') {

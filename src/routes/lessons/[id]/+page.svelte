@@ -124,6 +124,7 @@
 	let lessonType = $state<LessonType>('VOCABULARY');
 	let lessonVocabularyType = $state<VocabularyType>('VOCAB');
 	let lessonGrammarMarkdown = $state('');
+	let lessonStatus = $state<'DRAFT' | 'PUBLISHED'>('DRAFT');
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
 	type EnhancedUpdate = (options?: { reset?: boolean; invalidateAll?: boolean }) => Promise<void>;
@@ -155,6 +156,7 @@
 		lessonType = data.lesson.type;
 		lessonVocabularyType = data.lesson.vocabularyType ?? 'VOCAB';
 		lessonGrammarMarkdown = data.lesson.grammarMarkdown ?? '';
+		lessonStatus = data.lesson.status;
 	});
 
 	$effect(() => {
@@ -183,7 +185,10 @@
 		return () => window.clearTimeout(timeout);
 	});
 
-	async function postLessonInline(field: 'title' | 'vocabularyType' | 'grammarMarkdown', value: string) {
+	async function postLessonInline(
+		field: 'title' | 'vocabularyType' | 'grammarMarkdown' | 'status',
+		value: string
+	) {
 		const response = await fetch(`/lessons/${data.lesson.id}/lesson-inline`, {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
@@ -513,6 +518,7 @@
 		{lessonType}
 		bind:lessonTitle
 		bind:lessonVocabularyType
+		bind:lessonStatus
 		prevLesson={data.prevLesson}
 		nextLesson={data.nextLesson}
 		levelLessons={data.levelLessons}

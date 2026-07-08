@@ -23,6 +23,7 @@
 		lessonType,
 		lessonTitle = $bindable(),
 		lessonVocabularyType = $bindable(),
+		lessonStatus = $bindable(),
 		prevLesson,
 		nextLesson,
 		levelLessons,
@@ -34,10 +35,11 @@
 		lessonType: LessonType;
 		lessonTitle: string;
 		lessonVocabularyType: VocabularyType;
+		lessonStatus: 'DRAFT' | 'PUBLISHED';
 		prevLesson: AdjacentLesson;
 		nextLesson: AdjacentLesson;
 		levelLessons: LessonNavEntry[];
-		onSaveField: (field: 'title' | 'vocabularyType', value: string) => Promise<void>;
+		onSaveField: (field: 'title' | 'vocabularyType' | 'status', value: string) => Promise<void>;
 		onDeleteRequest: (event: SubmitEvent) => void;
 	} = $props();
 
@@ -46,6 +48,8 @@
 	let titleInput = $state<HTMLInputElement | null>(null);
 	let titleError = $state<string | null>(null);
 	let titleSaving = $state(false);
+	let statusSaving = $state(false);
+	let statusError = $state<string | null>(null);
 	let vocabularyTypeError = $state<string | null>(null);
 	let vocabTypeOpen = $state(false);
 	let vocabTypeWrap = $state<HTMLSpanElement | null>(null);
@@ -112,6 +116,22 @@
 			titleError = err instanceof Error ? err.message : 'Could not save title.';
 		} finally {
 			titleSaving = false;
+		}
+	}
+
+	async function togglePublished() {
+		if (statusSaving) return;
+		const next = lessonStatus === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
+		statusSaving = true;
+		statusError = null;
+		try {
+			await onSaveField('status', next);
+			lessonStatus = next;
+			await invalidateAll();
+		} catch (err) {
+			statusError = err instanceof Error ? err.message : 'Could not change status.';
+		} finally {
+			statusSaving = false;
 		}
 	}
 
@@ -296,6 +316,27 @@
 		{/if}
 	</div>
 	<div class="lesson-head-actions">
+		<div class="status-row">
+			<span class="status-chip" class:published={lessonStatus === 'PUBLISHED'}>
+				{lessonStatus === 'PUBLISHED' ? 'Published' : 'Draft'}
+			</span>
+			<button
+				type="button"
+				class="btn-sm"
+				class:ghost={lessonStatus === 'PUBLISHED'}
+				onclick={() => void togglePublished()}
+				disabled={statusSaving}
+			>
+				{statusSaving
+					? 'Saving…'
+					: lessonStatus === 'PUBLISHED'
+						? 'Unpublish'
+						: 'Publish lesson'}
+			</button>
+		</div>
+		{#if statusError}
+			<p class="error-text">{statusError}</p>
+		{/if}
 		<form
 			method="POST"
 			action="?/deleteLesson"
@@ -341,6 +382,28 @@
 
 	.lesson-delete-form {
 		margin: 0;
+	}
+
+	.status-row {
+		align-items: center;
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.status-chip {
+		background: color-mix(in oklab, var(--line) 45%, transparent);
+		border-radius: 999px;
+		color: var(--ink-soft);
+		font-size: 11.5px;
+		font-weight: 700;
+		letter-spacing: 0.05em;
+		padding: 0.2rem 0.65rem;
+		text-transform: uppercase;
+	}
+
+	.status-chip.published {
+		background: color-mix(in oklab, var(--brand) 18%, transparent);
+		color: var(--brand);
 	}
 
 	.kicker {

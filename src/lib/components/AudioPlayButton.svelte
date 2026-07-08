@@ -3,16 +3,17 @@
 		audioUrl: string | null | undefined;
 		size?: 'md' | 'sm';
 		label?: string;
+		/** Start playback as soon as the button mounts (or the URL changes). */
+		autoplay?: boolean;
 	};
 
-	let { audioUrl, size = 'md', label = 'Play pronunciation' }: Props = $props();
+	let { audioUrl, size = 'md', label = 'Play pronunciation', autoplay = false }: Props = $props();
 
 	let audio: HTMLAudioElement | null = null;
 	let playing = $state(false);
 
-	function handleClick(event: MouseEvent) {
-		event.stopPropagation();
-		event.preventDefault();
+	/** Toggle playback. Exported so parents can drive it (keyboard shortcuts, autoplay). */
+	export function play() {
 		if (!audioUrl) return;
 
 		if (audio && !audio.paused) {
@@ -45,6 +46,24 @@
 			}
 		);
 	}
+
+	function handleClick(event: MouseEvent) {
+		event.stopPropagation();
+		event.preventDefault();
+		// After a mouse click, return focus to the page so Enter keeps meaning
+		// "continue" rather than replaying the audio. Keyboard activation
+		// (event.detail === 0) keeps focus for keyboard users.
+		if (event.detail > 0) {
+			(event.currentTarget as HTMLElement | null)?.blur();
+		}
+		play();
+	}
+
+	$effect(() => {
+		if (autoplay && audioUrl) {
+			play();
+		}
+	});
 
 	$effect(() => {
 		return () => {

@@ -87,6 +87,24 @@ enum ReportStatus {
   DISMISSED
 }
 
+enum LessonProgressStatus {
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ReviewGrade {
+  AGAIN
+  HARD
+  GOOD
+  EASY
+}
+
+enum ClarificationStatus {
+  OPEN
+  ANSWERED
+  DISMISSED
+}
+
 model User {
   id                           String                   @id @default(cuid())
   username                     String                   @unique
@@ -111,6 +129,14 @@ model User {
   reviewedSentenceSuggestions  SentenceSuggestion[]     @relation("SentenceSuggestionReviewer")
   reportsSubmitted             Report[]                 @relation("ReportReporter")
   reportsResolved              Report[]                 @relation("ReportResolver")
+  lessonProgress               LessonProgress[]
+  srsCards                     SrsCard[]
+  reviewLogs                   ReviewLog[]
+  missedSentences              MissedSentence[]
+  clarificationsAsked          ClarificationRequest[]   @relation("ClarificationAsker")
+  clarificationsAnswered       ClarificationRequest[]   @relation("ClarificationAnswerer")
+  learnActivityDays            LearnActivityDay[]
+  listeningProgram             ListeningProgram?
 }
 
 model Session {
@@ -182,6 +208,8 @@ model Word {
   observedForms           ObservedWordForm[]
   suggestionsApproved     WordSuggestion[]              @relation("WordSuggestionApprovedWord")
   reports                 Report[]
+  srsCards                SrsCard[]
+  clarifications          ClarificationRequest[]
 
   @@index([kalenjin])
   @@index([kalenjinNormalized])
@@ -281,6 +309,8 @@ model ExampleSentence {
   storySentence       StorySentence?
   suggestionsApproved SentenceSuggestion[]   @relation("SentenceSuggestionApprovedSentence")
   reports             Report[]
+  missedBy            MissedSentence[]
+  clarifications      ClarificationRequest[]
 
   @@index([kalenjin])
   @@index([status])
@@ -384,6 +414,7 @@ model Lesson {
   id              String                @id @default(cuid())
   level           CefrLevel
   title           String
+  slug            String                @unique
   lessonOrder     Int
   type            CourseLessonType
   vocabularyType  VocabularyLessonType?
@@ -395,6 +426,9 @@ model Lesson {
   updatedAt       DateTime              @updatedAt
   sections        LessonSection[]
   story           Story?                @relation(fields: [storyId], references: [id], onDelete: SetNull)
+  progress        LessonProgress[]
+  clarifications  ClarificationRequest[]
+  programEntries  ListeningProgramLesson[]
 
   @@unique([level, lessonOrder])
   @@index([level])
@@ -433,6 +467,8 @@ model LessonWord {
   word                   Word?               @relation(fields: [wordId], references: [id], onDelete: SetNull)
   sentence               ExampleSentence?    @relation(fields: [sentenceId], references: [id], onDelete: Restrict)
   coveredCefrTargets     CefrEnglishTarget[]
+  srsStandaloneCards     SrsCard[]           @relation("SrsStandalone")
+  srsContextCards        SrsCard[]           @relation("SrsContext")
 
   @@unique([lessonSectionId, itemOrder])
   @@unique([lessonSectionId, wordId])
@@ -518,4 +554,161 @@ model Report {
   @@index([status, createdAt])
   @@index([wordId])
   @@index([sentenceId])
+}
+
+// ---------------------------------------------------------------------------
+// Learner progress & spaced repetition
+// ---------------------------------------------------------------------------
+
+model LessonProgress {
+  id            String               @id @default(cuid())
+  userId        String
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId      String
+  lesson        Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  status        LessonProgressStatus @default(IN_PROGRESS)
+  lastStepIndex Int                  @default(0)
+  startedAt     DateTime             @default(now())
+  completedAt   DateTime?
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([userId, lessonId])
+  @@index([userId, status])
+  @@index([lessonId])
+}
+
+// One SRS card per user per word. Identity is the dictionary Word when the
+// seeding LessonWord is word-linked, otherwise the LessonWord itself
+// (standaloneLessonWordId). App invariant: exactly one of wordId /
+// standaloneLessonWordId is set. contextLessonWordId points at the LessonWord
+// that first introduced the card so reviews can reuse its example sentence;
+// it degrades to a plain flashcard if that LessonWord is later deleted.
+model SrsCard {
+  id                     String      @id @default(cuid())
+  userId                 String
+  user                   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wordId                 String?
+  word                   Word?       @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  standaloneLessonWordId String?
+  standaloneLessonWord   LessonWord? @relation("SrsStandalone", fields: [standaloneLessonWordId], references: [id], onDelete: Cascade)
+  contextLessonWordId    String?
+  contextLessonWord      LessonWord? @relation("SrsContext", fields: [contextLessonWordId], references: [id], onDelete: SetNull)
+  ease                   Float       @default(2.5)
+  intervalDays           Float       @default(0)
+  reps                   Int         @default(0)
+  lapses                 Int         @default(0)
+  dueAt                  DateTime    @default(now())
+  lastReviewedAt         DateTime?
+  suspended              Boolean     @default(false)
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
+  reviews                ReviewLog[]
+
+  @@unique([userId, wordId])
+  @@unique([userId, standaloneLessonWordId])
+  @@index([userId, dueAt])
+  @@index([wordId])
+  @@index([standaloneLessonWordId])
+  @@index([contextLessonWordId])
+}
+
+model ReviewLog {
+  id                   String      @id @default(cuid())
+  userId               String
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cardId               String
+  card                 SrsCard     @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  grade                ReviewGrade
+  previousIntervalDays Float
+  newIntervalDays      Float
+  reviewedAt           DateTime    @default(now())
+
+  @@index([userId, reviewedAt])
+  @@index([cardId])
+}
+
+// Row presence means "the learner is currently missing this sentence" in
+// listening practice; clearing the flag deletes the row.
+model MissedSentence {
+  userId     String
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sentenceId String
+  sentence   ExampleSentence @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+  missCount  Int             @default(1)
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@id([userId, sentenceId])
+  @@index([userId, updatedAt])
+  @@index([sentenceId])
+}
+
+// A learner question about a word or sentence that expects an answer shown
+// back to the learner (unlike Report, which is an issue queue for editors).
+model ClarificationRequest {
+  id           String              @id @default(cuid())
+  userId       String
+  user         User                @relation("ClarificationAsker", fields: [userId], references: [id], onDelete: Cascade)
+  targetType   ReportTargetType
+  wordId       String?
+  word         Word?               @relation(fields: [wordId], references: [id], onDelete: Cascade)
+  sentenceId   String?
+  sentence     ExampleSentence?    @relation(fields: [sentenceId], references: [id], onDelete: Cascade)
+  lessonId     String?
+  lesson       Lesson?             @relation(fields: [lessonId], references: [id], onDelete: SetNull)
+  question     String
+  status       ClarificationStatus @default(OPEN)
+  answer       String?
+  answeredById String?
+  answeredBy   User?               @relation("ClarificationAnswerer", fields: [answeredById], references: [id], onDelete: SetNull)
+  answeredAt   DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@index([wordId])
+  @@index([sentenceId])
+  @@index([lessonId])
+}
+
+// Glossika-style daily listening program. Lessons enter the program in
+// `position` order (lesson at position P is introduced on day P); on day D a
+// lesson with age A = D - position + 1 is drilled pattern[A-1] times, until
+// the pattern runs out.
+model ListeningProgram {
+  id         String                   @id @default(cuid())
+  userId     String                   @unique
+  user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pattern    String // space-separated reps per day of age, e.g. "6 4 3 2"
+  currentDay Int                      @default(1)
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+  lessons    ListeningProgramLesson[]
+}
+
+model ListeningProgramLesson {
+  id        String           @id @default(cuid())
+  programId String
+  program   ListeningProgram @relation(fields: [programId], references: [id], onDelete: Cascade)
+  lessonId  String
+  lesson    Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  position  Int // 1-based; the lesson is introduced on day == position
+
+  @@unique([programId, lessonId])
+  @@unique([programId, position])
+  @@index([lessonId])
+}
+
+// One row per user per UTC day with learning activity; streaks and XP totals
+// are derived from these rows.
+model LearnActivityDay {
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  xp        Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([userId, date])
 }

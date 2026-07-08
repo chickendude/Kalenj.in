@@ -9,7 +9,10 @@ import {
 const mocks = vi.hoisted(() => {
 	const tx = {
 		lesson: {
-			delete: vi.fn()
+			delete: vi.fn(),
+			// syncLessonSlugs renumbers lesson-N/story-N slugs after deletion.
+			findMany: vi.fn(),
+			update: vi.fn()
 		},
 		lessonSection: {
 			findFirst: vi.fn(),
@@ -74,6 +77,7 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockReset();
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.lessonSection.findFirst.mockResolvedValue({ id: 'section-1' });
+	mocks.tx.lesson.findMany.mockResolvedValue([]);
 	mocks.tx.lessonWord.findMany.mockResolvedValue([]);
 	mocks.tx.storySentence.findMany.mockResolvedValue([]);
 }

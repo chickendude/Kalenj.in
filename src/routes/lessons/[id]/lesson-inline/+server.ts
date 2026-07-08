@@ -41,6 +41,7 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			error(400, 'Title is required.');
 		}
 
+		// Slugs are position-based (lesson-N/story-N), so renames don't touch them.
 		await prisma.$transaction(async (tx) => {
 			await tx.lesson.update({
 				where: { id: lesson.id },

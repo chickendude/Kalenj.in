@@ -9,6 +9,7 @@ import {
 	readText
 } from '$lib/server/course-form';
 import { prisma } from '$lib/server/prisma';
+import { syncLessonSlugs } from '$lib/server/lesson-slugs';
 import {
 	findMatchingExampleSentence,
 	formatSentenceInUseError
@@ -735,6 +736,9 @@ export const actions: Actions = {
 						storyId: nextStoryId
 					}
 				});
+
+				// Order or type may have changed — renumber lesson-N/story-N slugs.
+				await syncLessonSlugs(tx);
 			});
 		} catch (updateError) {
 			return fail(400, {
@@ -787,6 +791,8 @@ export const actions: Actions = {
 
 		await prisma.$transaction(async (tx) => {
 			await tx.lesson.delete({ where: { id: params.id } });
+			// Later lessons move up a position — renumber lesson-N/story-N slugs.
+			await syncLessonSlugs(tx);
 
 			if (storyId) {
 				await tx.story.delete({ where: { id: storyId } });

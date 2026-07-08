@@ -4,7 +4,7 @@
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import FormActions from '$lib/components/FormActions.svelte';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
-	import Tooltip from '$lib/components/Tooltip.svelte';
+	import LessonVisibilityToggle from '$lib/components/LessonVisibilityToggle.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { stripWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
@@ -365,42 +365,12 @@
 										{/if}
 									</div>
 								</div>
-								<Tooltip
-									label={lesson.status === 'PUBLISHED'
-										? 'Visible to learners'
-										: 'Hidden from learners'}
-								>
-									<button
-										type="button"
-										class="visibility-btn"
-										class:published={lesson.status === 'PUBLISHED'}
-										aria-label={lesson.status === 'PUBLISHED'
-											? `Unpublish ${lesson.title}`
-											: `Publish ${lesson.title}`}
-										disabled={visibilitySaving.has(lesson.id)}
-										onclick={() => void toggleVisibility(lesson)}
-									>
-										{#if lesson.status === 'PUBLISHED'}
-											<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-												<path
-													d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z"
-													stroke="currentColor"
-													stroke-width="1.6"
-												/>
-												<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.6" />
-											</svg>
-										{:else}
-											<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-												<path
-													d="M4 4l16 16M9.9 6.1A9.4 9.4 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.2 3.9M6 8a16.5 16.5 0 0 0-3.5 4S6 18.5 12 18.5c1 0 2-.2 2.8-.5M10 10.3a3 3 0 0 0 3.9 3.9"
-													stroke="currentColor"
-													stroke-width="1.6"
-													stroke-linecap="round"
-												/>
-											</svg>
-										{/if}
-									</button>
-								</Tooltip>
+								<LessonVisibilityToggle
+									published={lesson.status === 'PUBLISHED'}
+									lessonTitle={lesson.title}
+									disabled={visibilitySaving.has(lesson.id)}
+									onToggle={() => void toggleVisibility(lesson)}
+								/>
 								<a class="btn ghost" href={`/lessons/${lesson.id}`}>Open</a>
 							</div>
 
@@ -473,36 +443,6 @@
 </section>
 
 <style>
-	.visibility-btn {
-		align-items: center;
-		background: transparent;
-		border: 1px solid var(--line);
-		border-radius: 50%;
-		color: var(--ink-mute);
-		cursor: pointer;
-		display: inline-flex;
-		flex-shrink: 0;
-		height: 36px;
-		justify-content: center;
-		transition: color 0.15s, border-color 0.15s;
-		width: 36px;
-	}
-
-	.visibility-btn.published {
-		border-color: color-mix(in oklab, var(--brand) 55%, var(--line));
-		color: var(--brand);
-	}
-
-	.visibility-btn:hover:not(:disabled) {
-		border-color: var(--brand);
-		color: var(--brand);
-	}
-
-	.visibility-btn:disabled {
-		cursor: default;
-		opacity: 0.5;
-	}
-
 	.level-actions {
 		display: flex;
 		flex-wrap: wrap;

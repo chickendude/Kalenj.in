@@ -6,6 +6,8 @@
 		formatVocabularyLessonType
 	} from '$lib/course';
 	import BackLink from '$lib/components/BackLink.svelte';
+	import LessonVisibilityToggle from '$lib/components/LessonVisibilityToggle.svelte';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 
 	type LessonType = 'VOCABULARY' | 'STORY';
 	type VocabularyType = '' | 'GRAMMAR' | 'VOCAB' | 'EXPRESSION';
@@ -316,30 +318,36 @@
 		{/if}
 	</div>
 	<div class="lesson-head-actions">
-		<button
-			type="button"
-			class="btn-sm"
-			class:ghost={lessonStatus === 'PUBLISHED'}
-			onclick={() => void togglePublished()}
-			disabled={statusSaving}
-		>
-			{statusSaving
-				? 'Saving…'
-				: lessonStatus === 'PUBLISHED'
-					? 'Unpublish'
-					: 'Publish lesson'}
-		</button>
+		<div class="lesson-action-icons">
+			<LessonVisibilityToggle
+				published={lessonStatus === 'PUBLISHED'}
+				{lessonTitle}
+				disabled={statusSaving}
+				onToggle={() => void togglePublished()}
+			/>
+			<form
+				method="POST"
+				action="?/deleteLesson"
+				class="lesson-delete-form"
+				onsubmit={onDeleteRequest}
+			>
+				<Tooltip label="Delete lesson">
+					<button type="submit" class="delete-btn" aria-label={`Delete ${lessonTitle}`}>
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+							<path
+								d="M4 6.5h16M9.5 6.5V4.8c0-.7.6-1.3 1.3-1.3h2.4c.7 0 1.3.6 1.3 1.3v1.7M6.5 6.5l.8 12.4c.05.9.8 1.6 1.7 1.6h6c.9 0 1.65-.7 1.7-1.6l.8-12.4M10 10.5v6M14 10.5v6"
+								stroke="currentColor"
+								stroke-width="1.6"
+								stroke-linecap="round"
+							/>
+						</svg>
+					</button>
+				</Tooltip>
+			</form>
+		</div>
 		{#if statusError}
 			<p class="error-text">{statusError}</p>
 		{/if}
-		<form
-			method="POST"
-			action="?/deleteLesson"
-			class="lesson-delete-form"
-			onsubmit={onDeleteRequest}
-		>
-			<button type="submit" class="btn-sm danger">Delete lesson</button>
-		</form>
 	</div>
 </div>
 
@@ -377,6 +385,33 @@
 
 	.lesson-delete-form {
 		margin: 0;
+	}
+
+	.lesson-action-icons {
+		align-items: center;
+		display: flex;
+		gap: 0.5rem;
+	}
+
+	.delete-btn {
+		align-items: center;
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 50%;
+		color: var(--ink-mute);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		height: 36px;
+		justify-content: center;
+		transition: color 0.15s, border-color 0.15s;
+		width: 36px;
+	}
+
+	.delete-btn:hover,
+	.delete-btn:focus-visible {
+		border-color: var(--danger, oklch(0.55 0.19 25));
+		color: var(--danger, oklch(0.55 0.19 25));
 	}
 
 

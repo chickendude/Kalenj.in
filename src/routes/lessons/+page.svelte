@@ -367,8 +367,8 @@
 								</div>
 								<Tooltip
 									label={lesson.status === 'PUBLISHED'
-										? 'Visible to learners — click to unpublish'
-										: 'Hidden from learners — click to publish'}
+										? 'Visible to learners'
+										: 'Hidden from learners'}
 								>
 									<button
 										type="button"

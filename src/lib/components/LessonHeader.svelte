@@ -316,24 +316,19 @@
 		{/if}
 	</div>
 	<div class="lesson-head-actions">
-		<div class="status-row">
-			<span class="status-chip" class:published={lessonStatus === 'PUBLISHED'}>
-				{lessonStatus === 'PUBLISHED' ? 'Published' : 'Draft'}
-			</span>
-			<button
-				type="button"
-				class="btn-sm"
-				class:ghost={lessonStatus === 'PUBLISHED'}
-				onclick={() => void togglePublished()}
-				disabled={statusSaving}
-			>
-				{statusSaving
-					? 'Saving…'
-					: lessonStatus === 'PUBLISHED'
-						? 'Unpublish'
-						: 'Publish lesson'}
-			</button>
-		</div>
+		<button
+			type="button"
+			class="btn-sm"
+			class:ghost={lessonStatus === 'PUBLISHED'}
+			onclick={() => void togglePublished()}
+			disabled={statusSaving}
+		>
+			{statusSaving
+				? 'Saving…'
+				: lessonStatus === 'PUBLISHED'
+					? 'Unpublish'
+					: 'Publish lesson'}
+		</button>
 		{#if statusError}
 			<p class="error-text">{statusError}</p>
 		{/if}
@@ -384,27 +379,6 @@
 		margin: 0;
 	}
 
-	.status-row {
-		align-items: center;
-		display: flex;
-		gap: 0.5rem;
-	}
-
-	.status-chip {
-		background: color-mix(in oklab, var(--line) 45%, transparent);
-		border-radius: 999px;
-		color: var(--ink-soft);
-		font-size: 11.5px;
-		font-weight: 700;
-		letter-spacing: 0.05em;
-		padding: 0.2rem 0.65rem;
-		text-transform: uppercase;
-	}
-
-	.status-chip.published {
-		background: color-mix(in oklab, var(--brand) 18%, transparent);
-		color: var(--brand);
-	}
 
 	.kicker {
 		color: var(--accent);

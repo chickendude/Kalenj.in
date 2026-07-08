@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import { formatLessonType, formatVocabularyLessonType } from '$lib/course';
 	import CefrBrowseSidebar from '$lib/components/CefrBrowseSidebar.svelte';
 	import FormActions from '$lib/components/FormActions.svelte';
 	import LessonFormFields from '$lib/components/LessonFormFields.svelte';
+	import LessonVisibilityToggle from '$lib/components/LessonVisibilityToggle.svelte';
+	import { toast } from '$lib/stores/toast.svelte';
 	import { stripWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
 
@@ -34,6 +36,32 @@
 			next.add(lessonId);
 		}
 		expandedUninstructed = next;
+	}
+
+	let visibilitySaving = $state(new Set<string>());
+
+	async function toggleVisibility(lesson: { id: string; status: 'DRAFT' | 'PUBLISHED' }) {
+		if (visibilitySaving.has(lesson.id)) return;
+		visibilitySaving = new Set([...visibilitySaving, lesson.id]);
+		const next = lesson.status === 'PUBLISHED' ? 'DRAFT' : 'PUBLISHED';
+		try {
+			const response = await fetch(`/lessons/${lesson.id}/lesson-inline`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ field: 'status', value: next })
+			});
+			if (!response.ok) {
+				const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(payload?.message ?? 'Could not change visibility.');
+			}
+			await invalidateAll();
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : 'Could not change visibility.', 4000);
+		} finally {
+			const remaining = new Set(visibilitySaving);
+			remaining.delete(lesson.id);
+			visibilitySaving = remaining;
+		}
 	}
 	let createTitle = $state('');
 	let createType = $state<'VOCABULARY' | 'STORY'>('VOCABULARY');
@@ -337,6 +365,12 @@
 										{/if}
 									</div>
 								</div>
+								<LessonVisibilityToggle
+									published={lesson.status === 'PUBLISHED'}
+									lessonTitle={lesson.title}
+									disabled={visibilitySaving.has(lesson.id)}
+									onToggle={() => void toggleVisibility(lesson)}
+								/>
 								<a class="btn ghost" href={`/lessons/${lesson.id}`}>Open</a>
 							</div>
 

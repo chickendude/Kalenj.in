@@ -9,6 +9,7 @@ import { autoLemmatizeMissingExampleSentenceWords } from '$lib/server/auto-lemma
 import { replaceObservedWordForm } from '$lib/server/observed-word-forms';
 import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
+import { buildCorpusSentenceSocialPreview, publicSocialPreviewUrl } from '$lib/social-preview';
 import {
 	buildSentenceStoryLinks,
 	sentenceStoryLinkSelect
@@ -130,7 +131,7 @@ async function ensureSentenceTokenSegment(
 	};
 }
 
-export const load: PageServerLoad = async ({ locals, params }) => {
+export const load: PageServerLoad = async ({ locals, params, request, url }) => {
 	const isAdmin = locals.user?.role === 'ADMIN';
 	const [sentence, words, ignoredForms] = await Promise.all([
 		prisma.exampleSentence.findUnique({
@@ -156,6 +157,11 @@ export const load: PageServerLoad = async ({ locals, params }) => {
 			...sentenceData,
 			storyLinks: isAdmin ? buildSentenceStoryLinks(sentenceForLinks) : []
 		},
+		socialPreview: buildCorpusSentenceSocialPreview(
+			sentenceData,
+			`/corpus/${encodeURIComponent(params.id)}`,
+			publicSocialPreviewUrl(url, request)
+		),
 		words,
 		ignoredNormalizedForms: ignoredForms.map((entry) => entry.normalizedForm)
 	};

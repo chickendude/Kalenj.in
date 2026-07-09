@@ -8,6 +8,7 @@ import { propagateKalenjinRename } from '$lib/server/propagate-rename';
 import { requireEditor } from '$lib/server/guards';
 import { deleteUploadedImage, saveUploadedImage, UploadError } from '$lib/server/uploads';
 import { relatedWordPair } from '$lib/server/related-words';
+import { buildDictionarySocialPreview, publicSocialPreviewUrl } from '$lib/social-preview';
 import { decodeDictionarySegment, dictionaryEntryHref } from '$lib/word-url';
 import { canonicalDictionaryHref } from '$lib/server/dictionary-hrefs';
 import type { Actions, PageServerLoad } from './$types';
@@ -150,7 +151,7 @@ async function lockWordRenameSnapshot(
 	return rows[0] ?? null;
 }
 
-export const load: PageServerLoad = async ({ params, url }) => {
+export const load: PageServerLoad = async ({ params, request, url }) => {
 	const result = await findWordForDictionarySegment(params.id);
 
 	if (!result) {
@@ -177,7 +178,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 		word: {
 			...word,
 			relatedWords
-		}
+		},
+		socialPreview: buildDictionarySocialPreview(
+			word,
+			result.canonicalHref,
+			publicSocialPreviewUrl(url, request)
+		)
 	};
 };
 

@@ -317,7 +317,24 @@
 </script>
 
 <svelte:head>
-	<title>{kalenjinValue || data.word.kalenjin} — Kalenj.in</title>
+	<title>{data.socialPreview.title}</title>
+	<meta name="description" content={data.socialPreview.description} />
+	<link rel="canonical" href={data.socialPreview.url} />
+	<meta property="og:site_name" content="Kalenj.in" />
+	<meta property="og:type" content="article" />
+	<meta property="og:url" content={data.socialPreview.url} />
+	<meta property="og:title" content={data.socialPreview.title} />
+	<meta property="og:description" content={data.socialPreview.description} />
+	<meta property="og:image" content={data.socialPreview.image.url} />
+	<meta property="og:image:alt" content={data.socialPreview.image.alt} />
+	<meta
+		name="twitter:card"
+		content={data.socialPreview.image.isPageSpecific ? 'summary_large_image' : 'summary'}
+	/>
+	<meta name="twitter:title" content={data.socialPreview.title} />
+	<meta name="twitter:description" content={data.socialPreview.description} />
+	<meta name="twitter:image" content={data.socialPreview.image.url} />
+	<meta name="twitter:image:alt" content={data.socialPreview.image.alt} />
 </svelte:head>
 
 <section>

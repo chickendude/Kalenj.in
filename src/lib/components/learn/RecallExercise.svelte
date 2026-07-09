@@ -9,6 +9,7 @@
 		acceptableAnswers,
 		isTypeableChar,
 		normalizeAnswerChar,
+		normalizeTypedAnswer,
 		typeableText,
 		type BlankResolution,
 		type LearnLessonWord,
@@ -21,12 +22,15 @@
 		lessonWord,
 		blanks,
 		mode = 'text',
-		onResult
+		onResult,
+		onNext = null
 	}: {
 		lessonWord: LearnLessonWord;
 		blanks: BlankResolution;
 		mode?: RecallMode;
 		onResult: (result: RecallResult) => void;
+		/** Renders a Next button in the answered state (lesson flow only). */
+		onNext?: (() => void) | null;
 	} = $props();
 
 	const prompt = $derived(stripWordLinks(lessonWord.translations));
@@ -49,7 +53,7 @@
 			: blanks
 	);
 	const target = $derived(effectiveBlanks.target);
-	/** Characters the learner actually types: letters/digits only — punctuation is shown for them. */
+	/** Characters the learner actually types (letters, digits, apostrophes). */
 	const typeableTarget = $derived(typeableText(target));
 	const blankTokenOrders = $derived(
 		effectiveBlanks.kind === 'sentence'
@@ -62,6 +66,8 @@
 	);
 
 	let typed = $state('');
+	/** Ghost-revealed target letters (typeable index); the learner types over them. */
+	let hintedUpTo = $state(0);
 	let done = $state(false);
 	let correct = $state(false);
 	let usedHint = $state(false);
@@ -88,16 +94,32 @@
 		blanks.kind !== 'sentence'
 			? 'Type the word'
 			: isAudioMode
-				? 'Listen — fill in what you hear'
+				? 'Type what you hear'
 				: 'Fill in the blank'
 	);
 
+	/**
+	 * Mirror the target's capitals onto the typed answer (sentence starts,
+	 * proper nouns) — case is never graded, so the learner shouldn't have to
+	 * reach for Shift. Lowercase input is only ever upcased, never the
+	 * reverse.
+	 */
+	function matchTargetCase(value: string): string {
+		return [...value]
+			.map((char, index) => {
+				const targetChar = typeableTarget[index];
+				return targetChar && targetChar !== targetChar.toLocaleLowerCase()
+					? char.toLocaleUpperCase()
+					: char;
+			})
+			.join('');
+	}
+
 	function handleInput(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
-		typed = [...input.value]
-			.filter(isTypeableChar)
-			.join('')
-			.slice(0, typeableTarget.length);
+		typed = matchTargetCase(
+			[...input.value].filter(isTypeableChar).join('').slice(0, typeableTarget.length)
+		);
 		input.value = typed;
 		gradedAttempt = null;
 	}
@@ -118,7 +140,7 @@
 
 	function submit() {
 		if (done || typed.length === 0) return;
-		const normalizedTyped = [...typed].map(normalizeAnswerChar).join('');
+		const normalizedTyped = normalizeTypedAnswer(typed);
 		if (accepted.has(normalizedTyped)) {
 			// Accepted (possibly a spelling variant) — settle on the lesson's form.
 			typed = typeableTarget;
@@ -135,7 +157,9 @@
 	function hint() {
 		if (done) return;
 		usedHint = true;
-		// Fix the earliest wrong char, or reveal the next one.
+		// If anything typed is wrong, trim back so the ghost shows the
+		// correction there; otherwise reveal the next letter. The ghost is
+		// only a suggestion — the learner still types it themselves.
 		let fixIndex = typed.length;
 		for (let i = 0; i < typed.length; i += 1) {
 			if (normalizeAnswerChar(typed[i]) !== normalizeAnswerChar(typeableTarget[i] ?? '')) {
@@ -143,19 +167,12 @@
 				break;
 			}
 		}
-		typed = typeableTarget.slice(0, fixIndex + 1);
+		typed = typed.slice(0, fixIndex);
+		// The hidden input isn't value-bound; keep it in step with the trim.
+		if (inputEl) inputEl.value = typed;
+		hintedUpTo = Math.min(Math.max(hintedUpTo, typed.length) + 1, typeableTarget.length);
 		gradedAttempt = null;
-		if (typed.length >= typeableTarget.length) {
-			finish(false);
-			return;
-		}
 		inputEl?.focus();
-	}
-
-	function reveal() {
-		if (done) return;
-		typed = typeableTarget;
-		finish(true);
 	}
 
 	function handleKeydown(event: KeyboardEvent) {
@@ -197,7 +214,6 @@
 				label="Play sentence audio"
 				autoplay
 			/>
-			<span class="listen-hint">Listen, then fill in the missing {target.includes(' ') ? 'words' : 'word'}</span>
 		</div>
 	{/if}
 
@@ -218,6 +234,7 @@
 							{typed}
 							{done}
 							graded={showGrading}
+							{hintedUpTo}
 							active={focused && !done}
 							label={slotsLabel}
 						/>
@@ -232,6 +249,7 @@
 				{typed}
 				{done}
 				graded={showGrading}
+				{hintedUpTo}
 				active={focused && !done}
 				label={slotsLabel}
 			/>
@@ -259,22 +277,53 @@
 
 	<div class="recall-actions">
 		{#if !done}
-			<Tooltip label="Reveal the next letter">
-				<button type="button" class="btn-sm ghost" onclick={hint} aria-label="Hint">💡 Hint</button>
+			<Tooltip label="Reveal next letter">
+				<button type="button" class="icon-btn" onclick={hint} aria-label="Hint">
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="1.8"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M9 18h6" />
+						<path d="M10 21h4" />
+						<path d="M12 3a6 6 0 0 0-4 10.5c.6.6 1 1.4 1 2.5h6c0-1.1.4-1.9 1-2.5A6 6 0 0 0 12 3z" />
+					</svg>
+				</button>
 			</Tooltip>
 			{#if sentence && isAudioMode}
 				<Tooltip
-					label={translationShown ? 'Hide the sentence translation' : 'Show the sentence translation'}
+					label={translationShown ? 'Hide sentence translation' : 'Show sentence translation'}
 				>
 					<button
 						type="button"
-						class="btn-sm ghost"
+						class="icon-btn"
 						onclick={() => (translationShown = !translationShown)}
+						aria-pressed={translationShown}
 						aria-label={translationShown
 							? 'Hide sentence translation'
 							: 'Show sentence translation'}
 					>
-						🌐 {translationShown ? 'Hide translation' : 'Translate'}
+						<svg
+							width="16"
+							height="16"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="1.8"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+							aria-hidden="true"
+						>
+							<circle cx="12" cy="12" r="9" />
+							<path d="M3 12h18" />
+							<path d="M12 3a13.5 13.5 0 0 1 0 18 13.5 13.5 0 0 1 0-18z" />
+						</svg>
 					</button>
 				</Tooltip>
 			{/if}
@@ -287,10 +336,29 @@
 				/>
 			{/if}
 			<span class="spacer"></span>
-			<button type="button" class="btn-sm ghost give-up" onclick={reveal}>Show answer</button>
-			<button type="button" class="btn-sm" onclick={submit} disabled={typed.length === 0}>
-				Check
-			</button>
+			<Tooltip label="Check your answer">
+				<button
+					type="button"
+					class="icon-btn primary"
+					onclick={submit}
+					disabled={typed.length === 0}
+					aria-label="Check answer"
+				>
+					<svg
+						width="18"
+						height="18"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2.2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="m4 12.5 5 5L20 7" />
+					</svg>
+				</button>
+			</Tooltip>
 		{:else}
 			<div class="result" role="status">
 				<span class="visually-hidden">{correct ? 'Correct' : `The answer was ${target}`}</span>
@@ -298,14 +366,32 @@
 					The answer was <strong>{target}</strong>
 				{/if}
 			</div>
+			<span class="spacer"></span>
 			{#if sentence?.audioUrl}
 				<AudioPlayButton
 					bind:this={audioButton}
 					audioUrl={sentence.audioUrl}
-					size="sm"
 					label="Play sentence audio"
 					autoplay
 				/>
+			{/if}
+			{#if onNext}
+				<button type="button" class="btn next-btn" onclick={onNext} aria-label="Next">
+					<svg
+						width="20"
+						height="20"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						aria-hidden="true"
+					>
+						<path d="M5 12h14" />
+						<path d="m13 6 6 6-6 6" />
+					</svg>
+				</button>
 			{/if}
 		{/if}
 	</div>
@@ -350,11 +436,6 @@
 		align-items: center;
 		display: flex;
 		gap: 0.7rem;
-	}
-
-	.listen-hint {
-		color: var(--ink-mute);
-		font-size: 13.5px;
 	}
 
 	.recall-sentence {
@@ -404,8 +485,59 @@
 		flex: 1;
 	}
 
-	.give-up {
+	.icon-btn {
+		align-items: center;
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: 50%;
 		color: var(--ink-mute);
+		cursor: pointer;
+		display: inline-flex;
+		flex-shrink: 0;
+		height: 36px;
+		justify-content: center;
+		padding: 0;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		width: 36px;
+	}
+
+	.icon-btn:hover:not(:disabled) {
+		background: var(--surface, var(--bg-raised));
+		color: var(--ink);
+	}
+
+	.icon-btn[aria-pressed='true'] {
+		border-color: var(--brand);
+		color: var(--brand);
+	}
+
+	.icon-btn.primary {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--on-brand, #fff);
+	}
+
+	.icon-btn.primary:hover:not(:disabled) {
+		background: var(--brand);
+		color: var(--on-brand, #fff);
+		filter: brightness(1.08);
+	}
+
+	.icon-btn:disabled {
+		cursor: default;
+		opacity: 0.45;
+	}
+
+	/* Same footprint as the audio play button beside it (and the lesson
+	   player's Next). */
+	.next-btn {
+		align-items: center;
+		border-radius: 50%;
+		display: inline-flex;
+		height: 44px;
+		justify-content: center;
+		padding: 0;
+		width: 44px;
 	}
 
 	.result {

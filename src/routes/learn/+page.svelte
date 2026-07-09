@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { lessonStates, type LessonState } from '$lib/learn/lesson-states';
+	import { localDashboardStats, localLessonProgressMap } from '$lib/learn/local-progress';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -17,41 +19,59 @@
 		if (lesson.vocabularyType === 'EXPRESSION') return 'Expressions';
 		return 'Vocabulary';
 	}
+
+	// Signed out: progress lives in localStorage, so unlock states and stats
+	// are overlaid on the server's catalogue after mount.
+	let localView = $state<null | {
+		dueCount: number;
+		missedCount: number;
+		streak: number;
+		totalXp: number;
+		states: Map<string, LessonState>;
+	}>(null);
+
+	// $effect (client-only) rather than onMount so the overlay recomputes on
+	// data changes and clears once the visitor signs in.
+	$effect(() => {
+		if (data.user) {
+			localView = null;
+			return;
+		}
+		const progressMap = localLessonProgressMap();
+		const states = new Map<string, LessonState>();
+		for (const group of data.levels) {
+			for (const [id, state] of lessonStates(group.lessons, progressMap)) {
+				states.set(id, state);
+			}
+		}
+		localView = { ...localDashboardStats(), states };
+	});
+
+	const streak = $derived(localView?.streak ?? data.streak);
+	const totalXp = $derived(localView?.totalXp ?? data.totalXp);
+	const dueCount = $derived(localView?.dueCount ?? data.dueCount);
+	const missedCount = $derived(localView?.missedCount ?? data.missedCount);
+
+	function stateFor(lesson: { id: string; state: LessonState }): LessonState {
+		return localView?.states.get(lesson.id) ?? lesson.state;
+	}
 </script>
 
 <svelte:head>
 	<title>Learn · Kalenjin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Learn</div>
-		<h1>Your learning journey</h1>
-		<p>Work through the lessons one by one — every few lessons a story puts your new words to use.</p>
-	</div>
-	<div class="head-stats">
-		<div class="page-stat">
-			<b>{data.streak} 🔥</b>
-			day streak
-		</div>
-		<div class="page-stat">
-			<b>{data.totalXp}</b>
-			total XP
-		</div>
-	</div>
-</div>
-
 <div class="learn-ctas">
-	<a class="cta-card" class:has-due={data.dueCount > 0} href="/learn/review">
+	<a class="cta-card" class:has-due={dueCount > 0} href="/learn/review">
 		<span class="cta-title">Review words</span>
 		<span class="cta-detail">
-			{data.dueCount > 0 ? `${data.dueCount} due now` : 'Nothing due — nice work'}
+			{dueCount > 0 ? `${dueCount} due now` : 'Nothing due — nice work'}
 		</span>
 	</a>
 	<a class="cta-card" href="/learn/listen">
 		<span class="cta-title">Listening practice</span>
 		<span class="cta-detail">
-			{data.missedCount > 0 ? `${data.missedCount} tricky sentences` : 'Hear it, say it, repeat'}
+			{missedCount > 0 ? `${missedCount} tricky sentences` : 'Hear it, say it, repeat'}
 		</span>
 	</a>
 	{#if data.questionCount > 0}
@@ -64,7 +84,22 @@
 			</span>
 		</a>
 	{/if}
+	<div class="cta-card stat-card">
+		<span class="stat-value">{streak} 🔥</span>
+		<span class="cta-detail">day streak</span>
+	</div>
+	<div class="cta-card stat-card">
+		<span class="stat-value">{totalXp}</span>
+		<span class="cta-detail">total XP</span>
+	</div>
 </div>
+
+{#if !data.user}
+	<p class="local-note">
+		Your progress is saved on this device — <a href="/signup">create an account</a> and it moves
+		with you.
+	</p>
+{/if}
 
 {#if data.levels.length === 0}
 	<p class="journey-empty">No lessons published yet — check back soon.</p>
@@ -74,8 +109,9 @@
 			<h2 class="level-title">{LEVEL_LABELS[group.level] ?? group.level}</h2>
 			<ol class="journey">
 				{#each group.lessons as lesson (lesson.id)}
-					<li class="journey-item {lesson.state}" class:story={lesson.type === 'STORY'}>
-						{#if lesson.state === 'locked'}
+					{@const state = stateFor(lesson)}
+					<li class="journey-item {state}" class:story={lesson.type === 'STORY'}>
+						{#if state === 'locked'}
 							<div class="lesson-node" aria-label="{lesson.title} (locked)">
 								<span class="node-marker" aria-hidden="true">
 									{lesson.type === 'STORY' ? '📖' : '🔒'}
@@ -88,7 +124,7 @@
 						{:else}
 							<a class="lesson-node" href="/learn/{lesson.slug}">
 								<span class="node-marker" aria-hidden="true">
-									{#if lesson.type === 'STORY'}📖{:else if lesson.state === 'completed'}✓{:else}★{/if}
+									{#if lesson.type === 'STORY'}📖{:else if state === 'completed'}✓{:else}★{/if}
 								</span>
 								<span class="node-body">
 									<span class="node-title">{lesson.title}</span>
@@ -97,9 +133,9 @@
 										{#if lesson.wordCount > 0}
 											· {lesson.wordCount} {lesson.wordCount === 1 ? 'word' : 'words'}
 										{/if}
-										{#if lesson.state === 'in_progress'}
+										{#if state === 'in_progress'}
 											· In progress
-										{:else if lesson.state === 'available'}
+										{:else if state === 'available'}
 											· Up next
 										{/if}
 									</span>
@@ -114,16 +150,33 @@
 {/if}
 
 <style>
-	.head-stats {
-		display: flex;
-		gap: 1.5rem;
-	}
-
 	.learn-ctas {
 		display: grid;
 		gap: 0.9rem;
 		grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-		margin: 1.4rem 0 2rem;
+		margin: 0 0 2rem;
+	}
+
+	.stat-card {
+		gap: 0;
+	}
+
+	.stat-value {
+		color: var(--ink);
+		font-family: var(--font-display, inherit);
+		font-size: 24px;
+		font-weight: 500;
+		line-height: 1.2;
+	}
+
+	.local-note {
+		color: var(--ink-mute);
+		font-size: 13px;
+		margin: -1.2rem 0 2rem;
+	}
+
+	.local-note a {
+		color: var(--brand);
 	}
 
 	.cta-card {

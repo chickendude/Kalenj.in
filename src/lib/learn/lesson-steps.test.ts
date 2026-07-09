@@ -5,6 +5,7 @@ import {
 	clampStepIndex,
 	normalizeAnswerChar,
 	normalizeAnswerText,
+	normalizeTypedAnswer,
 	resolveBlanks,
 	typeableText,
 	type LearnLesson,
@@ -45,8 +46,8 @@ describe('normalizeAnswerText', () => {
 });
 
 describe('typeableText', () => {
-	it('keeps only letters and digits', () => {
-		expect(typeableText("lang'at")).toBe('langat');
+	it('keeps letters, digits, and apostrophes; drops other punctuation', () => {
+		expect(typeableText("lang'at")).toBe("lang'at");
 		expect(typeableText('Chamgei!')).toBe('Chamgei');
 		expect(typeableText('Ma olen nõus.')).toBe('Maolennõus');
 	});
@@ -56,6 +57,11 @@ describe('normalizeAnswerChar', () => {
 	it('folds case and apostrophe variants', () => {
 		expect(normalizeAnswerChar('A')).toBe('a');
 		expect(normalizeAnswerChar('’')).toBe("'");
+	});
+
+	it('folds the a/o spelling alternation', () => {
+		expect(normalizeAnswerChar('o')).toBe('a');
+		expect(normalizeAnswerChar('O')).toBe('a');
 	});
 });
 
@@ -74,18 +80,35 @@ describe('acceptableAnswers', () => {
 
 	it('accepts close same-length spelling variants', () => {
 		const accepted = acceptableAnswers({ kalenjin: 'amitwogik', word }, 'amitwogik');
-		expect(accepted.has('amitwogik')).toBe(true);
-		expect(accepted.has('omitwogik')).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('amitwogik'))).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('omitwogik'))).toBe(true);
 	});
 
 	it('rejects different-length inflections of the same lemma', () => {
 		const accepted = acceptableAnswers({ kalenjin: 'amitwogik', word }, 'amitwogik');
-		expect(accepted.has('amitwok')).toBe(false);
+		expect(accepted.has(normalizeTypedAnswer('amitwok'))).toBe(false);
 	});
 
 	it('is case- and apostrophe-insensitive', () => {
 		const accepted = acceptableAnswers({ kalenjin: 'Chamgei', word: null }, 'Chamgei');
-		expect(accepted.has('chamgei')).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('chamgei'))).toBe(true);
+	});
+
+	it('treats apostrophes as typed but optional', () => {
+		const accepted = acceptableAnswers({ kalenjin: "lang'at", word: null }, "lang'at");
+		expect(accepted.has(normalizeTypedAnswer("lang'at"))).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('langat'))).toBe(true);
+		// Curly apostrophes from smart keyboards normalize to straight ones.
+		expect(accepted.has(normalizeTypedAnswer('lang’at'))).toBe(true);
+	});
+
+	it('accepts a/o alternations anywhere in the target, even unrecorded ones', () => {
+		// Dictation over a whole sentence: the word-level variant list can't
+		// cover it, so the fold in normalizeAnswerChar has to.
+		const accepted = acceptableAnswers({ kalenjin: 'onyiny', word: null }, 'Onyiny amitwogik');
+		expect(accepted.has(normalizeTypedAnswer('Anyiny amitwogik'))).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('Onyiny omitwogik'))).toBe(true);
+		expect(accepted.has(normalizeTypedAnswer('Anyinu amitwogik'))).toBe(false);
 	});
 
 	it('caps substitutions for short words at one', () => {
@@ -93,11 +116,11 @@ describe('acceptableAnswers', () => {
 			id: 'w2',
 			kalenjin: 'kot',
 			translations: 'very',
-			observedForms: [{ normalizedForm: 'kop' }, { normalizedForm: 'bat' }]
+			observedForms: [{ normalizedForm: 'kop' }, { normalizedForm: 'bip' }]
 		};
 		const accepted = acceptableAnswers({ kalenjin: 'kot', word: shortWord }, 'kot');
-		expect(accepted.has('kop')).toBe(true); // 1 substitution
-		expect(accepted.has('bat')).toBe(false); // 2 substitutions
+		expect(accepted.has(normalizeTypedAnswer('kop'))).toBe(true); // 1 substitution
+		expect(accepted.has(normalizeTypedAnswer('bip'))).toBe(false); // 2 substitutions
 	});
 });
 

@@ -127,6 +127,7 @@ export type LessonStep =
 	| { kind: 'complete' };
 
 const APOSTROPHES = /[‘’ʼ`´]/g;
+const APOSTROPHE_LIKE = /^['‘’ʼ`´]$/;
 const COLLAPSE_WHITESPACE = /\s+/g;
 
 /**
@@ -139,9 +140,12 @@ export function normalizeAnswerText(value: string): string {
 	).toLowerCase();
 }
 
-/** Letters and digits are typed by the learner; punctuation is shown for them. */
+/**
+ * Letters, digits, and apostrophes (part of Kalenjin orthography — ng',
+ * lang'at) are typed by the learner; other punctuation is shown for them.
+ */
 export function isTypeableChar(char: string): boolean {
-	return /[\p{L}\p{N}]/u.test(char);
+	return /[\p{L}\p{N}]/u.test(char) || APOSTROPHE_LIKE.test(char);
 }
 
 /** Just the characters of `value` the learner actually types. */
@@ -149,28 +153,35 @@ export function typeableText(value: string): string {
 	return [...value].filter(isTypeableChar).join('');
 }
 
-/** Case- and apostrophe-insensitive single-character comparison key. */
+/**
+ * Case- and apostrophe-insensitive single-character comparison key. Also
+ * folds the Kalenjin a/o spelling alternation (amitwogik/omitwogik,
+ * onyiny/anyiny) — the two vowels are interchangeable in written Kalenjin,
+ * so a typed answer is never marked wrong over the choice between them.
+ */
 export function normalizeAnswerChar(char: string): string {
-	return char.replace(APOSTROPHES, "'").toLocaleLowerCase();
+	const folded = char.replace(APOSTROPHES, "'").toLocaleLowerCase();
+	return folded === 'o' ? 'a' : folded;
 }
 
-function normalizedTypeable(value: string): string {
+/** Comparison key for a whole typed answer: its typeable chars, normalized. */
+export function normalizeTypedAnswer(value: string): string {
 	return [...typeableText(value)].map(normalizeAnswerChar).join('');
 }
 
 /**
  * The set of normalized typed answers a recall drill accepts: the target
  * itself plus close spelling variants of the same word (dictionary spellings
- * and corpus surface forms). A variant counts as "close" when it has the same
- * length as the target and differs in at most 1–2 characters — that admits
- * a/o-style spelling alternations (amitwogik/omitwogik) without accepting a
- * different inflection of the same lemma.
+ * and corpus surface forms). a/o alternations are already folded away by
+ * `normalizeAnswerChar`; the variant matching admits other small spelling
+ * differences — same length as the target, at most 1–2 characters apart —
+ * without accepting a different inflection of the same lemma.
  */
 export function acceptableAnswers(
 	lessonWord: Pick<LearnLessonWord, 'kalenjin' | 'word'>,
 	target: string
 ): Set<string> {
-	const normalizedTarget = normalizedTypeable(target);
+	const normalizedTarget = normalizeTypedAnswer(target);
 	const accepted = new Set([normalizedTarget]);
 	if (!normalizedTarget) return accepted;
 
@@ -185,7 +196,7 @@ export function acceptableAnswers(
 
 	for (const candidate of candidates) {
 		if (!candidate) continue;
-		const normalized = normalizedTypeable(candidate);
+		const normalized = normalizeTypedAnswer(candidate);
 		if (normalized.length !== normalizedTarget.length) continue;
 		let substitutions = 0;
 		for (let i = 0; i < normalized.length; i += 1) {
@@ -193,6 +204,13 @@ export function acceptableAnswers(
 			if (substitutions > maxSubstitutions) break;
 		}
 		if (substitutions <= maxSubstitutions) accepted.add(normalized);
+	}
+
+	// Apostrophes are typed but never required — "langat" still counts for
+	// "lang'at".
+	for (const value of [...accepted]) {
+		const stripped = value.replaceAll("'", '');
+		if (stripped && stripped !== value) accepted.add(stripped);
 	}
 	return accepted;
 }

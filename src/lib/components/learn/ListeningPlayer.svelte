@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { localSetSentenceMissed } from '$lib/learn/local-progress';
 	import { toast } from '$lib/stores/toast.svelte';
 
 	type ListeningSentence = {
@@ -30,11 +31,14 @@
 		segments,
 		settings,
 		missedScope = false,
+		local = false,
 		onSessionComplete = null
 	}: {
 		segments: Segment[];
 		settings: ListeningSettings;
 		missedScope?: boolean;
+		/** Signed out: missed flags are written to localStorage instead of the API. */
+		local?: boolean;
 		onSessionComplete?: (() => void) | null;
 	} = $props();
 
@@ -42,9 +46,9 @@
 
 	const PHASE_LABELS: Record<Phase, string> = {
 		idle: 'Press play to start',
-		english: 'Listen — English',
-		produce: 'Your turn — say it in Kalenjin',
-		kalenjin: 'Listen — Kalenjin',
+		english: 'Listen: English',
+		produce: 'Your turn: say it in Kalenjin',
+		kalenjin: 'Listen: Kalenjin',
 		repeat: 'Repeat it aloud',
 		done: 'Session complete'
 	};
@@ -291,6 +295,11 @@
 		if (!sentence) return;
 		const id = sentence.id;
 		flagged = new Set([...flagged, id]);
+		if (local) {
+			localSetSentenceMissed(id, true);
+			toast.success('Marked to practise again.');
+			return;
+		}
 		void fetch('/api/learn/missed-sentences', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -306,6 +315,11 @@
 		if (!sentence) return;
 		const id = sentence.id;
 		cleared = new Set([...cleared, id]);
+		if (local) {
+			localSetSentenceMissed(id, false);
+			toast.success('Nice — cleared from your missed list.');
+			return;
+		}
 		void fetch('/api/learn/missed-sentences', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },

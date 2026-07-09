@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Modal from '$lib/components/Modal.svelte';
 	import GrammarInterstitial from '$lib/components/learn/GrammarInterstitial.svelte';
 	import LessonCompleteCelebration, {
 		type CompletionStats
@@ -9,15 +10,26 @@
 	import ShortcutsHelp from '$lib/components/learn/ShortcutsHelp.svelte';
 	import WordIntroCard from '$lib/components/learn/WordIntroCard.svelte';
 	import { buildLessonSteps, clampStepIndex, type LearnLesson } from '$lib/learn/lesson-steps';
+	import {
+		localCompleteLesson,
+		localRecordDrillMiss,
+		localUpsertLessonStep
+	} from '$lib/learn/local-progress';
 	import { emitLearnShortcut, shortcutActionForKey } from '$lib/learn/shortcuts';
 	import { toast } from '$lib/stores/toast.svelte';
 
 	let {
 		lesson,
-		progress
+		progress,
+		local = false,
+		nextLessonSlug = null
 	}: {
 		lesson: LearnLesson;
 		progress: { status: string; lastStepIndex: number } | null;
+		/** Signed out: progress is written to localStorage instead of the API. */
+		local?: boolean;
+		/** Used for the completion screen in local mode. */
+		nextLessonSlug?: string | null;
 	} = $props();
 
 	const steps = $derived(buildLessonSteps(lesson));
@@ -29,17 +41,34 @@
 	);
 
 	let currentIndex = $state(0);
-	let resumePromptOpen = $state(false);
 	let recallAnswered = $state(false);
 	let recallOutcome = $state<'correct' | 'incorrect' | null>(null);
 	let completing = $state(false);
 	let completionStats = $state<CompletionStats | null>(null);
 	let completeFailed = $state(false);
 	let shortcutsOpen = $state(false);
+	let grammarOpen = $state(false);
 
+	// Everything the lesson has to say about grammar: the lesson-level
+	// interstitial plus any per-section notes, viewable any time from the
+	// header instead of only when their step comes around.
+	const grammarNotes = $derived.by(() => {
+		const notes: Array<{ title: string | null; markdown: string }> = [];
+		if (lesson.grammarMarkdown?.trim()) {
+			notes.push({ title: null, markdown: lesson.grammarMarkdown });
+		}
+		for (const section of lesson.sections) {
+			if (section.notes?.trim()) {
+				notes.push({ title: section.title ?? null, markdown: section.notes });
+			}
+		}
+		return notes;
+	});
+
+	// Pick up right where the lesson left off — no resume prompt.
 	// svelte-ignore state_referenced_locally — intentional one-time init
 	if (resumeIndex > 0) {
-		resumePromptOpen = true;
+		currentIndex = resumeIndex;
 	}
 
 	const step = $derived(steps[currentIndex]);
@@ -53,6 +82,10 @@
 	function postProgress(stepIndex: number) {
 		if (progressTimer) clearTimeout(progressTimer);
 		progressTimer = setTimeout(() => {
+			if (local) {
+				localUpsertLessonStep(lesson.id, stepIndex);
+				return;
+			}
 			void fetch('/api/learn/progress', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -63,6 +96,10 @@
 
 	async function completeNow() {
 		if (completing || completionStats) return;
+		if (local) {
+			completionStats = { ...localCompleteLesson(lesson), nextLessonSlug };
+			return;
+		}
 		completing = true;
 		completeFailed = false;
 		try {
@@ -103,32 +140,30 @@
 		goTo(currentIndex - 1);
 	}
 
-	function handleRecallResult(lessonWordId: string, result: import('$lib/srs').RecallResult) {
+	function handleRecallResult(
+		lessonWord: { id: string; wordId?: string | null },
+		result: import('$lib/srs').RecallResult
+	) {
 		recallAnswered = true;
 		recallOutcome = result.correct && !result.revealed ? 'correct' : 'incorrect';
 		// A miss marks the word's SRS card due for review (fire-and-forget);
 		// clean answers never advance the schedule from inside a lesson. Any
 		// wrong submission counts, even if the learner got there in the end.
 		const missed = result.revealed || !result.correct || result.wrongSubmits > 0;
+		if (!missed) return;
+		if (local) {
+			localRecordDrillMiss(lessonWord);
+			return;
+		}
 		void fetch('/api/learn/drill-result', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify({ lessonWordId, correct: !missed })
+			body: JSON.stringify({ lessonWordId: lessonWord.id, correct: false })
 		}).catch(() => {});
 	}
 
-	function resume() {
-		resumePromptOpen = false;
-		goTo(resumeIndex);
-	}
-
-	function startOver() {
-		resumePromptOpen = false;
-		goTo(0);
-	}
-
 	function handleWindowKeydown(event: KeyboardEvent) {
-		if (resumePromptOpen || completionStats || shortcutsOpen) return;
+		if (completionStats || shortcutsOpen || grammarOpen) return;
 		if (event.metaKey || event.ctrlKey || event.altKey) return;
 		const target = event.target as HTMLElement | null;
 		const typing =
@@ -171,6 +206,29 @@
 		<a class="exit" href="/learn" aria-label="Exit lesson">✕</a>
 		<ProgressBar current={currentIndex} total={Math.max(1, steps.length - 1)} />
 		<span class="step-count mono">{Math.min(currentIndex + 1, steps.length)}/{steps.length}</span>
+		{#if grammarNotes.length > 0}
+			<button
+				type="button"
+				class="shortcuts-btn"
+				aria-label="Grammar notes"
+				onclick={() => (grammarOpen = true)}
+			>
+				<svg
+					width="16"
+					height="16"
+					viewBox="0 0 24 24"
+					fill="none"
+					stroke="currentColor"
+					stroke-width="1.7"
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					aria-hidden="true"
+				>
+					<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z" />
+					<path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z" />
+				</svg>
+			</button>
+		{/if}
 		<button
 			type="button"
 			class="shortcuts-btn"
@@ -191,20 +249,23 @@
 
 	<ShortcutsHelp open={shortcutsOpen} context="lesson" onclose={() => (shortcutsOpen = false)} />
 
-	{#if resumePromptOpen}
-		<div class="player-card resume-card">
-			<h2 class="resume-title">Welcome back</h2>
-			<p class="resume-text">
-				You were partway through <strong>{lesson.title}</strong>.
-			</p>
-			<div class="resume-actions">
-				<button type="button" class="btn" onclick={resume}>
-					Resume (step {resumeIndex + 1} of {steps.length})
-				</button>
-				<button type="button" class="btn ghost" onclick={startOver}>Start over</button>
-			</div>
+	<Modal
+		open={grammarOpen}
+		title="Grammar notes"
+		labelledBy="grammar-notes-title"
+		onclose={() => (grammarOpen = false)}
+	>
+		<div class="grammar-notes">
+			{#each grammarNotes as note, index (index)}
+				{#if index > 0}
+					<hr class="grammar-divider" />
+				{/if}
+				<GrammarInterstitial markdown={note.markdown} title={note.title} showKicker={false} />
+			{/each}
 		</div>
-	{:else if step}
+	</Modal>
+
+	{#if step}
 		{#key currentIndex}
 			<div
 				class="player-card"
@@ -225,7 +286,8 @@
 						lessonWord={step.lessonWord}
 						blanks={step.blanks}
 						mode={step.mode}
-						onResult={(result) => handleRecallResult(step.lessonWord.id, result)}
+						onResult={(result) => handleRecallResult(step.lessonWord, result)}
+						onNext={advance}
 					/>
 				{:else if step.kind === 'storyIntro'}
 					<div class="section-card">
@@ -257,19 +319,33 @@
 						</div>
 					{/if}
 				{/if}
+
+				<!-- Exercises render their own Next (next to the answer's audio
+				     replay) once answered; every other step except the completion
+				     screen gets it here. -->
+				{#if step.kind !== 'complete' && step.kind !== 'recall'}
+					<div class="card-next">
+						<button type="button" class="btn next-btn" onclick={advance} aria-label="Next">
+							<svg
+								width="20"
+								height="20"
+								viewBox="0 0 24 24"
+								fill="none"
+								stroke="currentColor"
+								stroke-width="2"
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								aria-hidden="true"
+							>
+								<path d="M5 12h14" />
+								<path d="m13 6 6 6-6 6" />
+							</svg>
+						</button>
+					</div>
+				{/if}
 			</div>
 		{/key}
 
-		{#if step.kind !== 'complete'}
-			<footer class="player-foot">
-				<button type="button" class="btn-sm ghost" onclick={goBack} disabled={!canGoBack}>
-					← Back
-				</button>
-				<button type="button" class="btn continue" onclick={advance} disabled={!canAdvance}>
-					Continue →
-				</button>
-			</footer>
-		{/if}
 	{/if}
 </div>
 
@@ -331,14 +407,44 @@
 		color: var(--ink);
 	}
 
+	.grammar-notes {
+		display: grid;
+		gap: 1rem;
+	}
+
+	.grammar-divider {
+		border: none;
+		border-top: 1px solid var(--line);
+		margin: 0;
+		width: 100%;
+	}
+
 	.player-card {
 		background: var(--bg-raised);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-lg, 10px);
 		display: grid;
+		/* Step content fills the card; the Next row pins to the bottom. */
+		grid-template-rows: 1fr auto;
 		min-height: 320px;
 		padding: 2rem;
 		transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+	}
+
+	.card-next {
+		display: flex;
+		justify-content: flex-end;
+		margin-top: 1rem;
+	}
+
+	.next-btn {
+		align-items: center;
+		border-radius: 50%;
+		display: inline-flex;
+		height: 44px;
+		justify-content: center;
+		padding: 0;
+		width: 44px;
 	}
 
 	.player-card.outcome-correct {
@@ -351,31 +457,6 @@
 		background: color-mix(in oklab, oklch(0.55 0.19 25) 7%, var(--bg-raised));
 		border-color: oklch(0.55 0.19 25);
 		box-shadow: 0 0 0 1px oklch(0.55 0.19 25);
-	}
-
-	.resume-card {
-		display: grid;
-		gap: 0.7rem;
-		justify-items: center;
-		text-align: center;
-	}
-
-	.resume-title {
-		font-family: var(--font-display, inherit);
-		margin: 0.5rem 0 0;
-	}
-
-	.resume-text {
-		color: var(--ink-soft);
-		margin: 0;
-	}
-
-	.resume-actions {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.6rem;
-		justify-content: center;
-		margin-top: 0.6rem;
 	}
 
 	.section-card {
@@ -422,16 +503,6 @@
 		gap: 0.7rem;
 		justify-items: center;
 		text-align: center;
-	}
-
-	.player-foot {
-		align-items: center;
-		display: flex;
-		justify-content: space-between;
-	}
-
-	.continue {
-		min-width: 160px;
 	}
 
 	@media (max-width: 640px) {

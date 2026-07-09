@@ -1173,6 +1173,9 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   margin-left: 16px;
   padding-left: 16px;
   border-left: 1px solid var(--line);
+  /* "Sign in" / "Sign up" stay on one line when the search bar squeezes the row. */
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .topbar-user .who {
   font-size: 13px;

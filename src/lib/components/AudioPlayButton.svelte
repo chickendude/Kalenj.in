@@ -5,9 +5,20 @@
 		label?: string;
 		/** Start playback as soon as the button mounts (or the URL changes). */
 		autoplay?: boolean;
+		/**
+		 * Fires when playback finishes (or the file fails to load), but not on
+		 * a manual pause — lets parents chain audio, e.g. word then sentence.
+		 */
+		onEnded?: (() => void) | null;
 	};
 
-	let { audioUrl, size = 'md', label = 'Play pronunciation', autoplay = false }: Props = $props();
+	let {
+		audioUrl,
+		size = 'md',
+		label = 'Play pronunciation',
+		autoplay = false,
+		onEnded = null
+	}: Props = $props();
 
 	let audio: HTMLAudioElement | null = null;
 	let playing = $state(false);
@@ -27,12 +38,15 @@
 			audio = new Audio(audioUrl);
 			audio.addEventListener('ended', () => {
 				playing = false;
+				onEnded?.();
 			});
 			audio.addEventListener('pause', () => {
 				playing = false;
 			});
 			audio.addEventListener('error', () => {
 				playing = false;
+				// A broken file shouldn't break an audio chain — let it continue.
+				onEnded?.();
 			});
 		}
 
@@ -47,15 +61,16 @@
 		);
 	}
 
+	// A mouse click must not move focus here — it would pull the caret out of
+	// a typing drill's answer box, and Enter would replay the audio instead of
+	// meaning "continue". Keyboard users still focus the button via Tab.
+	function handleMousedown(event: MouseEvent) {
+		event.preventDefault();
+	}
+
 	function handleClick(event: MouseEvent) {
 		event.stopPropagation();
 		event.preventDefault();
-		// After a mouse click, return focus to the page so Enter keeps meaning
-		// "continue" rather than replaying the audio. Keyboard activation
-		// (event.detail === 0) keeps focus for keyboard users.
-		if (event.detail > 0) {
-			(event.currentTarget as HTMLElement | null)?.blur();
-		}
 		play();
 	}
 
@@ -83,6 +98,7 @@
 		class:playing
 		aria-label={label}
 		aria-pressed={playing}
+		onmousedown={handleMousedown}
 		onclick={handleClick}
 	>
 		{#if size === 'sm'}

@@ -43,12 +43,14 @@ function readSettings(url: URL): ListenSettings {
 }
 
 export const load: PageServerLoad = async ({ locals, url }) => {
-	const user = requireUser(locals);
+	const userId = locals.user?.id ?? null;
 	const scopeParam = url.searchParams.get('scope');
 	const settings = readSettings(url);
 
 	if (scopeParam === 'missed') {
-		const sentences = await getListeningSentences(user.id, { kind: 'missed' });
+		// Signed out: missed sentences live in localStorage — the client
+		// hydrates them via /api/learn/sentences.
+		const sentences = userId ? await getListeningSentences(userId, { kind: 'missed' }) : [];
 		const segments: ListeningSegment[] = [{ title: null, reps: null, sentences }];
 		return {
 			mode: 'play' as const,
@@ -66,7 +68,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		if (!lessonId) error(404, 'Lesson not found.');
 		const scope: ListeningScope = { kind: scopeParam, lessonId };
 		const [sentences, lesson] = await Promise.all([
-			getListeningSentences(user.id, scope),
+			getListeningSentences(userId, scope),
 			prisma.lesson.findUnique({ where: { id: lessonId }, select: { title: true } })
 		]);
 		const segments: ListeningSegment[] = [{ title: null, reps: null, sentences }];
@@ -97,7 +99,19 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	if (scopeParam === 'program') {
-		const session = await getProgramDaySession(user.id);
+		// Signed out: the program lives in localStorage — the client builds
+		// today's session via /api/learn/listening-segments.
+		if (!userId) {
+			return {
+				mode: 'play' as const,
+				scope: 'program' as const,
+				title: 'Daily program',
+				segments: [] as ListeningSegment[],
+				programFinished: false,
+				settings
+			};
+		}
+		const session = await getProgramDaySession(userId);
 		if (!session) error(404, 'No listening program set up yet.');
 		return {
 			mode: 'play' as const,
@@ -110,9 +124,9 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	}
 
 	const [picker, program, programSession] = await Promise.all([
-		getListeningPickerData(user.id),
-		getListeningProgram(user.id),
-		getProgramDaySession(user.id)
+		getListeningPickerData(userId),
+		userId ? getListeningProgram(userId) : null,
+		userId ? getProgramDaySession(userId) : null
 	]);
 
 	return {

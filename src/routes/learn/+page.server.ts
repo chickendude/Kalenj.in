@@ -1,8 +1,8 @@
-import { requireUser } from '$lib/server/guards';
 import { getLearnDashboard } from '$lib/server/learning';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const user = requireUser(locals);
-	return getLearnDashboard(user.id);
+	// Signed-out learners get the lesson catalogue; their progress lives in
+	// localStorage and is overlaid client-side.
+	return getLearnDashboard(locals.user?.id ?? null);
 };

@@ -7,12 +7,15 @@
 		targetType,
 		targetId,
 		lessonId = null,
+		signedOut = false,
 		onclose
 	}: {
 		open: boolean;
 		targetType: ReportTargetType;
 		targetId: string;
 		lessonId?: string | null;
+		/** Signed out: questions need an account, so show a sign-in prompt instead. */
+		signedOut?: boolean;
 		onclose: () => void;
 	} = $props();
 
@@ -85,6 +88,16 @@
 			aria-labelledby="clarify-dialog-title"
 		>
 			<h2 id="clarify-dialog-title" class="clarify-title">Ask a question</h2>
+			{#if signedOut}
+				<p class="signed-out-note">
+					Questions need an account, so the editors' answers can find their way back to you.
+				</p>
+				<div class="clarify-actions">
+					<button type="button" class="btn-sm ghost" onclick={onclose}>Not now</button>
+					<a class="btn-sm auth-link" href="/login">Sign in</a>
+					<a class="btn-sm auth-link" href="/signup">Create an account</a>
+				</div>
+			{:else}
 			<form onsubmit={submit}>
 				<div class="clarify-field">
 					<label for="clarify-question">What don't you understand?</label>
@@ -112,6 +125,7 @@
 					</button>
 				</div>
 			</form>
+			{/if}
 		</div>
 	</div>
 {/if}
@@ -145,6 +159,16 @@
 		font-size: 1.25rem;
 		font-weight: 600;
 		margin: 0;
+	}
+
+	.signed-out-note {
+		color: var(--ink-soft, #334155);
+		font-size: 14px;
+		margin: 0;
+	}
+
+	.auth-link {
+		text-decoration: none;
 	}
 
 	.clarify-field {

@@ -12,6 +12,20 @@
 	const translations = $derived(stripWordLinks(lessonWord.translations));
 	const imageUrl = $derived(word?.imageUrl ?? lessonWord.sentence?.imageUrl ?? null);
 
+	// Introduce the word by ear: the word's own audio plays first, then the
+	// example sentence. Without a word recording, the sentence leads as before.
+	const hasWordAudio = $derived(Boolean(word?.audioUrl));
+	let sentenceCard = $state<ReturnType<typeof SentenceRevealCard> | null>(null);
+	// Chain only once, for the intro autoplay — replaying the word by hand
+	// shouldn't drag the sentence along every time.
+	let introChainDone = false;
+
+	function handleWordAudioEnded() {
+		if (introChainDone) return;
+		introChainDone = true;
+		sentenceCard?.playAudio();
+	}
+
 	const conjugations = $derived.by(() => {
 		if (!word) return [];
 		return [
@@ -29,7 +43,12 @@
 	<div class="word-kicker">New word</div>
 	<div class="headword-row">
 		<h2 class="headword">{lessonWord.kalenjin}</h2>
-		<AudioPlayButton audioUrl={word?.audioUrl} label="Play word pronunciation" />
+		<AudioPlayButton
+			audioUrl={word?.audioUrl}
+			label="Play word pronunciation"
+			autoplay
+			onEnded={handleWordAudioEnded}
+		/>
 	</div>
 	<p class="translations">{translations}</p>
 
@@ -60,9 +79,10 @@
 	{#if lessonWord.sentence}
 		<div class="example">
 			<SentenceRevealCard
+				bind:this={sentenceCard}
 				sentence={lessonWord.sentence}
 				translationOverride={lessonWord.sentenceTranslation}
-				autoplayAudio
+				autoplayAudio={!hasWordAudio}
 				translationRevealed
 			/>
 			{#if lessonWord.wordForWordTranslation?.trim()}

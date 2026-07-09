@@ -1,13 +1,24 @@
 <script lang="ts">
 	import { renderMarkdown } from '$lib/markdown';
 
-	let { markdown, title = null }: { markdown: string; title?: string | null } = $props();
+	let {
+		markdown,
+		title = null,
+		showKicker = true
+	}: {
+		markdown: string;
+		title?: string | null;
+		/** Off when the surrounding UI already says "Grammar" (e.g. the notes dialog). */
+		showKicker?: boolean;
+	} = $props();
 
 	const html = $derived(renderMarkdown(markdown));
 </script>
 
 <div class="grammar-card">
-	<div class="grammar-kicker">Grammar</div>
+	{#if showKicker}
+		<div class="grammar-kicker">Grammar</div>
+	{/if}
 	{#if title}
 		<h2 class="grammar-title">{title}</h2>
 	{/if}

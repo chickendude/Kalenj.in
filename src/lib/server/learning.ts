@@ -1,6 +1,13 @@
 import { error } from '@sveltejs/kit';
 import { prisma } from '$lib/server/prisma';
 import { gradeCard, NEW_CARDS_PER_SESSION } from '$lib/srs';
+import { computeStreak, LESSON_COMPLETE_XP, REVIEW_XP, utcDayStart } from '$lib/learn/activity';
+import { lessonStates, type LessonState } from '$lib/learn/lesson-states';
+import {
+	parseProgramPattern,
+	PROGRAM_PATTERN_MAX_DAYS,
+	PROGRAM_PATTERN_MAX_REPS
+} from '$lib/learn/listening-program';
 import type { CefrLevel, Prisma, ReviewGrade } from '@prisma/client';
 
 /**
@@ -8,8 +15,9 @@ import type { CefrLevel, Prisma, ReviewGrade } from '@prisma/client';
  * listening practice, and daily activity (XP/streak).
  */
 
-const LESSON_COMPLETE_XP = 20;
-const REVIEW_XP = 2;
+export { parseProgramPattern, PROGRAM_PATTERN_MAX_DAYS, PROGRAM_PATTERN_MAX_REPS };
+export type { LessonState };
+
 const REVIEW_QUEUE_LIMIT = 50;
 
 const TOKEN_WORD_SELECT = {
@@ -64,8 +72,6 @@ const PLAYABLE_LESSON_INCLUDE = {
 	}
 } satisfies Prisma.LessonInclude;
 
-export type LessonState = 'locked' | 'available' | 'in_progress' | 'completed';
-
 export type DashboardLesson = {
 	id: string;
 	slug: string;
@@ -98,18 +104,13 @@ export async function resolveLessonId(segment: string): Promise<string | null> {
 // Activity (XP + streak)
 // ---------------------------------------------------------------------------
 
-/** Midnight UTC for "today" — LearnActivityDay uses UTC day boundaries. */
-function utcToday(now = new Date()): Date {
-	return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-}
-
 async function recordActivity(
 	tx: Prisma.TransactionClient,
 	userId: string,
 	xp: number,
 	now = new Date()
 ): Promise<void> {
-	const date = utcToday(now);
+	const date = utcDayStart(now);
 	await tx.learnActivityDay.upsert({
 		where: { userId_date: { userId, date } },
 		create: { userId, date, xp },
@@ -128,23 +129,7 @@ async function getStreak(userId: string, now = new Date()): Promise<number> {
 		orderBy: { date: 'desc' },
 		take: 731
 	});
-	if (days.length === 0) return 0;
-
-	const DAY_MS = 24 * 60 * 60 * 1000;
-	const today = utcToday(now).getTime();
-	let expected = today;
-	if (days[0].date.getTime() !== today) {
-		expected = today - DAY_MS;
-		if (days[0].date.getTime() !== expected) return 0;
-	}
-
-	let streak = 0;
-	for (const day of days) {
-		if (day.date.getTime() !== expected) break;
-		streak += 1;
-		expected -= DAY_MS;
-	}
-	return streak;
+	return computeStreak(days.map((day) => day.date.getTime()), now);
 }
 
 async function getTotalXp(userId: string): Promise<number> {
@@ -160,33 +145,10 @@ async function getTotalXp(userId: string): Promise<number> {
 // ---------------------------------------------------------------------------
 
 /**
- * Compute per-lesson unlock states for one level's published lessons, in
- * lessonOrder. A lesson is unlocked when it is the first published lesson of
- * the level or the previous published lesson is completed.
+ * Learner dashboard. With a null userId (signed out), progress, counts, and
+ * activity are all empty — the client overlays its locally stored progress.
  */
-function lessonStates(
-	lessons: Array<{ id: string }>,
-	progressByLesson: Map<string, { status: string; lastStepIndex: number }>
-): Map<string, LessonState> {
-	const states = new Map<string, LessonState>();
-	let previousCompleted = true;
-	for (const lesson of lessons) {
-		const progress = progressByLesson.get(lesson.id);
-		if (progress?.status === 'COMPLETED') {
-			states.set(lesson.id, 'completed');
-			previousCompleted = true;
-		} else if (previousCompleted) {
-			states.set(lesson.id, progress ? 'in_progress' : 'available');
-			previousCompleted = false;
-		} else {
-			states.set(lesson.id, 'locked');
-			previousCompleted = false;
-		}
-	}
-	return states;
-}
-
-export async function getLearnDashboard(userId: string) {
+export async function getLearnDashboard(userId: string | null) {
 	const [lessons, progress, dueCount, missedCount, streak, totalXp, questionCounts] =
 		await Promise.all([
 		prisma.lesson.findMany({
@@ -203,21 +165,27 @@ export async function getLearnDashboard(userId: string) {
 				sections: { select: { _count: { select: { words: true } } } }
 			}
 		}),
-		prisma.lessonProgress.findMany({
-			where: { userId },
-			select: { lessonId: true, status: true, lastStepIndex: true }
-		}),
-		prisma.srsCard.count({
-			where: { userId, suspended: false, dueAt: { lte: new Date() } }
-		}),
-		prisma.missedSentence.count({ where: { userId } }),
-		getStreak(userId),
-		getTotalXp(userId),
-		prisma.clarificationRequest.groupBy({
-			by: ['status'],
-			where: { userId },
-			_count: { _all: true }
-		})
+		userId
+			? prisma.lessonProgress.findMany({
+					where: { userId },
+					select: { lessonId: true, status: true, lastStepIndex: true }
+				})
+			: [],
+		userId
+			? prisma.srsCard.count({
+					where: { userId, suspended: false, dueAt: { lte: new Date() } }
+				})
+			: 0,
+		userId ? prisma.missedSentence.count({ where: { userId } }) : 0,
+		userId ? getStreak(userId) : 0,
+		userId ? getTotalXp(userId) : 0,
+		userId
+			? prisma.clarificationRequest.groupBy({
+					by: ['status'],
+					where: { userId },
+					_count: { _all: true }
+				})
+			: []
 	]);
 
 	const questionsByStatus = new Map(questionCounts.map((row) => [row.status, row._count._all]));
@@ -292,7 +260,11 @@ async function assertLessonUnlocked(
 	if (previousProgress?.status !== 'COMPLETED') throw error(404, 'Not Found');
 }
 
-export async function getPlayableLesson(segment: string, userId: string) {
+/**
+ * With a null userId (signed out), the unlock check is skipped (progress
+ * lives on the client, so the server can't know it) and progress is null.
+ */
+export async function getPlayableLesson(segment: string, userId: string | null) {
 	const lessonId = await resolveLessonId(segment);
 	if (!lessonId) throw error(404, 'Lesson not found');
 	const lesson = await prisma.lesson.findUnique({
@@ -300,13 +272,15 @@ export async function getPlayableLesson(segment: string, userId: string) {
 		include: PLAYABLE_LESSON_INCLUDE
 	});
 	if (!lesson || lesson.status !== 'PUBLISHED') throw error(404, 'Lesson not found');
-	await assertLessonUnlocked(lesson, userId);
+	if (userId) await assertLessonUnlocked(lesson, userId);
 
 	const [progress, nextLessonSlug] = await Promise.all([
-		prisma.lessonProgress.findUnique({
-			where: { userId_lessonId: { userId, lessonId } },
-			select: { status: true, lastStepIndex: true }
-		}),
+		userId
+			? prisma.lessonProgress.findUnique({
+					where: { userId_lessonId: { userId, lessonId } },
+					select: { status: true, lastStepIndex: true }
+				})
+			: null,
 		getNextLessonSlug(lesson)
 	]);
 
@@ -484,6 +458,80 @@ export async function getDueCards(userId: string, limit = REVIEW_QUEUE_LIMIT): P
 	return queue;
 }
 
+export type CardContentRef = {
+	wordId?: string | null;
+	standaloneLessonWordId?: string | null;
+	contextLessonWordId?: string | null;
+};
+
+/**
+ * Hydrate review-card content (word + lesson-word context) for cards whose
+ * SRS state lives on the client (signed-out learners). Only public data:
+ * dictionary words and lesson words of published lessons. Entries that no
+ * longer resolve come back null so the client can drop stale cards.
+ */
+export async function getCardContent(refs: CardContentRef[]) {
+	const wordIds = [
+		...new Set(refs.map((ref) => ref.wordId).filter((id): id is string => !!id))
+	];
+	const lessonWordIds = [
+		...new Set(
+			refs
+				.flatMap((ref) => [ref.standaloneLessonWordId, ref.contextLessonWordId])
+				.filter((id): id is string => !!id)
+		)
+	];
+
+	const [words, lessonWords] = await Promise.all([
+		wordIds.length ? prisma.word.findMany({ where: { id: { in: wordIds } } }) : [],
+		lessonWordIds.length
+			? prisma.lessonWord.findMany({
+					where: {
+						id: { in: lessonWordIds },
+						lessonSection: { lesson: { status: 'PUBLISHED' } }
+					},
+					include: LESSON_WORD_INCLUDE
+				})
+			: []
+	]);
+	const wordById = new Map(words.map((word) => [word.id, word]));
+	const lessonWordById = new Map(lessonWords.map((lessonWord) => [lessonWord.id, lessonWord]));
+
+	return refs.map((ref) => {
+		const word = ref.wordId ? (wordById.get(ref.wordId) ?? null) : null;
+		const standaloneLessonWord = ref.standaloneLessonWordId
+			? (lessonWordById.get(ref.standaloneLessonWordId) ?? null)
+			: null;
+		const contextLessonWord = ref.contextLessonWordId
+			? (lessonWordById.get(ref.contextLessonWordId) ?? null)
+			: null;
+		if (!word && !standaloneLessonWord) return null;
+		return { word, standaloneLessonWord, contextLessonWord };
+	});
+}
+
+/**
+ * Audio-backed sentences by id, in the requested order — used for listening
+ * practice over a signed-out learner's locally stored missed sentences.
+ */
+export async function getSentencesByIds(sentenceIds: string[]): Promise<ListeningSentence[]> {
+	if (sentenceIds.length === 0) return [];
+	const rows = await prisma.exampleSentence.findMany({
+		where: { id: { in: sentenceIds }, audioUrl: { not: null } },
+		select: { id: true, kalenjin: true, english: true, audioUrl: true }
+	});
+	const byId = new Map(rows.map((row) => [row.id, row]));
+	return sentenceIds
+		.map((id) => byId.get(id))
+		.filter((row): row is NonNullable<typeof row> => !!row)
+		.map((row) => ({
+			id: row.id,
+			kalenjin: row.kalenjin,
+			english: row.english,
+			audioUrl: row.audioUrl!
+		}));
+}
+
 /**
  * A failed drill inside a lesson: make sure the word has an SRS card and mark
  * it due now (AGAIN) so it comes up for review — without ever advancing the
@@ -600,6 +648,8 @@ export type ListeningSentence = {
 
 /** One lesson's worth of sentences in a listening session. */
 export type ListeningSegment = {
+	/** Set for per-lesson segments so clients can key segments by lesson. */
+	lessonId?: string;
 	title: string | null;
 	/** Cycle count override (daily program); null → use the session setting. */
 	reps: number | null;
@@ -679,6 +729,7 @@ export async function getPlaylistSegments(lessonSegments: string[]): Promise<Lis
 	const sentencesByLesson = await sentencesForLessons(ordered.map((lesson) => lesson.id));
 	return ordered
 		.map((lesson) => ({
+			lessonId: lesson.id,
 			title: lesson.title,
 			reps: null,
 			sentences: sentencesByLesson.get(lesson.id) ?? []
@@ -689,18 +740,6 @@ export async function getPlaylistSegments(lessonSegments: string[]): Promise<Lis
 // ---------------------------------------------------------------------------
 // Glossika-style daily listening program
 // ---------------------------------------------------------------------------
-
-export const PROGRAM_PATTERN_MAX_DAYS = 10;
-export const PROGRAM_PATTERN_MAX_REPS = 20;
-
-/** Parse "6 4 3 2" into [6, 4, 3, 2]; null when invalid. */
-export function parseProgramPattern(raw: string): number[] | null {
-	const parts = raw.trim().split(/[\s,]+/).filter(Boolean);
-	if (parts.length === 0 || parts.length > PROGRAM_PATTERN_MAX_DAYS) return null;
-	const reps = parts.map((part) => Number.parseInt(part, 10));
-	if (reps.some((n) => !Number.isFinite(n) || n < 1 || n > PROGRAM_PATTERN_MAX_REPS)) return null;
-	return reps;
-}
 
 export async function getListeningProgram(userId: string) {
 	return prisma.listeningProgram.findUnique({
@@ -806,10 +845,11 @@ export async function advanceListeningProgram(userId: string): Promise<number> {
 }
 
 export async function getListeningSentences(
-	userId: string,
+	userId: string | null,
 	scope: ListeningScope
 ): Promise<ListeningSentence[]> {
 	if (scope.kind === 'missed') {
+		if (!userId) return [];
 		const missed = await prisma.missedSentence.findMany({
 			where: { userId, sentence: { audioUrl: { not: null } } },
 			orderBy: [{ missCount: 'desc' }, { updatedAt: 'asc' }],
@@ -882,7 +922,7 @@ export async function getListeningSentences(
  * Options for the listening-mode scope picker: published lessons that have at
  * least one sentence with audio, plus the learner's missed-sentence count.
  */
-export async function getListeningPickerData(userId: string) {
+export async function getListeningPickerData(userId: string | null) {
 	const [lessons, missedCount] = await Promise.all([
 		prisma.lesson.findMany({
 			where: { status: 'PUBLISHED' },
@@ -901,7 +941,11 @@ export async function getListeningPickerData(userId: string) {
 				}
 			}
 		}),
-		prisma.missedSentence.count({ where: { userId, sentence: { audioUrl: { not: null } } } })
+		userId
+			? prisma.missedSentence.count({
+					where: { userId, sentence: { audioUrl: { not: null } } }
+				})
+			: 0
 	]);
 
 	const options = lessons

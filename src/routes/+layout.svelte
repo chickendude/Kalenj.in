@@ -6,6 +6,7 @@
 	import { createEditMode } from '$lib/stores/editMode.svelte';
 	import Toast from '$lib/components/Toast.svelte';
 	import NavSearch from '$lib/components/NavSearch.svelte';
+	import LocalProgressMigrator from '$lib/components/learn/LocalProgressMigrator.svelte';
 	import {
 		DEFAULT_ADMIN_TAB,
 		fallbackAdminTabForRole,
@@ -37,10 +38,11 @@
 	const navItems = $derived.by(() => {
 		const items = [
 			{ href: '/dictionary', label: 'Dictionary' },
-			{ href: '/corpus', label: 'Corpus' }
+			{ href: '/corpus', label: 'Corpus' },
+			// Learn works signed out too — progress is stored on the device.
+			{ href: '/learn', label: 'Learn' }
 		];
 		if (data.user) {
-			items.push({ href: '/learn', label: 'Learn' });
 			if (data.user.role === 'ADMIN' || data.user.role === 'MANAGER') {
 				items.push({ href: '/lessons', label: 'Lessons' });
 			}
@@ -414,6 +416,10 @@
 {/if}
 
 <Toast />
+
+<!-- Signed in with learning progress from a signed-out session on this
+     device: merge it into the account, then clear the local copy. -->
+<LocalProgressMigrator active={!!data.user} />
 
 <style>
 	.nav-progress {

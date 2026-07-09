@@ -1,10 +1,188 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ListeningPlayer from '$lib/components/learn/ListeningPlayer.svelte';
+	import { parseProgramPattern, programDayPlan } from '$lib/learn/listening-program';
+	import {
+		localAdvanceListeningProgram,
+		localDeleteListeningProgram,
+		localListeningProgram,
+		localMissedSentenceIds,
+		localSaveListeningProgram,
+		loadLocalLearnData
+	} from '$lib/learn/local-progress';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { ActionData, PageData, SubmitFunction } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	// --- Signed-out (local) support --------------------------------------------
+	// Missed sentences and the daily program live in localStorage; the server
+	// only provides sentence/segment content via public JSON endpoints.
+	type LocalSegment = {
+		title: string | null;
+		reps: number | null;
+		sentences: Array<{ id: string; kalenjin: string; english: string; audioUrl: string }>;
+	};
+
+	type ProgramView = {
+		pattern: string;
+		day: number;
+		lessonIds: string[];
+		lessonTitles: string[];
+		todaySentenceCount: number;
+		todayCycles: number[];
+		finished: boolean;
+	};
+
+	const needsLocalSegments = $derived(
+		!data.user && data.mode === 'play' && (data.scope === 'missed' || data.scope === 'program')
+	);
+
+	let localSegments = $state<LocalSegment[] | null>(null);
+	let localTitle = $state<string | null>(null);
+	let localProgramFinished = $state(false);
+	let localLoadFailed = $state(false);
+	let localMissedCount = $state(0);
+	let localProgramView = $state<ProgramView | null>(null);
+
+	async function loadLocalMissed() {
+		localLoadFailed = false;
+		const sentenceIds = localMissedSentenceIds();
+		if (sentenceIds.length === 0) {
+			localSegments = [{ title: null, reps: null, sentences: [] }];
+			return;
+		}
+		try {
+			const res = await fetch('/api/learn/sentences', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ sentenceIds })
+			});
+			if (!res.ok) throw new Error();
+			const body = (await res.json()) as { sentences: LocalSegment['sentences'] };
+			localSegments = [{ title: null, reps: null, sentences: body.sentences }];
+		} catch {
+			localLoadFailed = true;
+		}
+	}
+
+	async function fetchSegmentsByLesson(
+		lessonIds: string[]
+	): Promise<Map<string, { title: string | null; sentences: LocalSegment['sentences'] }>> {
+		const res = await fetch(`/api/learn/listening-segments?lessonIds=${lessonIds.join(',')}`);
+		if (!res.ok) throw new Error();
+		const body = (await res.json()) as {
+			segments: Array<{
+				lessonId?: string;
+				title: string | null;
+				sentences: LocalSegment['sentences'];
+			}>;
+		};
+		return new Map(
+			body.segments
+				.filter((segment) => segment.lessonId)
+				.map((segment) => [segment.lessonId!, segment])
+		);
+	}
+
+	async function loadLocalProgramDay() {
+		localLoadFailed = false;
+		const program = localListeningProgram();
+		if (!program) {
+			localTitle = 'Daily program';
+			localSegments = [];
+			return;
+		}
+		const pattern = parseProgramPattern(program.pattern) ?? [];
+		const plan = programDayPlan(program.lessonIds, program.currentDay, pattern);
+		localTitle = `Daily program — day ${program.currentDay}`;
+		localProgramFinished = plan.finished;
+		if (plan.active.length === 0) {
+			localSegments = [];
+			return;
+		}
+		try {
+			const byLesson = await fetchSegmentsByLesson(plan.active.map((entry) => entry.lessonId));
+			localSegments = plan.active.flatMap((entry) => {
+				const segment = byLesson.get(entry.lessonId);
+				if (!segment || segment.sentences.length === 0) return [];
+				return [
+					{
+						title: `${segment.title} — day ${entry.age}`,
+						reps: entry.reps,
+						sentences: segment.sentences
+					}
+				];
+			});
+		} catch {
+			localLoadFailed = true;
+		}
+	}
+
+	async function loadLocalProgramSummary() {
+		const program = localListeningProgram();
+		if (!program) {
+			localProgramView = null;
+			return;
+		}
+		const pattern = parseProgramPattern(program.pattern) ?? [];
+		const plan = programDayPlan(program.lessonIds, program.currentDay, pattern);
+		const titleById = new Map(
+			data.mode === 'pick' ? data.options.map((option) => [option.id, option.title]) : []
+		);
+		const view: ProgramView = {
+			pattern: program.pattern,
+			day: program.currentDay,
+			lessonIds: program.lessonIds,
+			lessonTitles: program.lessonIds.map((id) => titleById.get(id) ?? 'Removed lesson'),
+			todaySentenceCount: 0,
+			todayCycles: [],
+			finished: plan.finished
+		};
+		localProgramView = view;
+		if (plan.active.length === 0) return;
+		try {
+			const byLesson = await fetchSegmentsByLesson(plan.active.map((entry) => entry.lessonId));
+			for (const entry of plan.active) {
+				const segment = byLesson.get(entry.lessonId);
+				if (segment && segment.sentences.length > 0) {
+					view.todaySentenceCount += segment.sentences.length;
+					view.todayCycles.push(entry.reps);
+				}
+			}
+			localProgramView = { ...view };
+		} catch {
+			// Counts stay at zero; the program summary still renders.
+		}
+	}
+
+	// Runs on mount and again on same-route navigations (e.g. picker →
+	// ?scope=program), where the component is reused and onMount wouldn't
+	// re-fire. $effect never runs during SSR, so localStorage is available.
+	$effect(() => {
+		const { user, mode } = data;
+		const scope = data.mode === 'play' ? data.scope : null;
+		if (user) return;
+		localSegments = null;
+		localTitle = null;
+		localProgramFinished = false;
+		localLoadFailed = false;
+		if (mode === 'play') {
+			if (scope === 'missed') void loadLocalMissed();
+			else if (scope === 'program') void loadLocalProgramDay();
+		} else {
+			localMissedCount = Object.keys(loadLocalLearnData().missedSentences).length;
+			void loadLocalProgramSummary();
+		}
+	});
+
+	// Server values for signed-in learners, localStorage for signed-out.
+	const missedCount = $derived(
+		data.mode === 'pick' ? (data.user ? data.missedCount : localMissedCount) : 0
+	);
+	const program = $derived(
+		data.mode === 'pick' ? (data.user ? data.program : localProgramView) : null
+	);
 
 	// --- Session settings (picker) -------------------------------------------
 	let reps = $state(2);
@@ -49,6 +227,14 @@
 		programPattern = data.program.pattern;
 		programSelected = new Set(data.program.lessonIds);
 	}
+	// Signed out, the saved program only exists client-side — seed the form
+	// once it has been read from localStorage.
+	$effect(() => {
+		if (!data.user && localProgramView && !programOpen) {
+			programPattern = localProgramView.pattern;
+			programSelected = new Set(localProgramView.lessonIds);
+		}
+	});
 
 	function toggleProgramLesson(id: string) {
 		const next = new Set(programSelected);
@@ -57,7 +243,37 @@
 		programSelected = next;
 	}
 
-	const programSubmit: SubmitFunction = () => {
+	const programSubmit: SubmitFunction = ({ action, formData, cancel }) => {
+		// Signed out: the program is saved to localStorage, not the server.
+		if (!data.user) {
+			cancel();
+			if (action.search.includes('deleteProgram')) {
+				localDeleteListeningProgram();
+				toast.success('Program removed.');
+				programOpen = false;
+				void loadLocalProgramSummary();
+				return;
+			}
+			const patternRaw = String(formData.get('pattern') ?? '').trim();
+			if (!parseProgramPattern(patternRaw)) {
+				toast.error('Pattern must be 1–10 numbers between 1 and 20, e.g. "6 4 3 2".', 4500);
+				return;
+			}
+			const lessonIds = formData
+				.getAll('lessonIds')
+				.map((value) => String(value).trim())
+				.filter(Boolean)
+				.slice(0, 100);
+			if (lessonIds.length === 0) {
+				toast.error('Pick at least one lesson for the program.', 4500);
+				return;
+			}
+			localSaveListeningProgram(patternRaw, lessonIds, formData.get('restart') === 'on');
+			toast.success('Program saved.');
+			programOpen = false;
+			void loadLocalProgramSummary();
+			return;
+		}
 		return async ({ result, update }) => {
 			if (result.type === 'success') {
 				toast.success((result.data as { success?: string } | undefined)?.success ?? 'Saved.');
@@ -74,6 +290,11 @@
 
 	// --- Program day completion (play mode) -----------------------------------
 	async function completeProgramDay() {
+		if (!data.user) {
+			const currentDay = localAdvanceListeningProgram();
+			toast.success(`Day complete! Tomorrow is day ${currentDay}.`, 4000);
+			return;
+		}
 		try {
 			const res = await fetch('/api/learn/listening-program/advance', { method: 'POST' });
 			if (!res.ok) throw new Error();
@@ -111,26 +332,53 @@
 			<a class="exit" href="/learn" aria-label="Back to the course">✕</a>
 			<a class="back-link" href="/learn/listen">← Change practice</a>
 		</div>
-		<h1 class="play-title">{data.title}</h1>
+		<h1 class="play-title">{localTitle ?? data.title}</h1>
 		<p class="play-hint">
 			Hear the English, say it in Kalenjin, then listen and repeat —
 			{data.scope === 'program' ? 'cycles per lesson follow your pattern' : `${data.settings.reps}× per sentence`}{data.settings.kalenjinReps > 1
 				? `, Kalenjin ${data.settings.kalenjinReps}× per cycle`
 				: ''}.
 		</p>
-		{#if data.scope === 'program' && data.programFinished}
+		{#if data.scope === 'program' && (data.user ? data.programFinished : localProgramFinished)}
 			<p class="program-finished">
 				Your program has worked through every lesson — add more lessons or restart it from the
 				<a href="/learn/listen">practice picker</a>.
 			</p>
 		{/if}
 	</div>
-	<ListeningPlayer
-		segments={data.segments}
-		settings={data.settings}
-		missedScope={data.scope === 'missed'}
-		onSessionComplete={data.scope === 'program' ? completeProgramDay : null}
-	/>
+	{#if needsLocalSegments}
+		{#if localLoadFailed}
+			<div class="local-load-error">
+				<p>Couldn't load this practice. Check your connection.</p>
+				<button
+					type="button"
+					class="btn"
+					onclick={() =>
+						void (data.scope === 'missed' ? loadLocalMissed() : loadLocalProgramDay())}
+				>
+					Try again
+				</button>
+			</div>
+		{:else if localSegments}
+			<ListeningPlayer
+				segments={localSegments}
+				settings={data.settings}
+				missedScope={data.scope === 'missed'}
+				local
+				onSessionComplete={data.scope === 'program' ? completeProgramDay : null}
+			/>
+		{:else}
+			<p class="local-loading">Loading your practice…</p>
+		{/if}
+	{:else}
+		<ListeningPlayer
+			segments={data.segments}
+			settings={data.settings}
+			missedScope={data.scope === 'missed'}
+			local={!data.user}
+			onSessionComplete={data.scope === 'program' ? completeProgramDay : null}
+		/>
+	{/if}
 {:else}
 	<div class="page-head">
 		<div>
@@ -181,15 +429,15 @@
 		<div class="program-head">
 			<div>
 				<h2 class="panel-title">Daily program</h2>
-				{#if data.program}
+				{#if program}
 					<p class="program-summary">
-						Day {data.program.day} · pattern <span class="mono">{data.program.pattern}</span> ·
-						{data.program.lessonTitles.length}
-						{data.program.lessonTitles.length === 1 ? 'lesson' : 'lessons'}
-						{#if data.program.finished}
+						Day {program.day} · pattern <span class="mono">{program.pattern}</span> ·
+						{program.lessonTitles.length}
+						{program.lessonTitles.length === 1 ? 'lesson' : 'lessons'}
+						{#if program.finished}
 							· <strong>finished</strong>
 						{:else}
-							· {data.program.todaySentenceCount} sentences today
+							· {program.todaySentenceCount} sentences today
 						{/if}
 					</p>
 				{:else}
@@ -201,13 +449,13 @@
 				{/if}
 			</div>
 			<div class="program-actions">
-				{#if data.program && !data.program.finished && data.program.todaySentenceCount > 0}
+				{#if program && !program.finished && program.todaySentenceCount > 0}
 					<a class="btn" href="/learn/listen?scope=program&{settingsQuery}">
-						Start day {data.program.day}
+						Start day {program.day}
 					</a>
 				{/if}
 				<button type="button" class="btn-sm ghost" onclick={() => (programOpen = !programOpen)}>
-					{data.program ? 'Edit program' : 'Set up a program'}
+					{program ? 'Edit program' : 'Set up a program'}
 				</button>
 			</div>
 		</div>
@@ -264,7 +512,7 @@
 				</fieldset>
 
 				<div class="program-form-actions">
-					{#if data.program}
+					{#if program}
 						<label class="setting toggle">
 							<input type="checkbox" name="restart" />
 							<span>Restart from day 1</span>
@@ -285,13 +533,13 @@
 
 	<a
 		class="scope-card missed-card"
-		class:disabled={data.missedCount === 0}
-		href={data.missedCount > 0 ? `/learn/listen?scope=missed&${settingsQuery}` : undefined}
+		class:disabled={missedCount === 0}
+		href={missedCount > 0 ? `/learn/listen?scope=missed&${settingsQuery}` : undefined}
 	>
 		<span class="scope-title">Sentences you're missing</span>
 		<span class="scope-detail">
-			{data.missedCount > 0
-				? `${data.missedCount} ${data.missedCount === 1 ? 'sentence' : 'sentences'} to master`
+			{missedCount > 0
+				? `${missedCount} ${missedCount === 1 ? 'sentence' : 'sentences'} to master`
 				: 'Nothing flagged — mark tricky sentences during practice'}
 		</span>
 	</a>
@@ -401,6 +649,22 @@
 		color: var(--accent);
 		font-size: 14px;
 		margin: 0;
+	}
+
+	.local-loading {
+		color: var(--ink-mute);
+		margin: 2rem auto;
+		max-width: 640px;
+		text-align: center;
+	}
+
+	.local-load-error {
+		display: grid;
+		gap: 0.8rem;
+		justify-items: center;
+		margin: 2rem auto;
+		max-width: 640px;
+		text-align: center;
 	}
 
 	.panel-title {

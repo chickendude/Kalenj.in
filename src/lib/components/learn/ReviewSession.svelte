@@ -6,6 +6,7 @@
 	import ShortcutsHelp from '$lib/components/learn/ShortcutsHelp.svelte';
 	import { emitLearnShortcut, shortcutActionForKey } from '$lib/learn/shortcuts';
 	import { resolveBlanks, type LearnLessonWord } from '$lib/learn/lesson-steps';
+	import { localGradeReview } from '$lib/learn/local-progress';
 	import { gradeCard, suggestedGradeFromRecall, type RecallResult } from '$lib/srs';
 	import { toast } from '$lib/stores/toast.svelte';
 	import type { ReviewGrade } from '@prisma/client';
@@ -25,7 +26,14 @@
 		contextLessonWord: LearnLessonWord | null;
 	};
 
-	let { cards }: { cards: ReviewCard[] } = $props();
+	let {
+		cards,
+		local = false
+	}: {
+		cards: ReviewCard[];
+		/** Signed out: grades are written to localStorage instead of the API. */
+		local?: boolean;
+	} = $props();
 
 	// svelte-ignore state_referenced_locally — session queue seeded once from the load
 	let queue = $state<ReviewCard[]>([...cards]);
@@ -92,12 +100,16 @@
 		if (!card || !answered || posting) return;
 		posting = true;
 		try {
-			const res = await fetch('/api/learn/reviews', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ cardId: card.id, grade: gradeValue })
-			});
-			if (!res.ok) throw new Error();
+			if (local) {
+				localGradeReview(card.id, gradeValue);
+			} else {
+				const res = await fetch('/api/learn/reviews', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ cardId: card.id, grade: gradeValue })
+				});
+				if (!res.ok) throw new Error();
+			}
 
 			reviewedCount += 1;
 			const rest = queue.slice(1);

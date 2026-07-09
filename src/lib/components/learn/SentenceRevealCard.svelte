@@ -37,6 +37,11 @@
 		revealed = translationRevealed;
 	});
 
+	/** Start the sentence audio — lets parents chain it after other audio. */
+	export function playAudio() {
+		audioButton?.play();
+	}
+
 	$effect(() =>
 		onLearnShortcut((action) => {
 			if (action === 'audio') audioButton?.play();

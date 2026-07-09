@@ -22,7 +22,16 @@
 	</div>
 </div>
 
-{#if data.questions.length === 0}
+{#if !data.user}
+	<div class="questions-empty">
+		<p>
+			Questions need an account, so the editors' answers can find their way back to you.
+			<a href="/signup">Create one</a> or <a href="/login">sign in</a> to ask about words and
+			sentences while you learn.
+		</p>
+		<a class="btn ghost" href="/learn">Back to lessons</a>
+	</div>
+{:else if data.questions.length === 0}
 	<div class="questions-empty">
 		<p>
 			You haven't asked anything yet. When something in a lesson doesn't make sense, use

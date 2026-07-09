@@ -1,11 +1,12 @@
 import { prisma } from '$lib/server/prisma';
-import { requireUser } from '$lib/server/guards';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals }) => {
-	const user = requireUser(locals);
+	// Questions need an account (answers are tied to the asker); signed-out
+	// visitors get an empty list and a sign-up prompt.
+	if (!locals.user) return { questions: [] };
 	const questions = await prisma.clarificationRequest.findMany({
-		where: { userId: user.id },
+		where: { userId: locals.user.id },
 		orderBy: { createdAt: 'desc' },
 		take: 100,
 		select: {

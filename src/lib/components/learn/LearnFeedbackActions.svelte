@@ -35,6 +35,7 @@
 	{targetType}
 	{targetId}
 	{lessonId}
+	signedOut={!page.data.user}
 	onclose={() => (clarifyOpen = false)}
 />
 <ReportDialog open={reportOpen} {targetType} {targetId} {targetLabel} onclose={() => (reportOpen = false)} />

@@ -31,6 +31,16 @@
 			tokens: [],
 			storyLinks: []
 		},
+		socialPreview: {
+			title: 'U ya metit en komet rani. - Kalenj.in',
+			description: 'U ya metit en komet rani.',
+			url: 'https://kalenj.in/corpus/sentence-1',
+			image: {
+				url: 'https://kalenj.in/icons/icon-512.png',
+				alt: 'U ya metit en komet rani.',
+				isPageSpecific: false
+			}
+		},
 		words: [],
 		ignoredNormalizedForms: []
 	};

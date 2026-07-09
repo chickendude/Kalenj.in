@@ -19,7 +19,9 @@
 		graded = false,
 		active = false,
 		hintedUpTo = 0,
-		label = null
+		caretIndex = null,
+		label = null,
+		subLabel = null
 	}: {
 		target: string;
 		typed: string;
@@ -28,7 +30,11 @@
 		active?: boolean;
 		/** Ghost-reveal target letters up to this typeable-character index. */
 		hintedUpTo?: number;
+		/** Caret position in typeable characters; null → after the typed prefix. */
+		caretIndex?: number | null;
 		label?: string | null;
+		/** Dimmed second line (dictionary entry under a contextual translation). */
+		subLabel?: string | null;
 	} = $props();
 
 	type Slot = {
@@ -72,6 +78,7 @@
 
 	$effect(() => {
 		void label;
+		void subLabel;
 		positionLabel();
 		// Font metrics can settle after first paint; measure again then.
 		document.fonts?.ready.then(positionLabel).catch(() => {});
@@ -83,8 +90,7 @@
 		const groups: Slot[][] = [];
 		// Position within the typeable characters of the whole target.
 		let typeableIndex = 0;
-		// Only the first empty slot carries the caret.
-		let caretPlaced = false;
+		const caretAt = Math.min(caretIndex ?? typed.length, typed.length);
 		for (const targetWord of target.split(' ')) {
 			const slots: Slot[] = [];
 			for (const char of targetWord) {
@@ -92,14 +98,14 @@
 					slots.push({ char, state: 'given', caret: false });
 					continue;
 				}
+				const caret = active && typeableIndex === caretAt;
 				const typedChar = typed[typeableIndex];
 				if (typedChar === undefined) {
 					slots.push({
 						char,
 						state: typeableIndex < hintedUpTo ? 'hinted' : 'pending',
-						caret: active && !caretPlaced
+						caret
 					});
-					caretPlaced = true;
 				} else {
 					slots.push({
 						char: typedChar,
@@ -108,7 +114,7 @@
 								? 'ok'
 								: 'bad'
 							: 'filled',
-						caret: false
+						caret
 					});
 				}
 				typeableIndex += 1;
@@ -142,7 +148,10 @@
 				style:transform={`translateX(calc(-50% + ${labelShift}px))`}
 				style:max-width={labelMaxWidth === null ? undefined : `${labelMaxWidth}px`}
 			>
-				{label}
+				<span class="label-line">{label}</span>
+				{#if subLabel}
+					<span class="label-line sub-label">{subLabel}</span>
+				{/if}
 			</span>
 		</span>
 	{/if}
@@ -239,15 +248,34 @@
 	}
 
 	.slots-label-text {
-		display: inline-block;
+		display: inline-grid;
+		justify-items: center;
 		/* Explicit width — inside the zero-width parent, shrink-to-fit would
 		   collapse this box to nothing. The cap keeps extreme hints on screen
 		   before positionLabel refines it to the card width. */
 		width: max-content;
 		max-width: min(75vw, 36rem);
+		transform: translateX(-50%);
+	}
+
+	.label-line {
+		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		transform: translateX(-50%);
+	}
+
+	/* Dictionary entry under the contextual translation — barely there until
+	   the learner hovers or presses it. */
+	.sub-label {
+		color: var(--ink-mute);
+		font-weight: 500;
+		opacity: 0.35;
+		transition: opacity 0.15s;
+	}
+
+	.slots-label-text:hover .sub-label,
+	.slots-label-text:active .sub-label {
+		opacity: 1;
 	}
 
 	.answer-slots.done .slot-word {

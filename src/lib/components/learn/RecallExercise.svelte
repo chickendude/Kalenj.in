@@ -68,6 +68,8 @@
 	let typed = $state('');
 	/** Ghost-revealed target letters (typeable index); the learner types over them. */
 	let hintedUpTo = $state(0);
+	/** Caret position inside `typed`, mirrored from the hidden input. */
+	let caretIndex = $state(0);
 	let done = $state(false);
 	let correct = $state(false);
 	let usedHint = $state(false);
@@ -83,8 +85,23 @@
 
 	const accepted = $derived(acceptableAnswers(lessonWord, target));
 	const showGrading = $derived(done || (gradedAttempt !== null && gradedAttempt === typed));
+	// What this word means *in this sentence*, when the corpus records it.
+	const contextTranslation = $derived.by(() => {
+		const parts = orderedTokens
+			.filter((token) => blankTokenOrders.has(token.tokenOrder))
+			.map((token) => token.inContextTranslation?.trim())
+			.filter((part): part is string => Boolean(part));
+		return parts.length > 0 ? parts.join(' ') : null;
+	});
 	// Once answered, the sentence renders with hover pop-up definitions instead.
-	const slotsLabel = $derived(!done && !isAudioMode ? prompt : null);
+	// The contextual translation leads; the dictionary entry hangs under it.
+	const slotsLabel = $derived(!done && !isAudioMode ? (contextTranslation ?? prompt) : null);
+	const slotsSubLabel = $derived(
+		!done && !isAudioMode && contextTranslation &&
+		contextTranslation.toLocaleLowerCase() !== prompt.trim().toLocaleLowerCase()
+			? prompt
+			: null
+	);
 
 	// Text drills show the full sentence translation up front; dictation keeps
 	// it hidden so the challenge stays on the listening.
@@ -117,10 +134,20 @@
 
 	function handleInput(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
-		typed = matchTargetCase(
-			[...input.value].filter(isTypeableChar).join('').slice(0, typeableTarget.length)
-		);
+		const raw = input.value;
+		const rawCaret = input.selectionStart ?? raw.length;
+		// Drop non-typeable characters, remembering how many sat before the
+		// caret so the caret can be restored after the value is rewritten.
+		let removedBeforeCaret = 0;
+		const kept: string[] = [];
+		[...raw].forEach((char, index) => {
+			if (isTypeableChar(char)) kept.push(char);
+			else if (index < rawCaret) removedBeforeCaret += 1;
+		});
+		typed = matchTargetCase(kept.join('').slice(0, typeableTarget.length));
 		input.value = typed;
+		caretIndex = Math.min(Math.max(0, rawCaret - removedBeforeCaret), typed.length);
+		input.setSelectionRange(caretIndex, caretIndex);
 		gradedAttempt = null;
 	}
 
@@ -169,7 +196,11 @@
 		}
 		typed = typed.slice(0, fixIndex);
 		// The hidden input isn't value-bound; keep it in step with the trim.
-		if (inputEl) inputEl.value = typed;
+		if (inputEl) {
+			inputEl.value = typed;
+			inputEl.setSelectionRange(typed.length, typed.length);
+		}
+		caretIndex = typed.length;
 		hintedUpTo = Math.min(Math.max(hintedUpTo, typed.length) + 1, typeableTarget.length);
 		gradedAttempt = null;
 		inputEl?.focus();
@@ -199,6 +230,18 @@
 			else if (action === 'hint') hint();
 		})
 	);
+
+	// Arrow keys / Home / End move the native caret in the hidden input;
+	// mirror it so the visible caret in the slots follows.
+	$effect(() => {
+		function syncCaret() {
+			if (inputEl && document.activeElement === inputEl) {
+				caretIndex = Math.min(inputEl.selectionStart ?? typed.length, typed.length);
+			}
+		}
+		document.addEventListener('selectionchange', syncCaret);
+		return () => document.removeEventListener('selectionchange', syncCaret);
+	});
 </script>
 
 <!-- Clicking anywhere on the exercise refocuses the hidden input; keyboard users are already in it. -->
@@ -235,8 +278,10 @@
 							{done}
 							graded={showGrading}
 							{hintedUpTo}
+							{caretIndex}
 							active={focused && !done}
 							label={slotsLabel}
+							subLabel={slotsSubLabel}
 						/>
 					{/if}
 				{:else}
@@ -250,8 +295,10 @@
 				{done}
 				graded={showGrading}
 				{hintedUpTo}
+				{caretIndex}
 				active={focused && !done}
 				label={slotsLabel}
+				subLabel={slotsSubLabel}
 			/>
 		{/if}
 	</div>
@@ -331,7 +378,6 @@
 				<AudioPlayButton
 					bind:this={audioButton}
 					audioUrl={sentence.audioUrl}
-					size="sm"
 					label="Play sentence audio"
 				/>
 			{/if}
@@ -485,6 +531,7 @@
 		flex: 1;
 	}
 
+	/* Same footprint as the audio play button so the action row is uniform. */
 	.icon-btn {
 		align-items: center;
 		background: transparent;
@@ -494,11 +541,11 @@
 		cursor: pointer;
 		display: inline-flex;
 		flex-shrink: 0;
-		height: 36px;
+		height: 44px;
 		justify-content: center;
 		padding: 0;
 		transition: background 0.15s, color 0.15s, border-color 0.15s;
-		width: 36px;
+		width: 44px;
 	}
 
 	.icon-btn:hover:not(:disabled) {

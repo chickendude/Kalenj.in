@@ -19,7 +19,10 @@
 		graded = false,
 		active = false,
 		hintedUpTo = 0,
-		label = null
+		caretIndex = null,
+		label = null,
+		subLabel = null,
+		onSlotClick = null
 	}: {
 		target: string;
 		typed: string;
@@ -28,14 +31,30 @@
 		active?: boolean;
 		/** Ghost-reveal target letters up to this typeable-character index. */
 		hintedUpTo?: number;
+		/** Caret position in typeable characters; null → after the typed prefix. */
+		caretIndex?: number | null;
 		label?: string | null;
+		/** Dimmed second line (dictionary entry under a contextual translation). */
+		subLabel?: string | null;
+		/** Clicking a slot asks the parent to move the caret there. */
+		onSlotClick?: ((index: number) => void) | null;
 	} = $props();
 
 	type Slot = {
 		char: string;
 		state: 'pending' | 'hinted' | 'ok' | 'bad' | 'given' | 'filled';
 		caret: boolean;
+		/** Typeable-character index (for given punctuation: the next one). */
+		index: number;
 	};
+
+	function handleSlotClick(event: MouseEvent, index: number) {
+		if (!onSlotClick) return;
+		// Clicking the right half of a letter puts the caret after it.
+		const slotEl = event.currentTarget as HTMLElement;
+		const after = event.offsetX > slotEl.offsetWidth / 2 ? 1 : 0;
+		onSlotClick(index + after);
+	}
 
 	let labelAnchor = $state<HTMLSpanElement | null>(null);
 	let labelTextEl = $state<HTMLSpanElement | null>(null);
@@ -72,6 +91,7 @@
 
 	$effect(() => {
 		void label;
+		void subLabel;
 		positionLabel();
 		// Font metrics can settle after first paint; measure again then.
 		document.fonts?.ready.then(positionLabel).catch(() => {});
@@ -83,23 +103,23 @@
 		const groups: Slot[][] = [];
 		// Position within the typeable characters of the whole target.
 		let typeableIndex = 0;
-		// Only the first empty slot carries the caret.
-		let caretPlaced = false;
+		const caretAt = Math.min(caretIndex ?? typed.length, typed.length);
 		for (const targetWord of target.split(' ')) {
 			const slots: Slot[] = [];
 			for (const char of targetWord) {
 				if (!isTypeableChar(char)) {
-					slots.push({ char, state: 'given', caret: false });
+					slots.push({ char, state: 'given', caret: false, index: typeableIndex });
 					continue;
 				}
+				const caret = active && typeableIndex === caretAt;
 				const typedChar = typed[typeableIndex];
 				if (typedChar === undefined) {
 					slots.push({
 						char,
 						state: typeableIndex < hintedUpTo ? 'hinted' : 'pending',
-						caret: active && !caretPlaced
+						caret,
+						index: typeableIndex
 					});
-					caretPlaced = true;
 				} else {
 					slots.push({
 						char: typedChar,
@@ -108,7 +128,8 @@
 								? 'ok'
 								: 'bad'
 							: 'filled',
-						caret: false
+						caret,
+						index: typeableIndex
 					});
 				}
 				typeableIndex += 1;
@@ -120,14 +141,19 @@
 </script>
 
 <span class="answer-slots-wrap">
-	<span class="answer-slots" class:done>
+	<span class="answer-slots" class:done class:interactive={Boolean(onSlotClick)}>
 		{#each words as slots, wordIndex (wordIndex)}
 			<span class="slot-word">
 				{#each slots as slot, slotIndex (slotIndex)}
 					<!-- Pending slots hold a non-breaking space: a plain space would
 					     collapse, leaving the box without a text baseline, and the
-					     whole line would shift once the first real glyph lands. -->
-					<span class="slot {slot.state}" class:caret={slot.caret}
+					     whole line would shift once the first real glyph lands.
+					     Keyboard users move the caret with the arrow keys. -->
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<span
+						class="slot {slot.state}"
+						class:caret={slot.caret}
+						onclick={onSlotClick ? (event) => handleSlotClick(event, slot.index) : undefined}
 						>{slot.state === 'pending' ? '\u00a0' : slot.char}</span
 					>
 				{/each}
@@ -142,7 +168,10 @@
 				style:transform={`translateX(calc(-50% + ${labelShift}px))`}
 				style:max-width={labelMaxWidth === null ? undefined : `${labelMaxWidth}px`}
 			>
-				{label}
+				<span class="label-line">{label}</span>
+				{#if subLabel}
+					<span class="label-line sub-label">{subLabel}</span>
+				{/if}
 			</span>
 		</span>
 	{/if}
@@ -160,6 +189,10 @@
 		display: inline-flex;
 		flex-wrap: wrap;
 		gap: 0 0.5em;
+	}
+
+	.answer-slots.interactive:not(.done) {
+		cursor: text;
 	}
 
 	.slot-word {
@@ -239,15 +272,34 @@
 	}
 
 	.slots-label-text {
-		display: inline-block;
+		display: inline-grid;
+		justify-items: center;
 		/* Explicit width — inside the zero-width parent, shrink-to-fit would
 		   collapse this box to nothing. The cap keeps extreme hints on screen
 		   before positionLabel refines it to the card width. */
 		width: max-content;
 		max-width: min(75vw, 36rem);
+		transform: translateX(-50%);
+	}
+
+	.label-line {
+		max-width: 100%;
 		overflow: hidden;
 		text-overflow: ellipsis;
-		transform: translateX(-50%);
+	}
+
+	/* Dictionary entry under the contextual translation — barely there until
+	   the learner hovers or presses it. */
+	.sub-label {
+		color: var(--ink-mute);
+		font-weight: 500;
+		opacity: 0.35;
+		transition: opacity 0.15s;
+	}
+
+	.slots-label-text:hover .sub-label,
+	.slots-label-text:active .sub-label {
+		opacity: 1;
 	}
 
 	.answer-slots.done .slot-word {

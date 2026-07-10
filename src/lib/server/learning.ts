@@ -631,7 +631,7 @@ export async function gradeReview(userId: string, cardId: string, grade: ReviewG
 }
 
 // ---------------------------------------------------------------------------
-// Listening practice
+// Listening drills
 // ---------------------------------------------------------------------------
 
 export type ListeningScope =
@@ -738,7 +738,7 @@ export async function getPlaylistSegments(lessonSegments: string[]): Promise<Lis
 }
 
 // ---------------------------------------------------------------------------
-// Glossika-style daily listening program
+// Daily listening program
 // ---------------------------------------------------------------------------
 
 export async function getListeningProgram(userId: string) {

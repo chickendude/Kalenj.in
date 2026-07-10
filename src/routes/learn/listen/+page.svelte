@@ -126,15 +126,16 @@
 			return;
 		}
 		const pattern = parseProgramPattern(program.pattern) ?? [];
-		const plan = programDayPlan(program.lessonIds, program.currentDay, pattern);
 		const titleById = new Map(
 			data.mode === 'pick' ? data.options.map((option) => [option.id, option.title]) : []
 		);
+		const lessonIds = program.lessonIds.filter((id) => titleById.has(id));
+		const plan = programDayPlan(lessonIds, program.currentDay, pattern);
 		const view: ProgramView = {
 			pattern: program.pattern,
 			day: program.currentDay,
-			lessonIds: program.lessonIds,
-			lessonTitles: program.lessonIds.map((id) => titleById.get(id) ?? 'Removed lesson'),
+			lessonIds,
+			lessonTitles: lessonIds.map((id) => titleById.get(id)!),
 			todaySentenceCount: 0,
 			todayCycles: [],
 			finished: plan.finished
@@ -188,28 +189,35 @@
 	let reps = $state(2);
 	let kalenjinReps = $state(1);
 	let shuffle = $state(false);
-	let englishAudio = $state(true);
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	reps = data.settings.reps;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	kalenjinReps = data.settings.kalenjinReps;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	shuffle = data.settings.shuffle;
-	// svelte-ignore state_referenced_locally — initialize from the URL once
-	englishAudio = data.settings.englishAudio;
 
 	const settingsQuery = $derived(
-		`reps=${reps}&kreps=${kalenjinReps}&shuffle=${shuffle ? 1 : 0}&english=${englishAudio ? 1 : 0}`
+		`reps=${reps}&kreps=${kalenjinReps}&shuffle=${shuffle ? 1 : 0}`
 	);
 
 	// --- Playlist selection ---------------------------------------------------
 	let playlistSelected = $state(new Set<string>());
+	const playlistOptionSlugs = $derived(
+		data.mode === 'pick' ? data.options.map((option) => option.slug) : []
+	);
+	const allPlaylistSelected = $derived(
+		playlistOptionSlugs.length > 0 && playlistOptionSlugs.every((slug) => playlistSelected.has(slug))
+	);
 
 	function togglePlaylist(id: string) {
 		const next = new Set(playlistSelected);
 		if (next.has(id)) next.delete(id);
 		else next.add(id);
 		playlistSelected = next;
+	}
+
+	function toggleAllPlaylistLessons() {
+		playlistSelected = allPlaylistSelected ? new Set() : new Set(playlistOptionSlugs);
 	}
 
 	const playlistHref = $derived(
@@ -222,6 +230,12 @@
 	let programOpen = $state(false);
 	let programPattern = $state('6 4 3 2');
 	let programSelected = $state(new Set<string>());
+	const programOptionIds = $derived(
+		data.mode === 'pick' ? data.options.map((option) => option.id) : []
+	);
+	const allProgramSelected = $derived(
+		programOptionIds.length > 0 && programOptionIds.every((id) => programSelected.has(id))
+	);
 	// svelte-ignore state_referenced_locally — initialize from saved program once
 	if (data.mode === 'pick' && data.program) {
 		programPattern = data.program.pattern;
@@ -241,6 +255,10 @@
 		if (next.has(id)) next.delete(id);
 		else next.add(id);
 		programSelected = next;
+	}
+
+	function toggleAllProgramLessons() {
+		programSelected = allProgramSelected ? new Set() : new Set(programOptionIds);
 	}
 
 	const programSubmit: SubmitFunction = ({ action, formData, cancel }) => {
@@ -323,7 +341,7 @@
 </script>
 
 <svelte:head>
-	<title>Listening practice · Learn</title>
+	<title>Practice · Learn</title>
 </svelte:head>
 
 {#if data.mode === 'play'}
@@ -380,17 +398,6 @@
 		/>
 	{/if}
 {:else}
-	<div class="page-head">
-		<div>
-			<div class="page-kicker">Listening practice</div>
-			<h1>Pick your practice</h1>
-			<p>
-				Glossika-style drilling: hear the English, say it in Kalenjin out loud, then listen to the
-				Kalenjin and repeat.
-			</p>
-		</div>
-	</div>
-
 	{#if form?.error}
 		<p class="form-feedback error">{form.error}</p>
 	{/if}
@@ -418,10 +425,6 @@
 				<input type="checkbox" bind:checked={shuffle} />
 				<span>Random sentence order</span>
 			</label>
-			<label class="setting toggle">
-				<input type="checkbox" bind:checked={englishAudio} />
-				<span>Speak the English prompt (else show text)</span>
-			</label>
 		</div>
 	</section>
 
@@ -439,12 +442,6 @@
 						{:else}
 							· {program.todaySentenceCount} sentences today
 						{/if}
-					</p>
-				{:else}
-					<p class="program-summary">
-						Glossika-style schedule: pick lessons and a pattern like
-						<span class="mono">6 4 3 2</span> — each lesson enters a day apart and repeats fewer
-						times as it ages.
 					</p>
 				{/if}
 			</div>
@@ -468,29 +465,39 @@
 				class="program-form"
 			>
 				<div class="pattern-row">
-					<label for="program-pattern">Pattern (reps per day of age)</label>
-					<input
-						id="program-pattern"
-						class="input mono"
-						name="pattern"
-						bind:value={programPattern}
-						placeholder="6 4 3 2"
-					/>
-					<div class="pattern-presets">
-						{#each ['6 4 3 2', '4 3 2 1', '3 2 1'] as preset (preset)}
-							<button
-								type="button"
-								class="btn-sm ghost"
-								onclick={() => (programPattern = preset)}
-							>
-								{preset}
-							</button>
-						{/each}
+					<label for="program-pattern">Pattern (reps per day)</label>
+					<div class="pattern-controls">
+						<input
+							id="program-pattern"
+							class="input mono"
+							name="pattern"
+							bind:value={programPattern}
+							placeholder="6 4 3 2"
+						/>
+						<div class="pattern-presets">
+							{#each ['6 4 3 2', '7 5 4 3 2'] as preset (preset)}
+								<button
+									type="button"
+									class="btn-sm ghost"
+									onclick={() => (programPattern = preset)}
+								>
+									{preset}
+								</button>
+							{/each}
+						</div>
 					</div>
 				</div>
 
 				<fieldset class="program-lessons">
 					<legend>Lessons, in the order they join the program</legend>
+					<label class="select-all-toggle program-select-all">
+						<input
+							type="checkbox"
+							checked={allProgramSelected}
+							onchange={toggleAllProgramLessons}
+						/>
+						<span>{allProgramSelected ? 'Clear all lessons' : 'Select all lessons'}</span>
+					</label>
 					{#each grouped as group (group.level)}
 						{#each group.options as option (option.id)}
 							<label class="lesson-check">
@@ -531,18 +538,14 @@
 		{/if}
 	</section>
 
-	<a
-		class="scope-card missed-card"
-		class:disabled={missedCount === 0}
-		href={missedCount > 0 ? `/learn/listen?scope=missed&${settingsQuery}` : undefined}
-	>
-		<span class="scope-title">Sentences you're missing</span>
-		<span class="scope-detail">
-			{missedCount > 0
-				? `${missedCount} ${missedCount === 1 ? 'sentence' : 'sentences'} to master`
-				: 'Nothing flagged — mark tricky sentences during practice'}
-		</span>
-	</a>
+	{#if missedCount > 0}
+		<a class="scope-card missed-card" href={`/learn/listen?scope=missed&${settingsQuery}`}>
+			<span class="scope-title">Problem sentences</span>
+			<span class="scope-detail">
+				{missedCount} {missedCount === 1 ? 'sentence' : 'sentences'} to master
+			</span>
+		</a>
+	{/if}
 
 	{#each grouped as group (group.level)}
 		<section class="scope-group">
@@ -553,9 +556,17 @@
 						▶ Start playlist ({playlistSelected.size})
 					</a>
 				{:else}
-					<span class="playlist-hint">Tick lessons to build a playlist</span>
+					<span class="playlist-hint">Choose lessons for playlist</span>
 				{/if}
 			</div>
+			<label class="select-all-toggle">
+				<input
+					type="checkbox"
+					checked={allPlaylistSelected}
+					onchange={toggleAllPlaylistLessons}
+				/>
+				<span>{allPlaylistSelected ? 'Clear all lessons' : 'Select all lessons'}</span>
+			</label>
 			<div class="scope-grid">
 				{#each group.options as option (option.id)}
 					<div class="scope-card" class:selected={playlistSelected.has(option.slug)}>
@@ -751,8 +762,16 @@
 		max-width: 200px;
 	}
 
+	.pattern-controls {
+		align-items: center;
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.5rem;
+	}
+
 	.pattern-presets {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 0.4rem;
 	}
 
@@ -777,6 +796,18 @@
 		display: flex;
 		font-size: 14px;
 		gap: 0.45rem;
+	}
+
+	.select-all-toggle {
+		align-items: center;
+		color: var(--ink-soft);
+		display: inline-flex;
+		font-size: 13px;
+		gap: 0.45rem;
+	}
+
+	.program-select-all {
+		grid-column: 1 / -1;
 	}
 
 	.muted {
@@ -868,12 +899,6 @@
 	.missed-card {
 		border-color: var(--accent);
 		margin-bottom: 0.4rem;
-	}
-
-	.missed-card.disabled {
-		border-color: var(--line);
-		cursor: default;
-		opacity: 0.7;
 	}
 
 	.scope-title {

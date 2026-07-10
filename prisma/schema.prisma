@@ -718,7 +718,7 @@ model ClarificationRequest {
   @@index([lessonId])
 }
 
-// Glossika-style daily listening program. Lessons enter the program in
+// Daily listening program. Lessons enter the program in
 // `position` order (lesson at position P is introduced on day P); on day D a
 // lesson with age A = D - position + 1 is drilled pattern[A-1] times, until
 // the pattern runs out.
@@ -726,7 +726,7 @@ model ListeningProgram {
   id         String                   @id @default(cuid())
   userId     String                   @unique
   user       User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  pattern    String // space-separated reps per day of age, e.g. "6 4 3 2"
+  pattern    String // space-separated reps per day, e.g. "6 4 3 2"
   currentDay Int                      @default(1)
   createdAt  DateTime                 @default(now())
   updatedAt  DateTime                 @updatedAt

@@ -23,8 +23,6 @@
 		kalenjinReps: number;
 		/** Shuffle sentence order within each lesson. */
 		shuffle: boolean;
-		/** Speak the English prompt via TTS; off → show the text for a beat instead. */
-		englishAudio: boolean;
 	};
 
 	let {
@@ -92,7 +90,7 @@
 			sentenceIndex
 	);
 	const ttsAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
-	const speakEnglish = $derived(settings.englishAudio && ttsAvailable);
+	const speakEnglish = $derived(ttsAvailable);
 
 	let audio: HTMLAudioElement | null = null;
 	let timer: ReturnType<typeof setTimeout> | null = null;

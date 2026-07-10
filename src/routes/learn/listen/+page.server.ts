@@ -24,7 +24,6 @@ export type ListenSettings = {
 	reps: number;
 	kalenjinReps: number;
 	shuffle: boolean;
-	englishAudio: boolean;
 };
 
 function clampInt(raw: string | null, fallback: number, min: number, max: number): number {
@@ -37,8 +36,7 @@ function readSettings(url: URL): ListenSettings {
 	return {
 		reps: clampInt(url.searchParams.get('reps'), 2, MIN_REPS, MAX_REPS),
 		kalenjinReps: clampInt(url.searchParams.get('kreps'), 1, 1, MAX_KALENJIN_REPS),
-		shuffle: url.searchParams.get('shuffle') === '1',
-		englishAudio: url.searchParams.get('english') !== '0'
+		shuffle: url.searchParams.get('shuffle') === '1'
 	};
 }
 
@@ -55,7 +53,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		return {
 			mode: 'play' as const,
 			scope: 'missed' as const,
-			title: 'Sentences you missed',
+			title: 'Problem sentences',
 			segments,
 			settings
 		};
@@ -75,7 +73,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		return {
 			mode: 'play' as const,
 			scope: scopeParam,
-			title: lesson?.title ?? 'Listening practice',
+			title: lesson?.title ?? 'Audio drills',
 			segments,
 			settings
 		};
@@ -128,6 +126,10 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		userId ? getListeningProgram(userId) : null,
 		userId ? getProgramDaySession(userId) : null
 	]);
+	const publishedOptionIds = new Set(picker.options.map((option) => option.id));
+	const programLessons = program
+		? program.lessons.filter((entry) => publishedOptionIds.has(entry.lessonId))
+		: [];
 
 	return {
 		mode: 'pick' as const,
@@ -137,8 +139,8 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 			? {
 					pattern: program.pattern,
 					day: program.currentDay,
-					lessonIds: program.lessons.map((entry) => entry.lessonId),
-					lessonTitles: program.lessons.map((entry) => entry.lesson.title),
+					lessonIds: programLessons.map((entry) => entry.lessonId),
+					lessonTitles: programLessons.map((entry) => entry.lesson.title),
 					todaySentenceCount:
 						programSession?.segments.reduce((sum, s) => sum + s.sentences.length, 0) ?? 0,
 					todayCycles: programSession?.segments.map((s) => s.reps ?? 1) ?? [],

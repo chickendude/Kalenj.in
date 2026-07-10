@@ -12,16 +12,44 @@
 		placement?: Placement;
 		children: Snippet;
 	} = $props();
+
+	let host = $state<HTMLSpanElement | null>(null);
+	let effectivePlacement = $state<Placement>('top');
+
+	$effect(() => {
+		effectivePlacement = placement;
+	});
+
+	function updatePlacement() {
+		effectivePlacement = placement;
+		if (placement !== 'top' && placement !== 'bottom') return;
+		requestAnimationFrame(() => {
+			const rect = host?.querySelector('.tooltip-bubble')?.getBoundingClientRect();
+			if (!rect) return;
+			const gap = 8;
+			if (placement === 'top' && rect.top < gap) effectivePlacement = 'bottom';
+			else if (placement === 'bottom' && rect.bottom > window.innerHeight - gap) {
+				effectivePlacement = 'top';
+			}
+		});
+	}
 </script>
 
 <!--
   Use this instead of the native HTML `title` attribute. Wrap the trigger
   element (button, icon, etc) so the tooltip is positioned relative to it.
 
-  Project rule: never use HTML `title=` attributes for tooltips — use this
-  component so styling, focus behavior, and dark/light themes stay consistent.
+ Project rule: never use HTML `title=` attributes for tooltips — use this
+ component so styling, focus behavior, and dark/light themes stay consistent.
 -->
-<span class="tooltip-host" data-placement={placement}>
+<!-- svelte-ignore a11y_no_static_element_interactions — host positions a tooltip for arbitrary child controls. -->
+<span
+	class="tooltip-host"
+	data-placement={effectivePlacement}
+	bind:this={host}
+	onfocusin={updatePlacement}
+	onmouseenter={updatePlacement}
+>
 	{@render children()}
 	<span class="tooltip-bubble" role="tooltip">{label}</span>
 </span>

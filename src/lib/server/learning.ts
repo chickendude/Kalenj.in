@@ -651,8 +651,10 @@ export type ListeningSegment = {
 	/** Set for per-lesson segments so clients can key segments by lesson. */
 	lessonId?: string;
 	title: string | null;
-	/** Cycle count override (daily program); null → use the session setting. */
+	/** Repetition count override (daily program); null → use the session setting. */
 	reps: number | null;
+	/** Daily program only: sentences are newly introduced on this program day. */
+	repeatKalenjinEligible?: boolean;
 	sentences: ListeningSentence[];
 };
 
@@ -817,6 +819,7 @@ export async function getProgramDaySession(userId: string): Promise<ProgramDaySe
 		.map(({ entry, age }) => ({
 			title: `${entry.lesson.title} — day ${age}`,
 			reps: pattern[age - 1],
+			repeatKalenjinEligible: age === 1,
 			sentences: sentencesByLesson.get(entry.lessonId) ?? []
 		}))
 		.filter((segment) => segment.sentences.length > 0);

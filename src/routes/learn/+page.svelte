@@ -69,10 +69,10 @@
 		</span>
 	</a>
 	<a class="cta-card" href="/learn/listen">
-		<span class="cta-title">Audio drills</span>
-		<span class="cta-detail">
-			{missedCount > 0 ? `${missedCount} tricky sentences` : 'Hear it, say it, repeat'}
-		</span>
+		<span class="cta-title">Speaking Drills</span>
+		{#if missedCount > 0}
+			<span class="cta-detail">{missedCount} tricky sentences</span>
+		{/if}
 	</a>
 	{#if data.questionCount > 0}
 		<a class="cta-card" href="/learn/questions">

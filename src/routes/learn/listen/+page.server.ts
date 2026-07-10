@@ -18,11 +18,13 @@ import type { Actions, PageServerLoad } from './$types';
 
 const MIN_REPS = 1;
 const MAX_REPS = 9;
-const MAX_KALENJIN_REPS = 3;
+const MAX_KALENJIN_REPS = 2;
+const REPS_COOKIE = 'listen_reps';
 
 export type ListenSettings = {
 	reps: number;
 	kalenjinReps: number;
+	repeatKalenjinOnlyNew: boolean;
 	shuffle: boolean;
 };
 
@@ -32,18 +34,26 @@ function clampInt(raw: string | null, fallback: number, min: number, max: number
 	return Math.min(max, Math.max(min, parsed));
 }
 
-function readSettings(url: URL): ListenSettings {
+function readSettings(url: URL, storedReps: string | null): ListenSettings {
 	return {
-		reps: clampInt(url.searchParams.get('reps'), 2, MIN_REPS, MAX_REPS),
+		reps: clampInt(url.searchParams.get('reps') ?? storedReps, 3, MIN_REPS, MAX_REPS),
 		kalenjinReps: clampInt(url.searchParams.get('kreps'), 1, 1, MAX_KALENJIN_REPS),
+		repeatKalenjinOnlyNew: url.searchParams.get('knew') === '1',
 		shuffle: url.searchParams.get('shuffle') === '1'
 	};
 }
 
-export const load: PageServerLoad = async ({ locals, url }) => {
+export const load: PageServerLoad = async ({ cookies, locals, url }) => {
 	const userId = locals.user?.id ?? null;
 	const scopeParam = url.searchParams.get('scope');
-	const settings = readSettings(url);
+	const settings = readSettings(url, cookies.get(REPS_COOKIE) ?? null);
+	if (url.searchParams.has('reps')) {
+		cookies.set(REPS_COOKIE, String(settings.reps), {
+			path: '/learn/listen',
+			sameSite: 'lax',
+			maxAge: 60 * 60 * 24 * 365
+		});
+	}
 
 	if (scopeParam === 'missed') {
 		// Signed out: missed sentences live in localStorage — the client
@@ -73,7 +83,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		return {
 			mode: 'play' as const,
 			scope: scopeParam,
-			title: lesson?.title ?? 'Audio drills',
+			title: lesson?.title ?? 'Speaking Drills',
 			segments,
 			settings
 		};
@@ -143,7 +153,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					lessonTitles: programLessons.map((entry) => entry.lesson.title),
 					todaySentenceCount:
 						programSession?.segments.reduce((sum, s) => sum + s.sentences.length, 0) ?? 0,
-					todayCycles: programSession?.segments.map((s) => s.reps ?? 1) ?? [],
+					todayRepetitions: programSession?.segments.map((s) => s.reps ?? 1) ?? [],
 					finished: programSession?.finished ?? false
 				}
 			: null

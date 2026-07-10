@@ -11,16 +11,20 @@
 
 	type Segment = {
 		title: string | null;
-		/** Cycle count override (daily program); null → session setting. */
+		/** Repetition count override (daily program); null → session setting. */
 		reps: number | null;
+		/** Daily program only: sentences are newly introduced on this program day. */
+		repeatKalenjinEligible?: boolean;
 		sentences: ListeningSentence[];
 	};
 
 	export type ListeningSettings = {
-		/** Full cycles (English prompt + Kalenjin answer) per sentence. */
+		/** Number of passes through each sentence set. */
 		reps: number;
-		/** Kalenjin plays per cycle. */
+		/** Kalenjin audio plays inside each prompt. */
 		kalenjinReps: number;
+		/** If true, only repeat Kalenjin on first/eligible sentence presentations. */
+		repeatKalenjinOnlyNew: boolean;
 		/** Shuffle sentence order within each lesson. */
 		shuffle: boolean;
 	};
@@ -51,6 +55,14 @@
 		done: 'Session complete'
 	};
 
+	type SessionItem = {
+		segmentTitle: string | null;
+		sentence: ListeningSentence;
+		repetition: number;
+		repetitions: number;
+		repeatKalenjinEligible: boolean;
+	};
+
 	function shuffled<T>(items: T[]): T[] {
 		const copy = [...items];
 		for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -60,20 +72,33 @@
 		return copy;
 	}
 
-	// Sentence order is fixed once per session (so prev/next stay stable).
+	// Playback order is fixed once per session (so prev/next stay stable).
 	// svelte-ignore state_referenced_locally — intentional one-time setup
-	const prepared: Segment[] = segments
-		.map((segment) => ({
-			...segment,
-			sentences: settings.shuffle ? shuffled(segment.sentences) : segment.sentences
-		}))
-		.filter((segment) => segment.sentences.length > 0);
+	const seenSentences = new Set<string>();
+	// svelte-ignore state_referenced_locally — intentional one-time setup
+	const queue: SessionItem[] = segments.flatMap((segment) => {
+		if (segment.sentences.length === 0) return [];
+		const repetitions = segment.reps ?? settings.reps;
+		return Array.from({ length: repetitions }, (_, index) => {
+			const pass = settings.shuffle ? shuffled(segment.sentences) : segment.sentences;
+			return pass.map((sentence) => {
+				const firstInSession = !seenSentences.has(sentence.id);
+				seenSentences.add(sentence.id);
+				return {
+					segmentTitle: segment.title,
+					sentence,
+					repetition: index + 1,
+					repetitions,
+					repeatKalenjinEligible:
+						(segment.repeatKalenjinEligible ?? true) && firstInSession
+				};
+			});
+		}).flat();
+	});
 
-	const totalSentences = prepared.reduce((sum, segment) => sum + segment.sentences.length, 0);
+	const totalItems = queue.length;
 
-	let segmentIndex = $state(0);
-	let sentenceIndex = $state(0);
-	let cycle = $state(1);
+	let itemIndex = $state(0);
 	let kRep = $state(1);
 	let phase = $state<Phase>('idle');
 	let playing = $state(false);
@@ -82,12 +107,12 @@
 	let cleared = $state(new Set<string>());
 	let completeNotified = false;
 
-	const segment = $derived(prepared[segmentIndex] ?? null);
-	const sentence = $derived(segment?.sentences[sentenceIndex] ?? null);
-	const cycleReps = $derived(segment?.reps ?? settings.reps);
-	const sentencesBefore = $derived(
-		prepared.slice(0, segmentIndex).reduce((sum, seg) => sum + seg.sentences.length, 0) +
-			sentenceIndex
+	const item = $derived(queue[itemIndex] ?? null);
+	const sentence = $derived(item?.sentence ?? null);
+	const itemKalenjinReps = $derived(
+		item && (!settings.repeatKalenjinOnlyNew || item.repeatKalenjinEligible)
+			? settings.kalenjinReps
+			: 1
 	);
 	const ttsAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
 	const speakEnglish = $derived(ttsAvailable);
@@ -193,7 +218,7 @@
 					window.speechSynthesis.speak(utterance);
 				});
 			} else {
-				// English audio off (or no TTS): show the prompt text for a beat.
+				// No TTS: show the prompt text for a beat.
 				schedule(3000, () => enterPhase('produce'));
 			}
 		} else if (next === 'produce') {
@@ -214,51 +239,29 @@
 			});
 		} else if (next === 'repeat') {
 			schedule(producePauseMs(), () => {
-				if (kRep < settings.kalenjinReps) {
+				if (kRep < itemKalenjinReps) {
 					kRep += 1;
 					enterPhase('kalenjin');
-				} else if (cycle < cycleReps) {
-					cycle += 1;
-					kRep = 1;
-					enterPhase('english');
 				} else {
-					goToSentence(sentenceIndex + 1);
+					goToItem(itemIndex + 1);
 				}
 			});
 		}
 	}
 
-	function goToSentence(index: number) {
+	function goToItem(index: number) {
 		cancelPending();
-		let nextSegment = segmentIndex;
-		let nextSentence = index;
-
-		while (nextSentence >= (prepared[nextSegment]?.sentences.length ?? 0)) {
-			nextSegment += 1;
-			nextSentence = 0;
-			if (nextSegment >= prepared.length) {
-				phase = 'done';
-				playing = false;
-				if (!completeNotified) {
-					completeNotified = true;
-					onSessionComplete?.();
-				}
-				return;
+		if (index >= queue.length) {
+			phase = 'done';
+			playing = false;
+			if (!completeNotified) {
+				completeNotified = true;
+				onSessionComplete?.();
 			}
-		}
-		while (nextSentence < 0) {
-			nextSegment -= 1;
-			if (nextSegment < 0) {
-				nextSegment = 0;
-				nextSentence = 0;
-				break;
-			}
-			nextSentence = prepared[nextSegment].sentences.length - 1;
+			return;
 		}
 
-		segmentIndex = nextSegment;
-		sentenceIndex = Math.max(0, nextSentence);
-		cycle = 1;
+		itemIndex = Math.max(0, index);
 		kRep = 1;
 		if (playing) {
 			enterPhase('english');
@@ -271,9 +274,7 @@
 		if (phase === 'done') {
 			completeNotified = true; // replaying doesn't re-fire completion
 			playing = true;
-			segmentIndex = 0;
-			sentenceIndex = 0;
-			cycle = 1;
+			itemIndex = 0;
 			kRep = 1;
 			enterPhase('english');
 			return;
@@ -338,7 +339,7 @@
 </script>
 
 <div class="listening">
-	{#if totalSentences === 0}
+	{#if totalItems === 0}
 		<div class="listen-card empty">
 			<p>No sentences with audio here yet.</p>
 			<a class="btn ghost" href="/learn/listen">Pick something else</a>
@@ -348,8 +349,8 @@
 			<div class="done-emoji" aria-hidden="true">🎧</div>
 			<h2 class="done-title">Session complete</h2>
 			<p>
-				You worked through {totalSentences}
-				{totalSentences === 1 ? 'sentence' : 'sentences'}.
+				You worked through {totalItems}
+				{totalItems === 1 ? 'prompt' : 'prompts'}.
 			</p>
 			<div class="done-actions">
 				<button type="button" class="btn" onclick={togglePlay}>Go again</button>
@@ -359,16 +360,18 @@
 		</div>
 	{:else}
 		<div class="listen-card">
-			{#if segment?.title}
-				<div class="segment-title">{segment.title}</div>
+			{#if item?.segmentTitle}
+				<div class="segment-title">{item.segmentTitle}</div>
 			{/if}
 			<div class="phase-label" class:active={playing}>{PHASE_LABELS[phase]}</div>
 
 			<div class="counters mono">
-				<span>Sentence {sentencesBefore + 1}/{totalSentences}</span>
-				<span>Cycle {cycle}/{cycleReps}</span>
-				{#if settings.kalenjinReps > 1}
-					<span>Kalenjin {kRep}/{settings.kalenjinReps}</span>
+				<span>Prompt {itemIndex + 1}/{totalItems}</span>
+				{#if item && item.repetitions > 1}
+					<span>Repetition {item.repetition}/{item.repetitions}</span>
+				{/if}
+				{#if itemKalenjinReps > 1}
+					<span>Kalenjin {kRep}/{itemKalenjinReps}</span>
 				{/if}
 			</div>
 
@@ -389,8 +392,8 @@
 				<button
 					type="button"
 					class="transport-btn"
-					onclick={() => goToSentence(sentenceIndex - 1)}
-					disabled={segmentIndex === 0 && sentenceIndex === 0}
+					onclick={() => goToItem(itemIndex - 1)}
+					disabled={itemIndex === 0}
 					aria-label="Previous sentence"
 				>
 					⏮
@@ -406,7 +409,7 @@
 				<button
 					type="button"
 					class="transport-btn"
-					onclick={() => goToSentence(sentenceIndex + 1)}
+					onclick={() => goToItem(itemIndex + 1)}
 					aria-label="Next sentence"
 				>
 					⏭

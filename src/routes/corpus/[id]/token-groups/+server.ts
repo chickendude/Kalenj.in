@@ -17,6 +17,13 @@ import {
 	removeObservedWordForm,
 	replaceObservedWordForm
 } from '$lib/server/observed-word-forms';
+import {
+	createWordSentenceLinks,
+	linkCompoundMemberTokensByComponents,
+	loadAutoLemmaCompoundMatches,
+	loadCompoundInContextTranslations
+} from '$lib/server/auto-lemma';
+import { normalizeToken } from '$lib/server/tokenize';
 import type { RequestHandler } from './$types';
 import { requireEditor } from '$lib/server/guards';
 
@@ -24,6 +31,7 @@ type EditableToken = OrderedToken & {
 	surfaceForm: string;
 	normalizedForm: string;
 	wordId: string | null;
+	compoundId: string | null;
 	inContextTranslation: string | null;
 	segments: Array<{
 		wordId: string | null;
@@ -60,6 +68,29 @@ type Payload =
 			sentenceId?: string;
 			tokenId?: string;
 			surfaceForm?: string;
+	  }
+	| {
+			action?: 'compound';
+			sentenceId?: string;
+			sourceTokenId?: string;
+			targetTokenId?: string;
+	  }
+	| {
+			action?: 'uncompound';
+			sentenceId?: string;
+			compoundId?: string;
+	  }
+	| {
+			action?: 'compound-link';
+			sentenceId?: string;
+			compoundId?: string;
+			wordId?: string | null;
+	  }
+	| {
+			action?: 'compound-translate';
+			sentenceId?: string;
+			compoundId?: string;
+			inContextTranslation?: string;
 	  };
 
 const WORD_SELECT = {
@@ -108,6 +139,7 @@ async function loadEditableTokens(sentenceId: string): Promise<EditableToken[]> 
 			surfaceForm: true,
 			normalizedForm: true,
 			wordId: true,
+			compoundId: true,
 			inContextTranslation: true,
 			segments: {
 				select: {
@@ -126,6 +158,13 @@ async function loadTokensWithWords(sentenceId: string) {
 		include: {
 			word: {
 				select: WORD_SELECT
+			},
+			compound: {
+				include: {
+					word: {
+						select: WORD_SELECT
+					}
+				}
 			},
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
@@ -177,8 +216,14 @@ async function removeUnusedSentenceWordLinks(
 			},
 			select: { id: true }
 		});
+		const remainingCompoundLink = remainingLink
+			? null
+			: await tx.exampleSentenceCompound.findFirst({
+					where: { exampleSentenceId: sentenceId, wordId },
+					select: { id: true }
+				});
 
-		if (!remainingLink) {
+		if (!remainingLink && !remainingCompoundLink) {
 			await tx.wordSentence.deleteMany({
 				where: { wordId, exampleSentenceId: sentenceId }
 			});
@@ -203,6 +248,10 @@ async function applyMerge(
 
 	if (mergedTokens.some(hasLexicalSegments)) {
 		throw new Error('Remove lexical segments before merging these words.');
+	}
+
+	if (mergedTokens.some((token) => token.compoundId)) {
+		throw new Error('Ungroup the compound before combining these words.');
 	}
 
 	const finalTokens = assignSequentialTokenOrders(
@@ -281,6 +330,10 @@ async function applySplit(
 		throw new Error('Remove lexical segments before splitting this word.');
 	}
 
+	if (splitToken?.compoundId) {
+		throw new Error('Ungroup the compound before splitting this word.');
+	}
+
 	await setTemporaryOrders(tx, tokens);
 
 	for (const row of finalRows) {
@@ -341,6 +394,36 @@ async function applySurface(
 		wordId: token?.wordId,
 		normalizedForm: update.normalizedForm
 	});
+
+	// A renamed member changes the compound span's cached joined form too.
+	if (token?.compoundId) {
+		const compound = await tx.exampleSentenceCompound.findUnique({
+			where: { id: token.compoundId },
+			select: { id: true, wordId: true, normalizedForm: true }
+		});
+		if (compound) {
+			const members = await tx.exampleSentenceToken.findMany({
+				where: { compoundId: compound.id },
+				orderBy: { tokenOrder: 'asc' },
+				select: { id: true, surfaceForm: true }
+			});
+			const joinedSurface = members
+				.map((member) => (member.id === token.id ? update.surfaceForm : member.surfaceForm))
+				.join(' ');
+			const nextNormalizedForm = normalizeToken(joinedSurface);
+			if (nextNormalizedForm !== compound.normalizedForm) {
+				await tx.exampleSentenceCompound.update({
+					where: { id: compound.id },
+					data: { normalizedForm: nextNormalizedForm }
+				});
+				await replaceObservedWordForm(
+					tx,
+					{ wordId: compound.wordId, normalizedForm: compound.normalizedForm },
+					{ wordId: compound.wordId, normalizedForm: nextNormalizedForm }
+				);
+			}
+		}
+	}
 }
 
 async function applyUnsplit(
@@ -400,6 +483,189 @@ async function applySegments(
 	await removeUnusedSentenceWordLinks(tx, sentenceId, oldWordIds);
 }
 
+async function loadCompoundForSentence(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	compoundId: string
+) {
+	const compound = await tx.exampleSentenceCompound.findUnique({
+		where: { id: compoundId },
+		select: {
+			id: true,
+			exampleSentenceId: true,
+			wordId: true,
+			normalizedForm: true,
+			inContextTranslation: true
+		}
+	});
+
+	if (!compound || compound.exampleSentenceId !== sentenceId) {
+		throw new Error('Compound group not found.');
+	}
+
+	return compound;
+}
+
+async function applyCompound(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	tokens: EditableToken[],
+	sourceTokenId: string,
+	targetTokenId: string
+) {
+	const source = tokens.find((token) => token.id === sourceTokenId);
+	const target = tokens.find((token) => token.id === targetTokenId);
+
+	if (!source || !target) {
+		throw new Error('Choose two words from the same sentence.');
+	}
+	if (source.id === target.id) {
+		throw new Error('Choose two different words to group.');
+	}
+
+	// Dropping onto (or from) an existing compound extends it, so all of the
+	// involved tokens' current groups fold into the new span.
+	const compoundIds = new Set(
+		[source.compoundId, target.compoundId].filter((id): id is string => Boolean(id))
+	);
+	const memberIds = new Set([source.id, target.id]);
+	for (const token of tokens) {
+		if (token.compoundId && compoundIds.has(token.compoundId)) {
+			memberIds.add(token.id);
+		}
+	}
+
+	const memberIndexes = tokens
+		.map((token, index) => (memberIds.has(token.id) ? index : -1))
+		.filter((index) => index >= 0);
+	const isContiguous = memberIndexes.every(
+		(index, position) => position === 0 || index === memberIndexes[position - 1] + 1
+	);
+	if (!isContiguous) {
+		throw new Error('Only adjacent words can be grouped.');
+	}
+
+	const members = memberIndexes.map((index) => tokens[index]);
+	const joinedSurface = members.map((member) => member.surfaceForm).join(' ');
+	const normalizedForm = normalizeToken(joinedSurface);
+
+	const oldCompounds = await tx.exampleSentenceCompound.findMany({
+		where: { id: { in: [...compoundIds] } },
+		select: { id: true, wordId: true, normalizedForm: true, inContextTranslation: true }
+	});
+	await tx.exampleSentenceCompound.deleteMany({ where: { id: { in: [...compoundIds] } } });
+	for (const old of oldCompounds) {
+		await removeObservedWordForm(tx, {
+			wordId: old.wordId,
+			normalizedForm: old.normalizedForm
+		});
+	}
+
+	// Prefer whatever the extended group already carried; otherwise try to
+	// auto-link the joined form against known compound entries.
+	const carried = oldCompounds.find((old) => old.wordId) ?? null;
+	let wordId = carried?.wordId ?? null;
+	let inContextTranslation = carried?.inContextTranslation ?? null;
+	if (!wordId) {
+		const matches = await loadAutoLemmaCompoundMatches(tx, [normalizedForm]);
+		wordId = matches.get(normalizedForm) ?? null;
+		if (wordId) {
+			const translations = await loadCompoundInContextTranslations(tx, [
+				[normalizedForm, wordId]
+			]);
+			inContextTranslation = translations.get(`${normalizedForm}\u0000${wordId}`) ?? null;
+		}
+	}
+
+	const compound = await tx.exampleSentenceCompound.create({
+		data: {
+			exampleSentenceId: sentenceId,
+			normalizedForm,
+			wordId,
+			...(inContextTranslation?.trim() ? { inContextTranslation } : {})
+		}
+	});
+	await tx.exampleSentenceToken.updateMany({
+		where: { id: { in: [...memberIds] } },
+		data: { compoundId: compound.id }
+	});
+
+	if (wordId) {
+		await recordObservedWordForm(tx, { wordId, normalizedForm });
+		await createWordSentenceLinks(tx, sentenceId, [wordId]);
+		await linkCompoundMemberTokensByComponents(tx, sentenceId, compound.id, wordId);
+	}
+	await removeUnusedSentenceWordLinks(
+		tx,
+		sentenceId,
+		oldCompounds.map((old) => old.wordId)
+	);
+}
+
+async function applyUncompound(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	compoundId: string
+) {
+	const compound = await loadCompoundForSentence(tx, sentenceId, compoundId);
+
+	await tx.exampleSentenceCompound.delete({ where: { id: compound.id } });
+	if (compound.wordId) {
+		await removeObservedWordForm(tx, {
+			wordId: compound.wordId,
+			normalizedForm: compound.normalizedForm
+		});
+		await removeUnusedSentenceWordLinks(tx, sentenceId, [compound.wordId]);
+	}
+}
+
+async function applyCompoundLink(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	compoundId: string,
+	wordId: string | null
+) {
+	const compound = await loadCompoundForSentence(tx, sentenceId, compoundId);
+
+	if (wordId) {
+		const word = await tx.word.findUnique({ where: { id: wordId }, select: { id: true } });
+		if (!word) {
+			throw new Error('Word not found.');
+		}
+	}
+
+	await tx.exampleSentenceCompound.update({
+		where: { id: compound.id },
+		data: { wordId }
+	});
+	await replaceObservedWordForm(
+		tx,
+		{ wordId: compound.wordId, normalizedForm: compound.normalizedForm },
+		{ wordId, normalizedForm: compound.normalizedForm }
+	);
+	if (wordId) {
+		await createWordSentenceLinks(tx, sentenceId, [wordId]);
+		await linkCompoundMemberTokensByComponents(tx, sentenceId, compound.id, wordId);
+	}
+	if (compound.wordId && compound.wordId !== wordId) {
+		await removeUnusedSentenceWordLinks(tx, sentenceId, [compound.wordId]);
+	}
+}
+
+async function applyCompoundTranslate(
+	tx: Prisma.TransactionClient,
+	sentenceId: string,
+	compoundId: string,
+	inContextTranslation: string
+) {
+	const compound = await loadCompoundForSentence(tx, sentenceId, compoundId);
+
+	await tx.exampleSentenceCompound.update({
+		where: { id: compound.id },
+		data: { inContextTranslation: inContextTranslation.trim() || null }
+	});
+}
+
 export const POST: RequestHandler = async ({ params, request, locals }) => {
 	requireEditor(locals);
 	const payload = (await request.json()) as Payload;
@@ -446,6 +712,29 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 			const surfaceForm = clean(payload.surfaceForm);
 
 			await prisma.$transaction((tx) => applySurface(tx, tokens, tokenId, surfaceForm));
+		} else if (action === 'compound') {
+			const sourceTokenId = clean(payload.sourceTokenId);
+			const targetTokenId = clean(payload.targetTokenId);
+
+			await prisma.$transaction((tx) =>
+				applyCompound(tx, sentenceId, tokens, sourceTokenId, targetTokenId)
+			);
+		} else if (action === 'uncompound') {
+			const compoundId = clean(payload.compoundId);
+
+			await prisma.$transaction((tx) => applyUncompound(tx, sentenceId, compoundId));
+		} else if (action === 'compound-link') {
+			const compoundId = clean(payload.compoundId);
+			const wordId = clean(payload.wordId) || null;
+
+			await prisma.$transaction((tx) => applyCompoundLink(tx, sentenceId, compoundId, wordId));
+		} else if (action === 'compound-translate') {
+			const compoundId = clean(payload.compoundId);
+			const inContextTranslation = String(payload.inContextTranslation ?? '');
+
+			await prisma.$transaction((tx) =>
+				applyCompoundTranslate(tx, sentenceId, compoundId, inContextTranslation)
+			);
 		} else {
 			error(400, 'Action is required.');
 		}

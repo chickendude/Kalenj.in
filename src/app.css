@@ -40,8 +40,8 @@
   --info:          oklch(0.5 0.19 260);
   --info-soft:     oklch(0.96 0.03 255);
 
-  --tooltip-bg:    oklch(0.23 0.03 260);
-  --tooltip-ink:   oklch(0.97 0.005 260);
+  --tooltip-bg:    oklch(0.95 0.008 260);
+  --tooltip-ink:   oklch(0.22 0.02 260);
 
   --scrim:         oklch(0.23 0.03 260 / 0.3);
   --shadow-md:     0 10px 30px oklch(0.23 0.03 260 / 0.15);
@@ -90,8 +90,8 @@
   --info:          oklch(0.72 0.16 260);
   --info-soft:     oklch(0.30 0.07 260);
 
-  --tooltip-bg:    oklch(0.95 0.008 260);
-  --tooltip-ink:   oklch(0.22 0.02 260);
+  --tooltip-bg:    oklch(0.23 0.03 260);
+  --tooltip-ink:   oklch(0.97 0.005 260);
 
   --scrim:         oklch(0.05 0.01 260 / 0.6);
   --shadow-md:     0 10px 30px oklch(0 0 0 / 0.5);
@@ -677,6 +677,44 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
   color: var(--ink-soft);
   font-size: 14px;
   line-height: 1.35;
+}
+
+.component-breakdown {
+  display: flex;
+  align-items: stretch;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.component-plus {
+  align-self: center;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--ink-mute);
+}
+.component-chip {
+  display: grid;
+  gap: 2px;
+  align-content: start;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--ink);
+  text-decoration: none;
+}
+.component-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+  text-decoration: none;
+}
+.component-chip-word {
+  font-family: var(--font-display);
+  font-size: 19px;
+  line-height: 1.15;
+}
+.component-chip-gloss {
+  color: var(--ink-soft);
+  font-size: 13px;
 }
 
 .example {

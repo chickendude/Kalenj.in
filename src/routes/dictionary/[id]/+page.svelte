@@ -243,6 +243,13 @@
 	let relatedSearchTimer: ReturnType<typeof setTimeout> | null = null;
 	let relatedSearchSeq = 0;
 
+	let componentQuery = $state('');
+	let componentSearchResults = $state<DictionarySearchResult[] | null>(null);
+	let componentSearchQuery = $state('');
+	let componentSearchLoading = $state(false);
+	let componentSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let componentSearchSeq = 0;
+
 	let pendingDeleteForm = $state<HTMLFormElement | null>(null);
 	let reportDialogOpen = $state(false);
 
@@ -308,11 +315,54 @@
 		relatedSearchTimer = setTimeout(() => runRelatedSearch(value), 180);
 	}
 
+	// Words may repeat inside a compound (reduplication), so only the entry
+	// itself is filtered out of the picker.
+	const attachableComponentResults = $derived(
+		(componentSearchResults ?? []).filter((result) => result.id !== data.word.id)
+	);
+
+	async function runComponentSearch(query: string) {
+		const seq = ++componentSearchSeq;
+		const trimmed = query.trim();
+		if (!trimmed) {
+			componentSearchResults = null;
+			componentSearchQuery = '';
+			componentSearchLoading = false;
+			return;
+		}
+
+		componentSearchLoading = true;
+		try {
+			const res = await fetch(`/dictionary/search?q=${encodeURIComponent(trimmed)}`);
+			if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+			const json = (await res.json()) as { results: DictionarySearchResult[] };
+			if (seq !== componentSearchSeq) return;
+			componentSearchResults = json.results;
+			componentSearchQuery = trimmed;
+		} catch {
+			if (seq !== componentSearchSeq) return;
+			componentSearchResults = [];
+			componentSearchQuery = trimmed;
+		} finally {
+			if (seq === componentSearchSeq) componentSearchLoading = false;
+		}
+	}
+
+	function handleComponentSearchInput(event: Event) {
+		const value = (event.currentTarget as HTMLInputElement).value;
+		componentQuery = value;
+		if (componentSearchTimer) clearTimeout(componentSearchTimer);
+		componentSearchTimer = setTimeout(() => runComponentSearch(value), 180);
+	}
+
 	$effect(() => {
 		if (form?.success) toast.success('Saved.');
 	});
 	$effect(() => {
 		if (form?.relatedWordSuccess) toast.success('Related words updated.');
+	});
+	$effect(() => {
+		if (form?.componentWordSuccess) toast.success('Component words updated.');
 	});
 </script>
 
@@ -521,7 +571,40 @@
 				<div class="notes-markdown muted">{@html renderMarkdown(notesValue)}</div>
 			{/if}
 
-			<h2 class="section-title">Related words</h2>
+			{#if data.word.componentWords.length > 0}
+					<h2 class="section-title">Formed from</h2>
+					<div class="component-breakdown">
+						{#each data.word.componentWords as link, index (link.id)}
+							{#if index > 0}<span class="component-plus" aria-hidden="true">+</span>{/if}
+							<a href={dictionaryEntryHref(link.word)} class="component-chip">
+								<span class="component-chip-word">{link.word.kalenjin}</span>
+								<span class="component-chip-gloss">{firstTranslation(link.word.translations)}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+
+				{#if data.word.compoundWords.length > 0}
+					<h2 class="section-title">Compound words</h2>
+					<div class="related-word-grid">
+						{#each data.word.compoundWords as compound (compound.id)}
+							<a href={dictionaryEntryHref(compound)} class="related-word-card">
+								<span class="related-word-heading">
+									<span class="related-word-title">{compound.kalenjin}</span>
+									{#if compound.partOfSpeech}
+										<PartOfSpeechInline value={compound.partOfSpeech} size="tiny" />
+									{/if}
+									{#if compound.isSwahiliLoan}
+										<SwahiliLoanIndicator compact />
+									{/if}
+								</span>
+								<span class="related-word-gloss">{firstTranslation(compound.translations)}</span>
+							</a>
+						{/each}
+					</div>
+				{/if}
+
+				<h2 class="section-title">Related words</h2>
 			{#if data.word.relatedWords.length === 0}
 				<p class="muted" style="font-size: 15px; margin: 0;">No related words yet.</p>
 			{:else}
@@ -915,6 +998,90 @@
 											}}
 										>
 											<input type="hidden" name="relatedWordId" value={result.id} />
+											<button type="submit" class="related-search-button">
+												<span>
+													<strong>{result.kalenjin}</strong>
+													{#if result.isSwahiliLoan}
+														<SwahiliLoanIndicator compact />
+													{/if}
+													<small>{firstTranslation(result.translations)}</small>
+												</span>
+												<span class="related-add-label">Add</span>
+											</button>
+										</form>
+									</li>
+								{/each}
+							</ul>
+						{/if}
+					{/if}
+				</SidePanel>
+
+				<SidePanel title="Component words">
+					<FormErrorFeedback error={form?.componentWordError} />
+
+					<p class="related-editor-empty">
+						For compounds: the entries this word is formed from, in order.
+					</p>
+
+					{#if data.word.componentWords.length === 0}
+						<p class="related-editor-empty">No component words linked.</p>
+					{:else}
+						<ul class="related-editor-list">
+							{#each data.word.componentWords as link, index (link.id)}
+								<li>
+									<a href={dictionaryEntryHref(link.word)}>
+										<span>{index + 1}. {link.word.kalenjin}</span>
+										<small>{firstTranslation(link.word.translations)}</small>
+									</a>
+									<form
+										method="POST"
+										action="?/removeComponentWord"
+										use:enhance={() => {
+											return async ({ update }) => {
+												await update({ reset: false });
+											};
+										}}
+									>
+										<input type="hidden" name="componentId" value={link.id} />
+										<button type="submit" class="btn-sm ghost">Remove</button>
+									</form>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+
+					<div class="side-field">
+						<label for="componentWordSearch">Add component word</label>
+						<input
+							id="componentWordSearch"
+							type="search"
+							class="side-input"
+							placeholder="Search Kalenjin or English"
+							autocomplete="off"
+							value={componentQuery}
+							oninput={handleComponentSearchInput}
+						/>
+					</div>
+
+					{#if componentSearchLoading}
+						<p class="related-editor-empty">Searching...</p>
+					{:else if componentSearchResults !== null}
+						{#if attachableComponentResults.length === 0}
+							<p class="related-editor-empty">No matches for “{componentSearchQuery}”.</p>
+						{:else}
+							<ul class="related-search-results">
+								{#each attachableComponentResults as result (result.id)}
+									<li>
+										<form
+											method="POST"
+											action="?/addComponentWord"
+											use:enhance={() => {
+												return async ({ update }) => {
+													await update({ reset: false });
+												};
+											}}
+										>
+											<input type="hidden" name="componentWordId" value={result.id} />
 											<button type="submit" class="related-search-button">
 												<span>
 													<strong>{result.kalenjin}</strong>

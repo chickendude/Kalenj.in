@@ -4,7 +4,6 @@
 	import { groupSentenceTokens } from '$lib/word-groups';
 	import { splitPluralFormVariants } from '$lib/plural-form-variants';
 	import { stripWordLinks } from '$lib/word-links';
-	import ConfirmDialog from './ConfirmDialog.svelte';
 	import LemmaCreationForm from './LemmaCreationForm.svelte';
 	import SentenceTimeText from '$lib/components/SentenceTimeText.svelte';
 	import TokenSearchPanel from '$lib/components/TokenSearchPanel.svelte';
@@ -24,12 +23,26 @@
 		translations: string;
 	};
 
+	type TokenCompound = {
+		id: string;
+		wordId: string | null;
+		normalizedForm: string;
+		inContextTranslation?: string | null;
+		word?: {
+			id: string;
+			kalenjin: string;
+			translations?: string | null;
+		} | null;
+	};
+
 	type SentenceToken = {
 		id: string;
 		tokenOrder: number;
 		surfaceForm: string;
 		normalizedForm: string;
 		wordId: string | null;
+		compoundId?: string | null;
+		compound?: TokenCompound | null;
 		inContextTranslation?: string | null;
 		word?: {
 			id: string;
@@ -88,13 +101,6 @@
 		createIsSingularOnly: boolean;
 		createAlternativePluralForms: string;
 		createPartOfSpeech: PartOfSpeech | '';
-	};
-
-	type MergePrompt = {
-		sourceTokenId: string;
-		targetTokenId: string;
-		sourceSurface: string;
-		targetSurface: string;
 	};
 
 	type EnhancedSubmitResult = ActionResult<Record<string, unknown> | undefined, Record<string, unknown> | undefined>;
@@ -188,10 +194,24 @@
 	const shortcutEntries = [
 		{ label: 'Previous word', keys: isMac ? ['⌃', '⌥', '←'] : ['Alt', '←'] },
 		{ label: 'Next word', keys: isMac ? ['⌃', '⌥', '→'] : ['Alt', '→'] },
+		{ label: 'Group as compound', keys: ['drag onto word'] },
+		{ label: 'Merge into one word', keys: ['⇧', 'drag onto word'] },
 		{ label: 'Close picker', keys: ['Esc'] }
 	];
 	let draggedTokenId = $state<string | null>(null);
-	let pendingMerge = $state<MergePrompt | null>(null);
+	let openCompoundId = $state<string | null>(null);
+	let compoundQuery = $state('');
+	let compoundResults = $state<Array<{
+		id: string;
+		kalenjin: string;
+		translations: string;
+	}> | null>(null);
+	let compoundSearchLoading = $state(false);
+	let compoundSearchTimer: ReturnType<typeof setTimeout> | null = null;
+	let compoundSearchSeq = 0;
+	let compoundSearchInput = $state<HTMLInputElement | null>(null);
+	let compoundDrafts = $state<Record<string, string>>({});
+	const compoundSaveTimers = new Map<string, number>();
 	let editingSurfaceTokenId = $state<string | null>(null);
 	let surfaceDraft = $state('');
 	let surfaceEditInput = $state<HTMLInputElement | null>(null);
@@ -205,6 +225,29 @@
 				tokens: localTokens
 			})
 		);
+	// Consecutive groups that belong to the same compound render inside one
+	// cluster, so the phrase entry chip and phrase meaning box can span them.
+	const renderClusters = $derived.by(() => {
+		const clusters: Array<{
+			key: string;
+			compound: TokenCompound | null;
+			groups: typeof groups;
+		}> = [];
+		for (const group of groups) {
+			const compound = group.tokens[0]?.compound ?? null;
+			const previous = clusters[clusters.length - 1];
+			if (compound && previous?.compound?.id === compound.id) {
+				previous.groups.push(group);
+			} else {
+				clusters.push({
+					key: compound ? `compound:${compound.id}:${group.key}` : group.key,
+					compound,
+					groups: [group]
+				});
+			}
+		}
+		return clusters;
+	});
 	const activeToken = $derived(localTokens.find((token) => token.id === openTokenId) ?? null);
 	const activeGroup = $derived(groups.find((group) => group.tokens[0]?.id === openTokenId) ?? null);
 	const activeGroupIndex = $derived(
@@ -235,6 +278,31 @@
 	const isFirstSegmentActive = $derived(
 		Boolean(activeToken?.segments?.[0]?.id && activeToken.segments[0].id === activeSegment?.id)
 	);
+	const activeCompound = $derived(
+		localTokens.find((token) => token.compound?.id === openCompoundId)?.compound ?? null
+	);
+	const activeCompoundMembers = $derived(
+		localTokens.filter((token) => token.compound?.id === openCompoundId)
+	);
+	const activeCompoundSurface = $derived(
+		activeCompoundMembers.map((token) => token.surfaceForm).join(' ')
+	);
+
+	$effect(() => {
+		if (!openCompoundId) return;
+		function handleWindowKeydown(event: KeyboardEvent) {
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			closeCompoundEditor();
+		}
+		window.addEventListener('keydown', handleWindowKeydown);
+		return () => window.removeEventListener('keydown', handleWindowKeydown);
+	});
+
+	$effect(() => {
+		if (!openCompoundId || activeCompound?.word) return;
+		compoundSearchInput?.focus();
+	});
 
 	$effect(() => {
 		const incomingSignature = JSON.stringify(
@@ -243,6 +311,9 @@
 					surfaceForm: token.surfaceForm,
 					wordId: token.wordId,
 				inContextTranslation: token.inContextTranslation ?? null,
+				compoundId: token.compoundId ?? token.compound?.id ?? null,
+				compoundWordId: token.compound?.wordId ?? null,
+				compoundTranslation: token.compound?.inContextTranslation ?? null,
 				wordKalenjin: token.word?.kalenjin ?? null,
 				wordTranslations: token.word?.translations ? stripWordLinks(token.word.translations) : null,
 				wordNotes: token.word?.notes ?? null,
@@ -269,6 +340,9 @@
 		}
 
 		for (const token of localTokens) {
+			if (token.compound) {
+				compoundDrafts[token.compound.id] = token.compound.inContextTranslation ?? '';
+			}
 			const tokenPluralForms = splitPluralFormVariants(token.word?.pluralForm);
 			drafts[token.id] = {
 				inContextTranslation: token.inContextTranslation ?? '',
@@ -335,18 +409,13 @@
 	});
 
 	$effect(() => {
-		if (!openTokenId && !pendingMerge) {
+		if (!openTokenId) {
 			return;
 		}
 
 		function handleWindowKeydown(event: KeyboardEvent) {
 			if (event.key === 'Escape') {
 				event.preventDefault();
-				if (pendingMerge) {
-					pendingMerge = null;
-					return;
-				}
-
 				closePicker();
 			}
 		}
@@ -512,7 +581,10 @@
 		);
 	}
 
-	async function requestGroupAction(payload: Record<string, unknown>) {
+	async function requestGroupAction(
+		payload: Record<string, unknown>,
+		options: { skipReplace?: boolean } = {}
+	) {
 		const response = await fetch(tokenGroupEndpoint, {
 			method: 'POST',
 			headers: {
@@ -534,7 +606,9 @@
 			throw new Error(result.message ?? 'Could not update sentence words.');
 		}
 
-		replaceTokens(result.tokens);
+		if (!options.skipReplace) {
+			replaceTokens(result.tokens);
+		}
 		groupActionError = null;
 		return result.tokens;
 	}
@@ -555,51 +629,173 @@
 		event.preventDefault();
 	}
 
-	function handleDrop(event: DragEvent, targetTokenId: string, targetSurface: string) {
+	// Plain drop groups the words as a compound (both keep their own entries);
+	// holding Shift while dropping merges them into a single word instead.
+	function handleDrop(event: DragEvent, targetTokenId: string) {
 		event.preventDefault();
-		if (!draggedTokenId || draggedTokenId === targetTokenId) {
-			draggedTokenId = null;
-			return;
-		}
-
-		const sourceGroup = groups.find((group) => group.tokens[0]?.id === draggedTokenId);
-		if (!sourceGroup) {
-			draggedTokenId = null;
-			return;
-		}
-
-		pendingMerge = {
-			sourceTokenId: draggedTokenId,
-			targetTokenId,
-			sourceSurface: sourceGroup.fullSurface,
-			targetSurface
-		};
+		const sourceTokenId = draggedTokenId;
 		draggedTokenId = null;
+		if (!sourceTokenId || sourceTokenId === targetTokenId) {
+			return;
+		}
+
+		if (event.shiftKey) {
+			void mergeTokens(sourceTokenId, targetTokenId);
+		} else {
+			void groupTokens(sourceTokenId, targetTokenId);
+		}
 	}
 
-	async function confirmMerge() {
-		if (!pendingMerge) {
-			return;
-		}
-
-		const mergePrompt = pendingMerge;
-
+	async function mergeTokens(sourceTokenId: string, targetTokenId: string) {
 		try {
 			const updatedTokens = await requestGroupAction({
 				action: 'merge',
-				sourceTokenId: mergePrompt.sourceTokenId,
-				targetTokenId: mergePrompt.targetTokenId
+				sourceTokenId,
+				targetTokenId
 			});
-			const nextTokenId = updatedTokens.find((token) => token.id === mergePrompt.sourceTokenId)?.id
-				?? updatedTokens.find((token) => token.id === mergePrompt.targetTokenId)?.id
-				?? null;
-			pendingMerge = null;
+			const nextTokenId =
+				updatedTokens.find((token) => token.id === sourceTokenId)?.id ??
+				updatedTokens.find((token) => token.id === targetTokenId)?.id ??
+				null;
 			if (openTokenId && nextTokenId) {
 				openTokenId = nextTokenId;
 			}
 		} catch (mergeError) {
 			groupActionError =
 				mergeError instanceof Error ? mergeError.message : 'Could not combine those words.';
+		}
+	}
+
+	async function groupTokens(sourceTokenId: string, targetTokenId: string) {
+		try {
+			const updatedTokens = await requestGroupAction({
+				action: 'compound',
+				sourceTokenId,
+				targetTokenId
+			});
+			const compoundId =
+				updatedTokens.find((token) => token.id === sourceTokenId)?.compound?.id ??
+				updatedTokens.find((token) => token.id === targetTokenId)?.compound?.id ??
+				null;
+			if (compoundId) {
+				openCompoundEditor(compoundId);
+			}
+		} catch (groupError) {
+			groupActionError =
+				groupError instanceof Error ? groupError.message : 'Could not group those words.';
+		}
+	}
+
+	function openCompoundEditor(compoundId: string) {
+		openCompoundId = compoundId;
+		compoundQuery = '';
+		compoundResults = null;
+		compoundSearchLoading = false;
+	}
+
+	function closeCompoundEditor() {
+		openCompoundId = null;
+	}
+
+	function handleCompoundSearchInput(value: string) {
+		compoundQuery = value;
+		if (compoundSearchTimer) clearTimeout(compoundSearchTimer);
+		compoundSearchTimer = setTimeout(() => void runCompoundSearch(value), 180);
+	}
+
+	async function runCompoundSearch(query: string) {
+		const seq = ++compoundSearchSeq;
+		const trimmed = query.trim();
+		if (!trimmed) {
+			compoundResults = null;
+			compoundSearchLoading = false;
+			return;
+		}
+
+		compoundSearchLoading = true;
+		try {
+			const response = await fetch(`${searchEndpoint}?q=${encodeURIComponent(trimmed)}`);
+			if (!response.ok) throw new Error(`Search failed: ${response.status}`);
+			const data = (await response.json()) as {
+				results: Array<{ id: string; kalenjin: string; translations: string }>;
+			};
+			if (seq !== compoundSearchSeq) return;
+			compoundResults = data.results;
+		} catch {
+			if (seq !== compoundSearchSeq) return;
+			compoundResults = [];
+		} finally {
+			if (seq === compoundSearchSeq) compoundSearchLoading = false;
+		}
+	}
+
+	async function linkCompoundWord(wordId: string | null) {
+		if (!openCompoundId) return;
+		try {
+			await requestGroupAction({
+				action: 'compound-link',
+				compoundId: openCompoundId,
+				wordId
+			});
+			compoundQuery = '';
+			compoundResults = null;
+		} catch (linkError) {
+			groupActionError =
+				linkError instanceof Error ? linkError.message : 'Could not update the compound.';
+		}
+	}
+
+	function queueCompoundMeaningSave(compoundId: string, value: string) {
+		compoundDrafts[compoundId] = value;
+		// Optimistically patch local state so slow saves never clobber newer
+		// keystrokes (mirrors the per-word meaning autosave).
+		localTokens = localTokens.map((token) =>
+			token.compound?.id === compoundId
+				? { ...token, compound: { ...token.compound, inContextTranslation: value } }
+				: token
+		);
+		onTokensChange?.(localTokens);
+
+		const existingTimeout = compoundSaveTimers.get(compoundId);
+		if (existingTimeout) {
+			window.clearTimeout(existingTimeout);
+		}
+		compoundSaveTimers.set(
+			compoundId,
+			window.setTimeout(() => {
+				compoundSaveTimers.delete(compoundId);
+				void saveCompoundMeaning(compoundId, value);
+			}, 500)
+		);
+	}
+
+	async function saveCompoundMeaning(compoundId: string, value: string) {
+		try {
+			await requestGroupAction(
+				{
+					action: 'compound-translate',
+					compoundId,
+					inContextTranslation: value
+				},
+				{ skipReplace: true }
+			);
+		} catch (saveError) {
+			groupActionError =
+				saveError instanceof Error ? saveError.message : 'Could not save the phrase meaning.';
+		}
+	}
+
+	async function ungroupCompound() {
+		if (!openCompoundId) return;
+		try {
+			await requestGroupAction({
+				action: 'uncompound',
+				compoundId: openCompoundId
+			});
+			openCompoundId = null;
+		} catch (ungroupError) {
+			groupActionError =
+				ungroupError instanceof Error ? ungroupError.message : 'Could not ungroup the compound.';
 		}
 	}
 
@@ -976,23 +1172,18 @@
 	}
 </script>
 
-<div class="annotations">
-	{#if groups.length === 0}
-		<p class="empty-text"><SentenceTimeText text={sentenceText} /></p>
-	{:else}
-		{#each groups as group (group.key)}
-			{@const primaryToken = group.tokens[0]}
-			{@const sharedWord = primaryToken.word}
-			{@const lexicalSegments = primaryToken.segments ?? []}
-			{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
-			{@const timeAnnotation = getSentenceTimeAnnotation(group.fullSurface)}
-			{@const tokenIsIgnored =
-				!sharedWord &&
-				lexicalSegments.length === 0 &&
-				ignoredFormsSet.has(primaryToken.normalizedForm)}
-			{@const tokenIsUnlinked =
-				!sharedWord && lexicalSegments.length === 0 && !tokenIsIgnored}
-			<div class="token-group">
+{#snippet tokenCard(group: (typeof groups)[number])}
+	{@const primaryToken = group.tokens[0]}
+	{@const sharedWord = primaryToken.word}
+	{@const lexicalSegments = primaryToken.segments ?? []}
+	{@const meaningValue = drafts[primaryToken.id]?.inContextTranslation ?? ''}
+	{@const timeAnnotation = getSentenceTimeAnnotation(group.fullSurface)}
+	{@const tokenIsIgnored =
+		!sharedWord &&
+		lexicalSegments.length === 0 &&
+		ignoredFormsSet.has(primaryToken.normalizedForm)}
+	{@const tokenIsUnlinked = !sharedWord && lexicalSegments.length === 0 && !tokenIsIgnored}
+	<div class="token-group">
 				<div class="token-card">
 					<div
 						class:unlinked-lemma={tokenIsUnlinked}
@@ -1046,7 +1237,7 @@
 							ondragstart={() => handleDragStart(primaryToken.id)}
 							ondragend={handleDragEnd}
 							ondragover={(event) => handleDragOver(event, primaryToken.id)}
-							ondrop={(event) => handleDrop(event, primaryToken.id, group.fullSurface)}
+							ondrop={(event) => handleDrop(event, primaryToken.id)}
 						>
 							{group.fullSurface}
 							{#if timeAnnotation}
@@ -1090,6 +1281,49 @@
 					</form>
 				</div>
 			</div>
+{/snippet}
+
+<div class="annotations">
+	{#if groups.length === 0}
+		<p class="empty-text"><SentenceTimeText text={sentenceText} /></p>
+	{:else}
+		{#each renderClusters as cluster (cluster.key)}
+			{#if cluster.compound}
+				{@const clusterCompound = cluster.compound}
+				{@const clusterMeaning = compoundDrafts[clusterCompound.id] ?? ''}
+				<div class="compound-cluster">
+					<div class="compound-cluster-cards">
+						{#each cluster.groups as group (group.key)}
+							{@render tokenCard(group)}
+						{/each}
+					</div>
+					<div class="compound-row">
+						<button
+							type="button"
+							class="compound-strip"
+							class:compound-strip--unlinked={!clusterCompound.word}
+							onclick={() => openCompoundEditor(clusterCompound.id)}
+							aria-label="Edit compound group"
+						>
+							{clusterCompound.word?.kalenjin ?? 'Link phrase…'}
+						</button>
+						<input
+							class="meaning-input compound-meaning-input"
+							class:meaning-input--empty={!clusterMeaning.trim()}
+							value={clusterMeaning}
+							placeholder="Phrase meaning"
+							aria-label="Phrase meaning"
+							oninput={(event) =>
+								queueCompoundMeaningSave(
+									clusterCompound.id,
+									(event.currentTarget as HTMLInputElement).value
+								)}
+						/>
+					</div>
+				</div>
+			{:else}
+				{@render tokenCard(cluster.groups[0])}
+			{/if}
 		{/each}
 	{/if}
 
@@ -1271,17 +1505,104 @@
 		</div>
 	{/if}
 
-	<ConfirmDialog
-		open={pendingMerge !== null}
-		title="Combine words?"
-		message={pendingMerge
-			? `Combine "${pendingMerge.sourceSurface}" and "${pendingMerge.targetSurface}" into one word group?`
-			: ''}
-		confirmLabel="Combine words"
-		cancelLabel="Cancel"
-		onconfirm={() => void confirmMerge()}
-		oncancel={() => (pendingMerge = null)}
-	/>
+	{#if activeCompound}
+		<div
+			class="modal-backdrop"
+			role="button"
+			tabindex="0"
+			aria-label="Close compound editor"
+			onclick={() => closeCompoundEditor()}
+			onkeydown={(event) => {
+				if (event.key === 'Escape') {
+					event.preventDefault();
+					closeCompoundEditor();
+				}
+			}}
+		>
+			<div
+				class="compound-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="compound-modal-title"
+				tabindex="-1"
+				onclick={(event) => event.stopPropagation()}
+				onkeydown={(event) => {
+					if (event.key === 'Escape') {
+						event.preventDefault();
+						closeCompoundEditor();
+						return;
+					}
+					event.stopPropagation();
+				}}
+			>
+				<div class="compound-modal-head">
+					<h2 id="compound-modal-title" class="compound-modal-title">Compound group</h2>
+					<button
+						type="button"
+						class="btn-sm ghost"
+						onclick={() => closeCompoundEditor()}
+					>
+						Close
+					</button>
+				</div>
+				<p class="compound-modal-surface">{activeCompoundSurface}</p>
+
+				<div class="compound-field">
+					<span class="compound-field-label">Compound entry</span>
+					{#if activeCompound.word}
+						<div class="compound-linked-word">
+							<span>
+								<strong>{activeCompound.word.kalenjin}</strong>
+								<small>{stripWordLinks(activeCompound.word.translations ?? '')}</small>
+							</span>
+							<button type="button" class="btn-sm ghost" onclick={() => void linkCompoundWord(null)}>
+								Unlink
+							</button>
+						</div>
+					{:else}
+						<input
+							bind:this={compoundSearchInput}
+							type="search"
+							class="compound-search-input"
+							placeholder="Search for the compound entry"
+							autocomplete="off"
+							value={compoundQuery}
+							oninput={(event) =>
+								handleCompoundSearchInput((event.currentTarget as HTMLInputElement).value)}
+						/>
+						{#if compoundSearchLoading}
+							<p class="compound-empty">Searching...</p>
+						{:else if compoundResults !== null}
+							{#if compoundResults.length === 0}
+								<p class="compound-empty">No matches.</p>
+							{:else}
+								<ul class="compound-search-results">
+									{#each compoundResults as result (result.id)}
+										<li>
+											<button
+												type="button"
+												class="compound-search-hit"
+												onclick={() => void linkCompoundWord(result.id)}
+											>
+												<strong>{result.kalenjin}</strong>
+												<small>{stripWordLinks(result.translations)}</small>
+											</button>
+										</li>
+									{/each}
+								</ul>
+							{/if}
+						{/if}
+					{/if}
+				</div>
+
+				<div class="compound-modal-actions">
+					<button type="button" class="btn-sm ghost danger" onclick={() => void ungroupCompound()}>
+						Ungroup words
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -1448,6 +1769,170 @@
 		padding: 48px 24px 24px;
 		position: fixed;
 		z-index: 40;
+	}
+
+	/* ---------- Compound span cluster ---------- */
+	.compound-cluster {
+		display: grid;
+		gap: 0.15rem;
+		width: max-content;
+	}
+	.compound-cluster-cards {
+		align-items: flex-start;
+		display: flex;
+		flex-wrap: nowrap;
+		gap: 0.35rem 0.5rem;
+	}
+	.compound-row {
+		align-items: stretch;
+		background: color-mix(in oklab, var(--accent) 10%, transparent);
+		border-radius: 4px;
+		display: flex;
+		flex-direction: column;
+		gap: 0.35rem;
+		min-width: 100%;
+		padding: 0.25rem;
+		width: 0;
+	}
+	.compound-strip {
+		align-self: center;
+		background: color-mix(in oklab, var(--accent) 22%, transparent);
+		border: 0;
+		border-radius: 3px;
+		color: var(--ink-soft);
+		cursor: pointer;
+		flex: none;
+		font: inherit;
+		font-size: 0.72rem;
+		line-height: 1.2;
+		margin: 0;
+		max-width: 12rem;
+		overflow: hidden;
+		padding: 0.12rem 0.35rem;
+		text-align: center;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.compound-strip:hover {
+		background: color-mix(in oklab, var(--accent) 34%, transparent);
+		color: var(--ink);
+	}
+	.compound-strip--unlinked {
+		background: var(--danger-soft);
+	}
+	.compound-meaning-input {
+		box-sizing: border-box;
+		flex: none;
+		max-width: none;
+		min-width: 0;
+		width: 100%;
+		text-align: center;
+	}
+
+	/* ---------- Compound editor modal ---------- */
+	.compound-modal {
+		background: var(--bg-raised);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-lg);
+		box-shadow: 0 30px 60px -20px oklch(0.2 0.02 80 / 0.4);
+		display: grid;
+		gap: 14px;
+		max-width: 460px;
+		padding: 22px 24px 20px;
+		width: 100%;
+	}
+	.compound-modal-head {
+		align-items: center;
+		display: flex;
+		gap: 12px;
+		justify-content: space-between;
+	}
+	.compound-modal-title {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.16em;
+		margin: 0;
+		text-transform: uppercase;
+	}
+	.compound-modal-surface {
+		font-family: var(--font-display);
+		font-size: 26px;
+		line-height: 1.15;
+		margin: 0;
+	}
+	.compound-field {
+		display: grid;
+		gap: 6px;
+	}
+	.compound-field-label {
+		color: var(--ink-mute);
+		font-size: 11px;
+		font-weight: 600;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+	.compound-search-input {
+		background: var(--bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font: inherit;
+		font-size: 14px;
+		outline: none;
+		padding: 8px 10px;
+		width: 100%;
+	}
+	.compound-search-input:focus {
+		border-color: var(--brand);
+		box-shadow: 0 0 0 3px color-mix(in oklch, var(--brand) 18%, transparent);
+	}
+	.compound-empty {
+		color: var(--ink-mute);
+		font-size: 13px;
+		margin: 0;
+	}
+	.compound-search-results {
+		display: grid;
+		gap: 2px;
+		list-style: none;
+		margin: 0;
+		max-height: 220px;
+		overflow-y: auto;
+		padding: 0;
+	}
+	.compound-search-hit {
+		align-items: baseline;
+		background: transparent;
+		border: 0;
+		border-radius: var(--radius);
+		color: var(--ink);
+		cursor: pointer;
+		display: flex;
+		font: inherit;
+		gap: 8px;
+		padding: 6px 8px;
+		text-align: left;
+		width: 100%;
+	}
+	.compound-search-hit:hover {
+		background: var(--surface);
+	}
+	.compound-search-hit small,
+	.compound-linked-word small {
+		color: var(--ink-soft);
+	}
+	.compound-linked-word {
+		align-items: center;
+		display: flex;
+		gap: 10px;
+		justify-content: space-between;
+	}
+	.compound-modal-actions {
+		border-top: 1px solid var(--line-soft);
+		display: flex;
+		justify-content: flex-end;
+		padding-top: 12px;
 	}
 
 	/* ---------- Redesigned "Link root lemma" popup ---------- */

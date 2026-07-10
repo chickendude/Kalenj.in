@@ -12,6 +12,11 @@ const recentSentenceInclude = {
 		orderBy: { tokenOrder: 'asc' },
 		include: {
 			word: { select: { id: true, kalenjin: true, slug: true, translations: true, audioUrl: true } },
+			compound: {
+				include: {
+					word: { select: { id: true, kalenjin: true, slug: true, translations: true, audioUrl: true } }
+				}
+			},
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
 				include: {

@@ -68,6 +68,11 @@ const sentenceIncludeBase = {
 			word: {
 				select: buildWordSelect()
 			},
+			compound: {
+				include: {
+					word: { select: buildWordSelect() }
+				}
+			},
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
 				include: {

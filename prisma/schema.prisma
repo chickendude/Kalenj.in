@@ -758,3 +758,16 @@ model LearnActivityDay {
 
   @@id([userId, date])
 }
+
+// Editable UI translation overrides, managed at /admin/translations. The
+// English catalog in src/lib/i18n/messages/en.ts is the source of truth for
+// keys; a row here overrides the static catalog for the given locale.
+model UiTranslation {
+  locale    String
+  key       String
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([locale, key])
+}

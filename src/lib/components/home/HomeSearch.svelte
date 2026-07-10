@@ -2,7 +2,10 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
+	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
+
+	const { t } = getI18n();
 
 	type SearchResult = {
 		id: string;
@@ -96,19 +99,20 @@
 			class="home-search-input"
 			type="text"
 			role="combobox"
-			placeholder="Search the dictionary — Kalenjin or English"
+			placeholder={t('home.search.placeholder')}
 			bind:value={query}
 			onfocus={() => (focused = true)}
 			onblur={onBlur}
 			onkeydown={onKeyDown}
-			aria-label="Search the dictionary"
+			aria-label={t('search.ariaLabel')}
 			aria-autocomplete="list"
 			aria-controls="home-search-menu"
 			aria-expanded={showMenu}
 		/>
 		{#if query.trim()}
 			<span class="home-search-hint mono">
-				{results.length} match{results.length === 1 ? '' : 'es'}
+				{results.length}
+				{results.length === 1 ? t('home.search.match.one') : t('home.search.match.other')}
 			</span>
 		{/if}
 	</div>
@@ -116,9 +120,9 @@
 		<div id="home-search-menu" class="home-search-menu" role="listbox">
 			{#if results.length === 0}
 				<div class="home-search-empty">
-					No entries match &ldquo;{query.trim()}&rdquo;.
+					{t('search.noMatches', { query: query.trim() })}
 					<a href="/dictionary?q={encodeURIComponent(query.trim())}" style="margin-left: 8px"
-						>Browse all →</a
+						>{t('home.search.browseAll')}</a
 					>
 				</div>
 			{:else}
@@ -140,7 +144,7 @@
 					</a>
 				{/each}
 				<a href="/dictionary" class="home-search-all">
-					<span>Browse all {totalCount.toLocaleString()} entries</span>
+					<span>{t('home.search.browseAllEntries', { count: totalCount.toLocaleString() })}</span>
 					<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
 						<path
 							d="M2 6h8M7 3l3 3-3 3"

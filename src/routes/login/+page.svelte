@@ -1,22 +1,25 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
+	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	const { t } = getI18n();
 
 	let showPassword = $state(false);
 </script>
 
 <svelte:head>
-	<title>Sign in · Kalenjin</title>
+	<title>{t('auth.signInPageTitle')}</title>
 </svelte:head>
 
 <div class="auth-shell">
 	<div class="auth-card">
-		<h1>Sign in</h1>
+		<h1>{t('auth.signIn')}</h1>
 		<p class="auth-sub">
-			New here? <a href="/signup">Create an account</a>.
+			{t('auth.newHere')} <a href="/signup">{t('auth.createAccount')}</a>.
 		</p>
 
 		<FormErrorFeedback error={form?.error} />
@@ -24,7 +27,7 @@
 		{#if form?.needsVerification && form?.email}
 			<p class="auth-sub">
 				<a href="/verify-email/sent?email={encodeURIComponent(form.email)}">
-					Resend verification email
+					{t('auth.resendVerification')}
 				</a>
 			</p>
 		{/if}
@@ -33,7 +36,7 @@
 			<input type="hidden" name="redirectTo" value={data.redirectTo} />
 
 			<div class="field">
-				<label for="username">Username</label>
+				<label for="username">{t('auth.username')}</label>
 				<input
 					id="username"
 					name="username"
@@ -45,7 +48,7 @@
 			</div>
 
 			<div class="field">
-				<label for="password">Password</label>
+				<label for="password">{t('auth.password')}</label>
 				<div class="password-wrap">
 					<input
 						id="password"
@@ -58,7 +61,7 @@
 					<button
 						type="button"
 						class="password-toggle"
-						aria-label={showPassword ? 'Hide password' : 'Show password'}
+						aria-label={showPassword ? t('auth.hidePassword') : t('auth.showPassword')}
 						aria-pressed={showPassword}
 						onclick={() => (showPassword = !showPassword)}
 					>
@@ -99,7 +102,7 @@
 			</div>
 
 			<div class="actions">
-				<button type="submit" class="btn">Sign in</button>
+				<button type="submit" class="btn">{t('auth.signIn')}</button>
 			</div>
 		</form>
 	</div>

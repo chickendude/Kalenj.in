@@ -16,6 +16,8 @@
 		normalizeAdminTabHref,
 		rememberAdminTabPath
 	} from '$lib/admin-tabs';
+	import { createI18n } from '$lib/i18n/index.svelte';
+	import { LOCALES, LOCALE_LABELS } from '$lib/i18n/locale';
 	import '../app.css';
 	import type { Snippet } from 'svelte';
 	import type { LayoutData } from './$types';
@@ -30,6 +32,20 @@
 	// context's setter (which also writes the cookie).
 	createEditMode(untrack(() => data.editMode));
 
+	// Same per-request pattern for the UI locale: the cookie value rendered on
+	// the server seeds the context so the first paint matches the preference.
+	const i18n = createI18n(
+		untrack(() => data.locale),
+		untrack(() => data.i18nOverrides)
+	);
+	const t = i18n.t;
+
+	// Keep database-edited messages current after saves at /admin/translations
+	// (form actions invalidate the layout load, which refetches them).
+	$effect(() => {
+		i18n.setOverrides(data.i18nOverrides);
+	});
+
 	onMount(() => {
 		initTheme();
 		setAdminHref(getRememberedAdminTabPath());
@@ -37,17 +53,17 @@
 
 	const navItems = $derived.by(() => {
 		const items = [
-			{ href: '/dictionary', label: 'Dictionary' },
-			{ href: '/corpus', label: 'Corpus' },
+			{ href: '/dictionary', label: t('nav.dictionary') },
+			{ href: '/corpus', label: t('nav.corpus') },
 			// Learn works signed out too — progress is stored on the device.
-			{ href: '/learn', label: 'Learn' }
+			{ href: '/learn', label: t('nav.learn') }
 		];
 		if (data.user) {
 			if (data.user.role === 'ADMIN' || data.user.role === 'MANAGER') {
-				items.push({ href: '/lessons', label: 'Lessons' });
+				items.push({ href: '/lessons', label: t('nav.lessons') });
 			}
 			if (data.user.role === 'USER') {
-				items.push({ href: '/suggest', label: 'Contribute' });
+				items.push({ href: '/suggest', label: t('nav.contribute') });
 			}
 		}
 		return items;
@@ -163,7 +179,7 @@
 			class:active={isActive('/settings')}
 			onclick={onSelect}
 		>
-			Settings
+			{t('menu.settings')}
 		</a>
 		{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
 			<a
@@ -172,15 +188,15 @@
 				class:active={isAdminActive()}
 				onclick={onSelect}
 			>
-				Admin
+				{t('menu.admin')}
 			</a>
 		{/if}
 		<form method="POST" action="/logout">
-			<button type="submit" role="menuitem" class="user-menu-item">Sign out</button>
+			<button type="submit" role="menuitem" class="user-menu-item">{t('menu.signOut')}</button>
 		</form>
 	{:else if page.url.pathname !== '/login' && !page.url.pathname.startsWith('/signup') && !page.url.pathname.startsWith('/verify-email')}
-		<a href="/login" role="menuitem" onclick={onSelect}>Sign in</a>
-		<a href="/signup" role="menuitem" onclick={onSelect}>Sign up</a>
+		<a href="/login" role="menuitem" onclick={onSelect}>{t('menu.signIn')}</a>
+		<a href="/signup" role="menuitem" onclick={onSelect}>{t('menu.signUp')}</a>
 	{/if}
 {/snippet}
 
@@ -237,11 +253,11 @@
 			</svg>
 			<span class="brand-text">
 				<span class="brand-name">alenj<span style="color: var(--accent)">.</span>in</span>
-				<span class="brand-sub">Dictionary &amp; Corpus</span>
+				<span class="brand-sub">{t('brand.tagline')}</span>
 			</span>
 		</a>
 		<NavSearch {canAddWord} />
-		<nav id="primary-nav" class="topbar-nav" aria-label="Primary navigation">
+		<nav id="primary-nav" class="topbar-nav" aria-label={t('nav.primaryLabel')}>
 			{#each navItems as item}
 				<a
 					href={item.href}
@@ -257,9 +273,9 @@
 				type="button"
 				class="theme-toggle desktop-only"
 				onclick={toggleTheme}
-				aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+				aria-label={$theme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
 				aria-pressed={$theme === 'dark'}
-				title={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+				title={$theme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
 			>
 				{#if $theme === 'dark'}
 				<svg
@@ -320,15 +336,15 @@
 					{/if}
 				</div>
 			{:else if page.url.pathname !== '/login' && !page.url.pathname.startsWith('/signup') && !page.url.pathname.startsWith('/verify-email')}
-				<a href="/login">Sign in</a>
-				<a href="/signup">Sign up</a>
+				<a href="/login">{t('menu.signIn')}</a>
+				<a href="/signup">{t('menu.signUp')}</a>
 			{/if}
 		</div>
 		<div class="side-menu mobile-only" bind:this={sideMenuRoot}>
 			<button
 				type="button"
 				class="side-menu-toggle"
-				aria-label={sideMenuOpen ? 'Close menu' : 'Open menu'}
+				aria-label={sideMenuOpen ? t('menu.close') : t('menu.open')}
 				aria-expanded={sideMenuOpen}
 				aria-controls="side-menu-panel"
 				onclick={toggleSideMenu}
@@ -377,7 +393,7 @@
 							class="user-menu-item"
 							onclick={handleSideMenuTheme}
 						>
-							{$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+							{$theme === 'dark' ? t('theme.switchToLight') : t('theme.switchToDark')}
 						</button>
 					{/if}
 					{@render userMenuLinks(closeSideMenu)}
@@ -395,9 +411,8 @@
 	<footer class="site-foot mono">
 		<div class="site-foot-inner">
 			<p class="site-foot-lede">
-				Kalenj.in is a project to document and record the <em>kutitab myot</em> — the language
-				of sweetness — and provide resources for natives, heritage speakers, and learners of the
-				Kalenjin language.
+				{t('footer.ledeBefore')} <em>kutitab myot</em>
+				{t('footer.ledeAfter')}
 			</p>
 
 			<p class="site-foot-meta">
@@ -407,9 +422,24 @@
 				<span aria-hidden="true"> · </span>
 				<span>&copy; {year}</span>
 				<span aria-hidden="true"> · </span>
-				<a href="/privacy">Privacy</a>
+				<a href="/privacy">{t('footer.privacy')}</a>
 				<span aria-hidden="true"> · </span>
-				<a href="/terms">Terms</a>
+				<a href="/terms">{t('footer.terms')}</a>
+				<span aria-hidden="true"> · </span>
+				<span class="site-foot-lang" role="group" aria-label={t('language.label')}>
+					{#each LOCALES as loc, i}
+						{#if i > 0}<span aria-hidden="true"> / </span>{/if}
+						<button
+							type="button"
+							class="lang-option"
+							class:active={i18n.locale === loc}
+							aria-pressed={i18n.locale === loc}
+							onclick={() => i18n.set(loc)}
+						>
+							{LOCALE_LABELS[loc]}
+						</button>
+					{/each}
+				</span>
 			</p>
 		</div>
 	</footer>
@@ -454,5 +484,26 @@
 			width: 100%;
 			opacity: 0.6;
 		}
+	}
+	.site-foot-lang {
+		white-space: nowrap;
+	}
+	.lang-option {
+		appearance: none;
+		background: transparent;
+		border: 0;
+		padding: 0;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+	.lang-option:hover {
+		text-decoration: underline;
+	}
+	.lang-option.active {
+		font-weight: 600;
+		color: var(--ink);
+		cursor: default;
+		text-decoration: none;
 	}
 </style>

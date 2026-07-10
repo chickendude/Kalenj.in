@@ -10,11 +10,13 @@ import {
 	clearThemePreferenceCookie,
 	setThemePreferenceCookie
 } from '$lib/server/themeCookie';
+import { DEFAULT_LOCALE, LOCALE_COOKIE, parseLocale } from '$lib/i18n/locale';
 
 export const handle: Handle = async ({ event, resolve }) => {
 	const token = event.cookies.get(SESSION_COOKIE) ?? null;
 	event.locals.user = null;
 	event.locals.sessionToken = null;
+	event.locals.locale = parseLocale(event.cookies.get(LOCALE_COOKIE)) ?? DEFAULT_LOCALE;
 
 	if (token) {
 		const validated = await validateSession(token);
@@ -34,5 +36,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	return resolve(event);
+	return resolve(event, {
+		transformPageChunk: ({ html }) => html.replace('%lang%', event.locals.locale)
+	});
 };

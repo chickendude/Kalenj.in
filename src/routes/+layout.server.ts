@@ -4,6 +4,7 @@ import type { LayoutServerLoad } from './$types';
 export const load: LayoutServerLoad = ({ locals, cookies }) => {
 	return {
 		user: locals.user,
-		editMode: parseEditModeCookie(cookies.get('editMode'))
+		editMode: parseEditModeCookie(cookies.get('editMode')),
+		locale: locals.locale
 	};
 };

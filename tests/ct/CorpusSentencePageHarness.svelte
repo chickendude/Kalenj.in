@@ -6,6 +6,7 @@
 
 	const data = {
 		editMode: true,
+		locale: 'en' as const,
 		user: {
 			id: 'user-1',
 			username: 'editor',

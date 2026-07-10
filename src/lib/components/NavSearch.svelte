@@ -3,7 +3,10 @@
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { stripWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
+	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
+
+	const { t } = getI18n();
 
 	type SearchResult = {
 		id: string;
@@ -121,12 +124,12 @@
 			class="nav-search-input"
 			type="text"
 			role="combobox"
-			placeholder="Search the dictionary…"
+			placeholder={t('search.placeholder')}
 			bind:value={query}
 			onfocus={() => (focused = true)}
 			onblur={onBlur}
 			onkeydown={onKeyDown}
-			aria-label="Search the dictionary"
+			aria-label={t('search.ariaLabel')}
 			aria-autocomplete="list"
 			aria-controls="nav-search-menu"
 			aria-expanded={showMenu}
@@ -135,7 +138,7 @@
 	{#if showMenu}
 		<div id="nav-search-menu" class="nav-search-menu" role="listbox">
 			{#if results.length === 0}
-				<div class="nav-search-empty">No entries match &ldquo;{query.trim()}&rdquo;.</div>
+				<div class="nav-search-empty">{t('search.noMatches', { query: query.trim() })}</div>
 			{:else}
 				{#each results as word, i (word.id)}
 					<a
@@ -165,7 +168,7 @@
 					onmousedown={(event) => event.preventDefault()}
 					onclick={browseAll}
 				>
-					Browse all matches →
+					{t('search.browseAllMatches')}
 				</button>
 			{/if}
 			{#if canAddWord}
@@ -175,7 +178,7 @@
 					onmousedown={(event) => event.preventDefault()}
 					onclick={addWord}
 				>
-					+ Add &ldquo;{query.trim()}&rdquo; as a new word
+					{t('search.addAsNewWord', { query: query.trim() })}
 				</button>
 			{/if}
 		</div>

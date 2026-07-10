@@ -7,7 +7,10 @@
 	import { renderWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
 	import { WORD_OF_THE_DAY_TIME_ZONE } from '$lib/word-of-the-day';
+	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
+
+	const { t, tSplit } = getI18n();
 
 	type ExampleToken = {
 		id: string;
@@ -61,9 +64,9 @@
 
 <section class="home-section wod">
 	<div class="home-section-head">
-		<div class="home-kicker">Word of the day</div>
+		<div class="home-kicker">{t('home.wordOfDay')}</div>
 		<a class="home-section-sub mono wod-archive-link" href="/word-of-the-day">
-			{todayLabel} · archive
+			{todayLabel} · {t('home.archive')}
 		</a>
 	</div>
 
@@ -71,17 +74,17 @@
 		<div class="wod-main">
 			<div class="wod-headword">
 				<a href={dictionaryEntryHref(word)} class="wod-word">{word.kalenjin}</a>
-				<AudioPlayButton audioUrl={word.audioUrl} label={`Play pronunciation of ${word.kalenjin}`} />
+				<AudioPlayButton audioUrl={word.audioUrl} label={t('home.playPronunciation', { word: word.kalenjin })} />
 			</div>
 			<div class="wod-meta">
 				{#if word.partOfSpeech}
 					<span class="pos-chip">{PART_OF_SPEECH_LABELS[word.partOfSpeech]}</span>
 				{/if}
 				{#if word.pluralForm && word.pluralForm !== word.kalenjin}
-					<span>pl. <em class="wod-alt">{word.pluralForm}</em></span>
+					<span>{t('home.pluralAbbr')} <em class="wod-alt">{word.pluralForm}</em></span>
 				{/if}
 				{#if altSpellings.length > 0}
-					<span>also <em class="wod-alt">{altSpellings.join(', ')}</em></span>
+					<span>{t('home.alsoSpelled')} <em class="wod-alt">{altSpellings.join(', ')}</em></span>
 				{/if}
 			</div>
 			{#if translationList.length > 0}
@@ -98,7 +101,7 @@
 
 		<aside class="wod-aside">
 			{#if example}
-				<div class="home-kicker small">In a sentence</div>
+				<div class="home-kicker small">{t('home.inASentence')}</div>
 				<div class="wod-example sentence-card">
 					<div class="wod-kal">
 						<TokenHoverPreview
@@ -106,7 +109,7 @@
 							sentenceText={example.kalenjin}
 							tokens={example.tokens}
 						/>
-						<AudioPlayButton audioUrl={example.audioUrl} size="sm" label="Play sentence" />
+						<AudioPlayButton audioUrl={example.audioUrl} size="sm" label={t('home.playSentence')} />
 					</div>
 					<a class="wod-en sentence-card-link" href={`/corpus/${example.id}`}>
 						<SentenceTimeText text={example.english} />
@@ -114,11 +117,11 @@
 				</div>
 			{:else}
 				<div class="home-kicker small">
-					No example yet — <a href="/corpus">add one</a>.
+					{#each tSplit('home.noExampleYet', 'link') as part, i}{#if i > 0}<a href="/corpus">{t('home.addOne')}</a>{/if}{part}{/each}
 				</div>
 			{/if}
 			<a href={dictionaryEntryHref(word)} class="wod-more">
-				<span>Full entry</span>
+				<span>{t('home.fullEntry')}</span>
 				<svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
 					<path
 						d="M2 6h8M7 3l3 3-3 3"

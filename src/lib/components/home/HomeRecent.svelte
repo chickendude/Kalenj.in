@@ -6,7 +6,10 @@
 	import { firstTranslation } from '$lib/translations';
 	import { stripWordLinks } from '$lib/word-links';
 	import { dictionaryEntryHref } from '$lib/word-url';
+	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
+
+	const { t } = getI18n();
 
 	type RecentWord = {
 		id: string;
@@ -44,14 +47,14 @@
 
 <section class="home-section recent">
 	<div class="home-section-head">
-		<div class="home-kicker">Recently added</div>
-		<a class="home-section-link" href="/stats">View activity →</a>
+		<div class="home-kicker">{t('home.recentlyAdded')}</div>
+		<a class="home-section-link" href="/stats">{t('home.viewActivity')}</a>
 	</div>
 	<div class="recent-grid">
 		<div>
-			<div class="recent-col-head">Entries</div>
+			<div class="recent-col-head">{t('home.entries')}</div>
 			{#if words.length === 0}
-				<p class="recent-empty">No entries yet.</p>
+				<p class="recent-empty">{t('home.noEntriesYet')}</p>
 			{:else}
 				<ul class="recent-list">
 					{#each words as word (word.id)}
@@ -59,7 +62,7 @@
 							<AudioPlayButton
 								audioUrl={word.audioUrl}
 								size="sm"
-								label={`Play pronunciation of ${word.kalenjin}`}
+								label={t('home.playPronunciation', { word: word.kalenjin })}
 							/>
 							<a href={dictionaryEntryHref(word)} class="recent-entry">
 								<span class="recent-word">{word.kalenjin}</span>
@@ -74,9 +77,9 @@
 			{/if}
 		</div>
 		<div>
-			<div class="recent-col-head">Sentences</div>
+			<div class="recent-col-head">{t('home.sentences')}</div>
 			{#if sentences.length === 0}
-				<p class="recent-empty">No sentences yet.</p>
+				<p class="recent-empty">{t('home.noSentencesYet')}</p>
 			{:else}
 				<ul class="recent-list">
 					{#each sentences as sentence (sentence.id)}
@@ -86,7 +89,7 @@
 									<AudioPlayButton
 										audioUrl={sentence.audioUrl}
 										size="sm"
-										label="Play sentence"
+										label={t('home.playSentence')}
 									/>
 									<TokenHoverPreview
 										sentenceId={sentence.id}

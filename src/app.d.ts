@@ -1,5 +1,7 @@
 // See https://svelte.dev/docs/kit/types#app.d.ts
 // for information about these interfaces
+import type { Locale } from '$lib/i18n/locale';
+
 declare global {
 	namespace App {
 		// interface Error {}
@@ -13,6 +15,7 @@ declare global {
 				statsFilterPreference: string | null;
 			} | null;
 			sessionToken: string | null;
+			locale: Locale;
 		}
 		// interface PageData {}
 		// interface PageState {}

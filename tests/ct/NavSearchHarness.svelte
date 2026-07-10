@@ -1,5 +1,8 @@
 <script lang="ts">
 	import NavSearch from '../../src/lib/components/NavSearch.svelte';
+	import { createI18n } from '../../src/lib/i18n/index.svelte';
+
+	createI18n('en');
 </script>
 
 <header class="topbar">

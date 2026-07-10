@@ -217,6 +217,15 @@
 		if (!done) inputEl?.focus();
 	}
 
+	/** Clicking a slot moves the caret there (clamped to the typed prefix). */
+	function placeCaret(index: number) {
+		if (done || !inputEl) return;
+		const clamped = Math.min(Math.max(0, index), typed.length);
+		inputEl.focus();
+		inputEl.setSelectionRange(clamped, clamped);
+		caretIndex = clamped;
+	}
+
 	$effect(() => {
 		inputEl?.focus();
 		// Focus events can be swallowed in background tabs; sync the flag.
@@ -282,6 +291,7 @@
 							active={focused && !done}
 							label={slotsLabel}
 							subLabel={slotsSubLabel}
+							onSlotClick={placeCaret}
 						/>
 					{/if}
 				{:else}
@@ -299,6 +309,7 @@
 				active={focused && !done}
 				label={slotsLabel}
 				subLabel={slotsSubLabel}
+				onSlotClick={placeCaret}
 			/>
 		{/if}
 	</div>
@@ -374,13 +385,9 @@
 					</button>
 				</Tooltip>
 			{/if}
-			{#if sentence?.audioUrl && !isAudioMode}
-				<AudioPlayButton
-					bind:this={audioButton}
-					audioUrl={sentence.audioUrl}
-					label="Play sentence audio"
-				/>
-			{/if}
+			<!-- No sentence audio before answering in fill-in-the-blank mode: the
+			     recording speaks the missing word, which would give it away. The
+			     answered state (below) has the player, with autoplay. -->
 			<span class="spacer"></span>
 			<Tooltip label="Check your answer">
 				<button

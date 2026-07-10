@@ -21,7 +21,8 @@
 		hintedUpTo = 0,
 		caretIndex = null,
 		label = null,
-		subLabel = null
+		subLabel = null,
+		onSlotClick = null
 	}: {
 		target: string;
 		typed: string;
@@ -35,13 +36,25 @@
 		label?: string | null;
 		/** Dimmed second line (dictionary entry under a contextual translation). */
 		subLabel?: string | null;
+		/** Clicking a slot asks the parent to move the caret there. */
+		onSlotClick?: ((index: number) => void) | null;
 	} = $props();
 
 	type Slot = {
 		char: string;
 		state: 'pending' | 'hinted' | 'ok' | 'bad' | 'given' | 'filled';
 		caret: boolean;
+		/** Typeable-character index (for given punctuation: the next one). */
+		index: number;
 	};
+
+	function handleSlotClick(event: MouseEvent, index: number) {
+		if (!onSlotClick) return;
+		// Clicking the right half of a letter puts the caret after it.
+		const slotEl = event.currentTarget as HTMLElement;
+		const after = event.offsetX > slotEl.offsetWidth / 2 ? 1 : 0;
+		onSlotClick(index + after);
+	}
 
 	let labelAnchor = $state<HTMLSpanElement | null>(null);
 	let labelTextEl = $state<HTMLSpanElement | null>(null);
@@ -95,7 +108,7 @@
 			const slots: Slot[] = [];
 			for (const char of targetWord) {
 				if (!isTypeableChar(char)) {
-					slots.push({ char, state: 'given', caret: false });
+					slots.push({ char, state: 'given', caret: false, index: typeableIndex });
 					continue;
 				}
 				const caret = active && typeableIndex === caretAt;
@@ -104,7 +117,8 @@
 					slots.push({
 						char,
 						state: typeableIndex < hintedUpTo ? 'hinted' : 'pending',
-						caret
+						caret,
+						index: typeableIndex
 					});
 				} else {
 					slots.push({
@@ -114,7 +128,8 @@
 								? 'ok'
 								: 'bad'
 							: 'filled',
-						caret
+						caret,
+						index: typeableIndex
 					});
 				}
 				typeableIndex += 1;
@@ -126,14 +141,19 @@
 </script>
 
 <span class="answer-slots-wrap">
-	<span class="answer-slots" class:done>
+	<span class="answer-slots" class:done class:interactive={Boolean(onSlotClick)}>
 		{#each words as slots, wordIndex (wordIndex)}
 			<span class="slot-word">
 				{#each slots as slot, slotIndex (slotIndex)}
 					<!-- Pending slots hold a non-breaking space: a plain space would
 					     collapse, leaving the box without a text baseline, and the
-					     whole line would shift once the first real glyph lands. -->
-					<span class="slot {slot.state}" class:caret={slot.caret}
+					     whole line would shift once the first real glyph lands.
+					     Keyboard users move the caret with the arrow keys. -->
+					<!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+					<span
+						class="slot {slot.state}"
+						class:caret={slot.caret}
+						onclick={onSlotClick ? (event) => handleSlotClick(event, slot.index) : undefined}
 						>{slot.state === 'pending' ? '\u00a0' : slot.char}</span
 					>
 				{/each}
@@ -169,6 +189,10 @@
 		display: inline-flex;
 		flex-wrap: wrap;
 		gap: 0 0.5em;
+	}
+
+	.answer-slots.interactive:not(.done) {
+		cursor: text;
 	}
 
 	.slot-word {

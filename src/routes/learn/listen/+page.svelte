@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import Tooltip from '$lib/components/Tooltip.svelte';
 	import ListeningPlayer from '$lib/components/learn/ListeningPlayer.svelte';
 	import { parseProgramPattern, programDayPlan } from '$lib/learn/listening-program';
 	import {
@@ -456,7 +457,12 @@
 			</label>
 			<label class="setting toggle">
 				<input type="checkbox" bind:checked={shuffle} />
-				<span>Random sentence order</span>
+				<Tooltip
+					label="When enabled, the sentences will be shuffled before playing. Otherwise, they'll be played in the order they're presented in the lesson."
+					placement="right"
+				>
+					<span>Random order</span>
+				</Tooltip>
 			</label>
 		</div>
 	</section>

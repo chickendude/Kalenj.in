@@ -1,27 +1,20 @@
 import { expect, test } from '@playwright/experimental-ct-svelte';
 import AdminTranslationsHarness from './AdminTranslationsHarness.svelte';
 
-test('lists catalog keys with English source and effective Kalenjin value', async ({
+test('lists catalog keys with English source and current Kalenjin value', async ({
 	mount,
 	page
 }) => {
 	await mount(AdminTranslationsHarness, {
-		props: { overrides: [{ key: 'menu.signOut', value: 'Mang’u' }] }
+		props: { translations: { 'menu.signOut': 'Mang’u' } }
 	});
 
-	// Database override wins and is badged as edited on site.
+	// Translated keys show their value and a translated badge.
 	const signOutInput = page.getByLabel('Kalenjin translation for menu.signOut');
 	await expect(signOutInput).toHaveValue('Mang’u');
 	await expect(
 		page.locator('.trans-row', { hasText: 'menu.signOut' }).locator('.trans-badge')
-	).toHaveText('edited on site');
-
-	// Static kln.ts draft shows as prefill with a draft badge.
-	const dictionaryInput = page.getByLabel('Kalenjin translation for nav.dictionary');
-	await expect(dictionaryInput).toHaveValue('Kamusi');
-	await expect(
-		page.locator('.trans-row', { hasText: 'nav.dictionary' }).locator('.trans-badge')
-	).toHaveText('code draft');
+	).toHaveText('translated');
 
 	// Untranslated keys are empty with the English text as placeholder.
 	const settingsInput = page.getByLabel('Kalenjin translation for menu.settings');
@@ -47,7 +40,7 @@ test('saving a row posts the key and new value to the save action', async ({ mou
 		});
 	});
 
-	await mount(AdminTranslationsHarness, { props: { overrides: [] } });
+	await mount(AdminTranslationsHarness, { props: { translations: {} } });
 
 	const input = page.getByLabel('Kalenjin translation for menu.settings');
 	await input.fill('Teretab kaa');
@@ -65,7 +58,7 @@ test('the filter narrows rows across key, English, and Kalenjin text', async ({
 	page
 }) => {
 	await mount(AdminTranslationsHarness, {
-		props: { overrides: [{ key: 'menu.signOut', value: 'Mang’u' }] }
+		props: { translations: { 'menu.signOut': 'Mang’u' } }
 	});
 
 	const filter = page.getByLabel('Filter translations');
@@ -82,4 +75,21 @@ test('the filter narrows rows across key, English, and Kalenjin text', async ({
 	await filter.fill('zzz-no-match');
 	await expect(page.locator('.trans-row')).toHaveCount(0);
 	await expect(page.getByText('No messages match')).toBeVisible();
+});
+
+test('read-only outside development: inputs disabled and a notice shown', async ({
+	mount,
+	page
+}) => {
+	await mount(AdminTranslationsHarness, {
+		props: { translations: {}, canEdit: false }
+	});
+
+	await expect(page.getByText('Read-only: translations are part of the code.')).toBeVisible();
+	await expect(page.getByLabel('Kalenjin translation for menu.settings')).toBeDisabled();
+	await expect(
+		page
+			.locator('.trans-row', { hasText: 'menu.settings' })
+			.getByRole('button', { name: 'Save' })
+	).toBeDisabled();
 });

@@ -2,10 +2,11 @@
 	import AdminTranslationsPage from '../../src/routes/admin/translations/+page.svelte';
 
 	type Props = {
-		overrides?: { key: string; value: string }[];
+		translations?: Record<string, string>;
+		canEdit?: boolean;
 	};
 
-	let { overrides = [] }: Props = $props();
+	let { translations = {}, canEdit = true }: Props = $props();
 
 	const data = $derived({
 		user: {
@@ -16,7 +17,8 @@
 			themePreference: 'auto' as const,
 			statsFilterPreference: null
 		},
-		overrides
+		translations,
+		canEdit
 	});
 </script>
 

@@ -7,7 +7,6 @@
 	const data = {
 		editMode: true,
 		locale: 'en' as const,
-		i18nOverrides: {},
 		user: {
 			id: 'user-1',
 			username: 'editor',

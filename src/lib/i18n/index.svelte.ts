@@ -1,7 +1,7 @@
 import { browser } from '$app/environment';
 import { getContext, setContext } from 'svelte';
-import { DEFAULT_LOCALE, LOCALE_COOKIE, type Locale } from './locale';
-import { translate, type MessageOverrides, type MessageParams } from './translate';
+import { LOCALE_COOKIE, type Locale } from './locale';
+import { translate, translateWithSlot, type MessageParams } from './translate';
 import type { MessageKey } from './messages/en';
 
 const KEY = Symbol('i18n');
@@ -10,8 +10,8 @@ export type I18nCtx = {
 	readonly locale: Locale;
 	set: (next: Locale) => void;
 	t: (key: MessageKey, params?: MessageParams) => string;
-	/** Replace the database-backed overrides (synced from layout data). */
-	setOverrides: (next: MessageOverrides) => void;
+	/** `translateWithSlot` bound to the current locale — see translate.ts. */
+	tSplit: (key: MessageKey, slot: string, params?: MessageParams) => string[];
 };
 
 function writeCookie(value: Locale): void {
@@ -26,14 +26,9 @@ function writeCookie(value: Locale): void {
  * Create the per-request i18n context. Call this once at the top of
  * `+layout.svelte` so server and client renders share the same initial
  * locale (read from the `locale` cookie via the layout load).
- *
- * `initialOverrides` are the database-edited Kalenjin messages from the
- * layout load; keep them in sync with a `$effect` calling `setOverrides` so
- * edits made at /admin/translations show up after invalidation.
  */
-export function createI18n(initial: Locale, initialOverrides: MessageOverrides = {}): I18nCtx {
+export function createI18n(initial: Locale): I18nCtx {
 	let locale = $state(initial);
-	let overrides = $state(initialOverrides);
 
 	const ctx: I18nCtx = {
 		get locale() {
@@ -45,12 +40,10 @@ export function createI18n(initial: Locale, initialOverrides: MessageOverrides =
 			if (browser) document.documentElement.lang = next;
 		},
 		t(key, params) {
-			// Database overrides only exist for translatable locales; English
-			// always renders the source catalog.
-			return translate(locale, key, params, locale === DEFAULT_LOCALE ? undefined : overrides);
+			return translate(locale, key, params);
 		},
-		setOverrides(next: MessageOverrides) {
-			overrides = next;
+		tSplit(key, slot, params) {
+			return translateWithSlot(locale, key, slot, params);
 		}
 	};
 

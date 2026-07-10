@@ -10,7 +10,7 @@
 	import { getI18n } from '$lib/i18n/index.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
-	const { t } = getI18n();
+	const { t, tSplit } = getI18n();
 
 	type ExampleToken = {
 		id: string;
@@ -117,7 +117,7 @@
 				</div>
 			{:else}
 				<div class="home-kicker small">
-					{t('home.noExampleYet')} <a href="/corpus">{t('home.addOne')}</a>.
+					{#each tSplit('home.noExampleYet', 'link') as part, i}{#if i > 0}<a href="/corpus">{t('home.addOne')}</a>{/if}{part}{/each}
 				</div>
 			{/if}
 			<a href={dictionaryEntryHref(word)} class="wod-more">

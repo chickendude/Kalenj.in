@@ -3,7 +3,6 @@
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { en, type MessageKey } from '$lib/i18n/messages/en';
-	import { kln } from '$lib/i18n/messages/kln';
 	import type { ActionData, PageData } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
@@ -11,10 +10,10 @@
 	let query = $state('');
 
 	$effect(() => {
-		if (form && 'saved' in form && form.saved) toast.success('Translation saved.');
+		if (form && 'saved' in form && form.saved) toast.success('Translation saved to kln.ts.');
 	});
 	$effect(() => {
-		if (form && 'cleared' in form && form.cleared) toast.success('Override cleared.');
+		if (form && 'cleared' in form && form.cleared) toast.success('Translation removed from kln.ts.');
 	});
 
 	const SECTION_LABELS: Record<string, string> = {
@@ -33,30 +32,26 @@
 	type Row = {
 		key: MessageKey;
 		english: string;
-		dbValue: string | undefined;
-		draftValue: string | undefined;
+		value: string | undefined;
 	};
-
-	const dbMap = $derived(new Map(data.overrides.map((o) => [o.key, o.value])));
 
 	const rows = $derived(
 		(Object.entries(en) as [MessageKey, string][]).map(
 			([key, english]): Row => ({
 				key,
 				english,
-				dbValue: dbMap.get(key),
-				draftValue: kln[key]
+				value: data.translations[key]
 			})
 		)
 	);
 
-	const translatedCount = $derived(rows.filter((row) => row.dbValue ?? row.draftValue).length);
+	const translatedCount = $derived(rows.filter((row) => row.value !== undefined).length);
 
 	function matches(row: Row, needle: string): boolean {
 		return (
 			row.key.toLowerCase().includes(needle) ||
 			row.english.toLowerCase().includes(needle) ||
-			(row.dbValue ?? row.draftValue ?? '').toLowerCase().includes(needle)
+			(row.value ?? '').toLowerCase().includes(needle)
 		);
 	}
 
@@ -78,12 +73,6 @@
 			rows: sectionRows
 		}));
 	});
-
-	function sourceOf(row: Row): 'site' | 'draft' | 'english' {
-		if (row.dbValue !== undefined) return 'site';
-		if (row.draftValue !== undefined) return 'draft';
-		return 'english';
-	}
 </script>
 
 <svelte:head>
@@ -96,9 +85,16 @@
 		<h1>Interface translations</h1>
 		<p>
 			Kalenjin text for menus, labels, and other interface messages. Anything left empty falls
-			back to English. Clearing a field removes the edit made here; the code draft (if any) or
-			the English text is used instead.
+			back to English. Saving writes <code>src/lib/i18n/messages/kln.ts</code> — commit the
+			change to keep it. Text like <code>{'{term}'}</code> marks a slot for styled or linked
+			content; keep it in the translation, positioned where it fits the sentence.
 		</p>
+		{#if !data.canEdit}
+			<p class="trans-readonly">
+				Read-only: translations are part of the code. Edit them on a development server and
+				deploy the change.
+			</p>
+		{/if}
 	</div>
 	<div class="page-stat">
 		<b>{translatedCount}</b>
@@ -133,19 +129,16 @@
 						<input
 							name="value"
 							class="input"
-							value={row.dbValue ?? row.draftValue ?? ''}
+							value={row.value ?? ''}
 							placeholder={row.english}
 							aria-label={`Kalenjin translation for ${row.key}`}
 							autocomplete="off"
+							disabled={!data.canEdit}
 						/>
-						<span class="trans-badge {sourceOf(row)}">
-							{sourceOf(row) === 'site'
-								? 'edited on site'
-								: sourceOf(row) === 'draft'
-									? 'code draft'
-									: 'English'}
+						<span class="trans-badge" class:translated={row.value !== undefined}>
+							{row.value !== undefined ? 'translated' : 'English'}
 						</span>
-						<button type="submit" class="btn-sm">Save</button>
+						<button type="submit" class="btn-sm" disabled={!data.canEdit}>Save</button>
 					</form>
 				</div>
 			{/each}
@@ -156,6 +149,14 @@
 {/each}
 
 <style>
+	.trans-readonly {
+		color: var(--ink-mute);
+		font-size: 13px;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		padding: 8px 12px;
+		max-width: 560px;
+	}
 	.trans-toolbar {
 		margin: 0 0 16px;
 		max-width: 420px;
@@ -204,7 +205,7 @@
 		padding: 2px 8px;
 		white-space: nowrap;
 	}
-	.trans-badge.site {
+	.trans-badge.translated {
 		color: var(--brand);
 		border-color: color-mix(in oklch, var(--brand) 40%, transparent);
 	}

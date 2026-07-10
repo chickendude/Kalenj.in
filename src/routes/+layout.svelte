@@ -34,17 +34,8 @@
 
 	// Same per-request pattern for the UI locale: the cookie value rendered on
 	// the server seeds the context so the first paint matches the preference.
-	const i18n = createI18n(
-		untrack(() => data.locale),
-		untrack(() => data.i18nOverrides)
-	);
+	const i18n = createI18n(untrack(() => data.locale));
 	const t = i18n.t;
-
-	// Keep database-edited messages current after saves at /admin/translations
-	// (form actions invalidate the layout load, which refetches them).
-	$effect(() => {
-		i18n.setOverrides(data.i18nOverrides);
-	});
 
 	onMount(() => {
 		initTheme();
@@ -411,8 +402,7 @@
 	<footer class="site-foot mono">
 		<div class="site-foot-inner">
 			<p class="site-foot-lede">
-				{t('footer.ledeBefore')} <em>kutitab myot</em>
-				{t('footer.ledeAfter')}
+				{#each i18n.tSplit('footer.lede', 'term') as part, i}{#if i > 0}<em>kutitab myot</em>{/if}{part}{/each}
 			</p>
 
 			<p class="site-foot-meta">

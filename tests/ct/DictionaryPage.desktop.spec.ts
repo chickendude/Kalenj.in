@@ -20,8 +20,7 @@ const data = {
 	totalCount: 0,
 	user: editorUser,
 	editMode: true,
-	locale: 'en' as const,
-	i18nOverrides: {}
+	locale: 'en' as const
 };
 
 async function stubDictionaryRequests(page: Page, postUrls: string[] = []) {

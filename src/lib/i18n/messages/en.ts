@@ -30,9 +30,10 @@ export const en = {
 
 	'language.label': 'Language',
 
-	'footer.ledeBefore': 'Kalenj.in is a project to document and record the',
-	'footer.ledeAfter':
-		'— the language of sweetness — and provide resources for natives, heritage speakers, and learners of the Kalenjin language.',
+	// {term} is a slot for the emphasized phrase "kutitab myot" — keep it in
+	// translations, positioned where it fits the sentence.
+	'footer.lede':
+		'Kalenj.in is a project to document and record the {term} — the language of sweetness — and provide resources for natives, heritage speakers, and learners of the Kalenjin language.',
 	'footer.privacy': 'Privacy',
 	'footer.terms': 'Terms',
 
@@ -60,7 +61,8 @@ export const en = {
 	'home.pluralAbbr': 'pl.',
 	'home.alsoSpelled': 'also',
 	'home.inASentence': 'In a sentence',
-	'home.noExampleYet': 'No example yet —',
+	// {link} is a slot for the "add one" link.
+	'home.noExampleYet': 'No example yet — {link}.',
 	'home.addOne': 'add one',
 	'home.fullEntry': 'Full entry',
 	'home.recentlyAdded': 'Recently added',
@@ -72,7 +74,8 @@ export const en = {
 
 	'auth.signInPageTitle': 'Sign in · Kalenjin',
 	'auth.signIn': 'Sign in',
-	'auth.newHere': 'New here?',
+	// {link} is a slot for the "Create an account" link.
+	'auth.signUpPrompt': 'New here? {link}.',
 	'auth.createAccount': 'Create an account',
 	'auth.resendVerification': 'Resend verification email',
 	'auth.username': 'Username',

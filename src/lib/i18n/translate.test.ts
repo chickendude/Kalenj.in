@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseLocale } from './locale';
-import { translate } from './translate';
+import { translate, translateWithSlot } from './translate';
 import { en } from './messages/en';
 import { kln } from './messages/kln';
 
@@ -23,7 +23,7 @@ describe('translate', () => {
 		expect(translate('en', 'nav.dictionary')).toBe('Dictionary');
 	});
 
-	it('returns Kalenjin overrides for the kln locale', () => {
+	it('returns Kalenjin catalog entries for the kln locale', () => {
 		expect(translate('kln', 'nav.dictionary')).toBe(kln['nav.dictionary']);
 	});
 
@@ -44,30 +44,35 @@ describe('translate', () => {
 		);
 	});
 
-	it('prefers runtime overrides over the static catalogs', () => {
-		expect(translate('kln', 'nav.dictionary', undefined, { 'nav.dictionary': 'Edited' })).toBe(
-			'Edited'
-		);
-		expect(translate('kln', 'menu.signOut', undefined, { 'menu.signOut': 'Mang’u' })).toBe(
-			'Mang’u'
-		);
-	});
-
-	it('falls through overrides for keys they do not cover', () => {
-		expect(translate('kln', 'nav.dictionary', undefined, { 'menu.signOut': 'x' })).toBe(
-			kln['nav.dictionary']
-		);
-	});
-
-	it('interpolates params in overridden templates', () => {
-		expect(
-			translate('kln', 'search.noMatches', { query: 'teta' }, { 'search.noMatches': 'Mamiten “{query}”.' })
-		).toBe('Mamiten “teta”.');
-	});
-
 	it('only contains kln keys that exist in the en catalog', () => {
 		for (const key of Object.keys(kln)) {
 			expect(key in en, `unknown key in kln catalog: ${key}`).toBe(true);
 		}
+	});
+});
+
+describe('translateWithSlot', () => {
+	it('splits a sentence around a mid-sentence slot', () => {
+		expect(translateWithSlot('en', 'footer.lede', 'term')).toEqual([
+			'Kalenj.in is a project to document and record the ',
+			' — the language of sweetness — and provide resources for natives, heritage speakers, and learners of the Kalenjin language.'
+		]);
+	});
+
+	it('splits around a trailing slot', () => {
+		expect(translateWithSlot('en', 'home.noExampleYet', 'link')).toEqual([
+			'No example yet — ',
+			'.'
+		]);
+	});
+
+	it('returns a single part when the translation omits the slot', () => {
+		// nav.dictionary has no {term}; callers render no slot content then.
+		expect(translateWithSlot('en', 'nav.dictionary', 'term')).toEqual(['Dictionary']);
+	});
+
+	it('still interpolates other params', () => {
+		const parts = translateWithSlot('en', 'search.noMatches', 'nope', { query: 'teta' });
+		expect(parts).toEqual(['No entries match “teta”.']);
 	});
 });

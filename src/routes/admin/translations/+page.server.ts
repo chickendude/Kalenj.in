@@ -1,44 +1,50 @@
+import { dev } from '$app/environment';
 import { fail } from '@sveltejs/kit';
-import { prisma } from '$lib/server/prisma';
 import { requireEditor } from '$lib/server/guards';
-import { en } from '$lib/i18n/messages/en';
+import { en, type MessageKey } from '$lib/i18n/messages/en';
+import { kln } from '$lib/i18n/messages/kln';
+import { writeKlnCatalog } from '$lib/server/kln-catalog-file';
 import type { Actions, PageServerLoad } from './$types';
 
-// The only editable locale today. English is the source catalog and is
-// maintained in code (src/lib/i18n/messages/en.ts).
-const EDITABLE_LOCALE = 'kln';
+// Translations live in src/lib/i18n/messages/kln.ts and ship with the code.
+// Saving rewrites that file, which is only possible against a running source
+// tree — so editing works in development and the page is read-only in
+// production. In dev, Vite reloads the changed module, so the next load()
+// sees the fresh catalog.
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = ({ locals }) => {
 	requireEditor(locals);
-	const rows = await prisma.uiTranslation.findMany({
-		where: { locale: EDITABLE_LOCALE },
-		orderBy: { key: 'asc' },
-		select: { key: true, value: true }
-	});
-	return { overrides: rows };
+	return { translations: kln, canEdit: dev };
 };
 
 export const actions: Actions = {
 	save: async ({ request, locals }) => {
 		requireEditor(locals);
+		if (!dev) {
+			return fail(403, {
+				error:
+					'Translations are part of the code and can only be edited on a development ' +
+					'server. Run the site locally, save your changes there, and commit them.'
+			});
+		}
+
 		const data = await request.formData();
-		const key = String(data.get('key') ?? '');
+		const key = String(data.get('key') ?? '') as MessageKey;
 		const value = String(data.get('value') ?? '').trim();
 
 		if (!(key in en)) {
 			return fail(400, { error: `Unknown message key "${key}".` });
 		}
 
+		const next = { ...kln };
 		if (!value) {
-			await prisma.uiTranslation.deleteMany({ where: { locale: EDITABLE_LOCALE, key } });
+			delete next[key];
+			await writeKlnCatalog(next);
 			return { cleared: key };
 		}
 
-		await prisma.uiTranslation.upsert({
-			where: { locale_key: { locale: EDITABLE_LOCALE, key } },
-			create: { locale: EDITABLE_LOCALE, key, value },
-			update: { value }
-		});
+		next[key] = value;
+		await writeKlnCatalog(next);
 		return { saved: key };
 	}
 };

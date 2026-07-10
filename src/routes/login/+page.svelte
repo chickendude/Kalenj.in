@@ -6,7 +6,7 @@
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
-	const { t } = getI18n();
+	const { t, tSplit } = getI18n();
 
 	let showPassword = $state(false);
 </script>
@@ -19,7 +19,7 @@
 	<div class="auth-card">
 		<h1>{t('auth.signIn')}</h1>
 		<p class="auth-sub">
-			{t('auth.newHere')} <a href="/signup">{t('auth.createAccount')}</a>.
+			{#each tSplit('auth.signUpPrompt', 'link') as part, i}{#if i > 0}<a href="/signup">{t('auth.createAccount')}</a>{/if}{part}{/each}
 		</p>
 
 		<FormErrorFeedback error={form?.error} />

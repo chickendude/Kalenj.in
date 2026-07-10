@@ -57,20 +57,17 @@
 	}
 
 	let labelAnchor = $state<HTMLSpanElement | null>(null);
-	let labelTextEl = $state<HTMLSpanElement | null>(null);
-	let labelShift = $state(0);
+	let subLabelEl = $state<HTMLSpanElement | null>(null);
+	let subLabelShift = $state(0);
 	let labelMaxWidth = $state<number | null>(null);
 
 	/**
-	 * The label is centered under the blank (a zero-width anchor at the
-	 * blank's midpoint, text pulled back by 50%). When the centered text
-	 * would poke past the card's padding box, nudge it back inside — and cap
-	 * its width to the card, so extreme hints ellipsize instead of clipping.
+	 * The primary label stays locked to the blank midpoint. Only the longer
+	 * dictionary sublabel may be nudged back inside the card.
 	 */
 	function positionLabel() {
 		const anchor = labelAnchor;
-		const text = labelTextEl;
-		if (!anchor || !text) return;
+		if (!anchor) return;
 		const card = anchor.closest('.player-card, .review-card');
 		let min = 8;
 		let max = window.innerWidth - 8;
@@ -81,17 +78,24 @@
 			max = rect.right - Number.parseFloat(style.paddingRight);
 		}
 		const available = Math.max(0, max - min);
-		const width = Math.min(text.scrollWidth, available);
 		labelMaxWidth = available;
-		const desiredLeft = anchor.getBoundingClientRect().left - width / 2;
-		if (desiredLeft < min) labelShift = min - desiredLeft;
-		else if (desiredLeft + width > max) labelShift = max - (desiredLeft + width);
-		else labelShift = 0;
+		const anchorLeft = anchor.getBoundingClientRect().left;
+
+		if (!subLabelEl) {
+			subLabelShift = 0;
+			return;
+		}
+		const subLabelWidth = Math.min(subLabelEl.scrollWidth, available);
+		const desiredLeft = anchorLeft - subLabelWidth / 2;
+		if (desiredLeft < min) subLabelShift = min - desiredLeft;
+		else if (desiredLeft + subLabelWidth > max) subLabelShift = max - (desiredLeft + subLabelWidth);
+		else subLabelShift = 0;
 	}
 
 	$effect(() => {
 		void label;
 		void subLabel;
+		void subLabelEl;
 		positionLabel();
 		// Font metrics can settle after first paint; measure again then.
 		document.fonts?.ready.then(positionLabel).catch(() => {});
@@ -140,7 +144,7 @@
 	});
 </script>
 
-<span class="answer-slots-wrap">
+<span class="answer-slots-wrap" class:has-label={Boolean(label)}>
 	<span class="answer-slots" class:done class:interactive={Boolean(onSlotClick)}>
 		{#each words as slots, wordIndex (wordIndex)}
 			<span class="slot-word">
@@ -163,26 +167,32 @@
 	{#if label}
 		<span class="slots-label" bind:this={labelAnchor}>
 			<span
-				class="slots-label-text"
-				bind:this={labelTextEl}
-				style:transform={`translateX(calc(-50% + ${labelShift}px))`}
+				class="label-line"
 				style:max-width={labelMaxWidth === null ? undefined : `${labelMaxWidth}px`}
+				>{label}</span
 			>
-				<span class="label-line">{label}</span>
-				{#if subLabel}
-					<span class="label-line sub-label">{subLabel}</span>
-				{/if}
-			</span>
+			{#if subLabel}
+				<span
+					class="label-line sub-label"
+					bind:this={subLabelEl}
+					style:transform={`translateX(calc(-50% + ${subLabelShift}px))`}
+					style:max-width={labelMaxWidth === null ? undefined : `${labelMaxWidth}px`}
+					>{subLabel}</span
+				>
+			{/if}
 		</span>
 	{/if}
 </span>
 
 <style>
 	.answer-slots-wrap {
-		display: inline-grid;
-		gap: 0.15em;
-		justify-items: start;
+		display: inline-block;
+		position: relative;
 		vertical-align: baseline;
+	}
+
+	.answer-slots-wrap.has-label {
+		padding-bottom: 2.4rem;
 	}
 
 	.answer-slots {
@@ -260,32 +270,24 @@
 		font-family: var(--font-body, inherit);
 		font-size: 0.8rem;
 		font-weight: 600;
-		/* A zero-width anchor at the blank's midpoint: the hint never widens
-		   the blank or pushes the following words aside — the text hangs
-		   centered under it (nudged back inside the card by positionLabel).
-		   The row still reserves its height, so nothing below overlaps. */
-		justify-self: center;
+		/* A zero-width anchor at the answer slots' midpoint: label width never
+		   changes the blank width or the anchor it hangs from. */
+		left: 50%;
 		letter-spacing: normal;
 		line-height: 1.3;
+		position: absolute;
+		top: calc(100% - 2.25rem);
 		white-space: nowrap;
 		width: 0;
 	}
 
-	.slots-label-text {
-		display: inline-grid;
-		justify-items: center;
-		/* Explicit width — inside the zero-width parent, shrink-to-fit would
-		   collapse this box to nothing. The cap keeps extreme hints on screen
-		   before positionLabel refines it to the card width. */
-		width: max-content;
-		max-width: min(75vw, 36rem);
-		transform: translateX(-50%);
-	}
-
 	.label-line {
-		max-width: 100%;
+		display: block;
+		max-width: min(75vw, 36rem);
 		overflow: hidden;
 		text-overflow: ellipsis;
+		transform: translateX(-50%);
+		width: max-content;
 	}
 
 	/* Dictionary entry under the contextual translation — barely there until
@@ -297,8 +299,8 @@
 		transition: opacity 0.15s;
 	}
 
-	.slots-label-text:hover .sub-label,
-	.slots-label-text:active .sub-label {
+	.slots-label:hover .sub-label,
+	.slots-label:active .sub-label {
 		opacity: 1;
 	}
 

@@ -13,6 +13,8 @@
 		title: string | null;
 		/** Repetition count override (daily program); null → session setting. */
 		reps: number | null;
+		/** Daily program only: sentences are newly introduced on this program day. */
+		repeatKalenjinEligible?: boolean;
 		sentences: ListeningSentence[];
 	};
 
@@ -21,6 +23,8 @@
 		reps: number;
 		/** Kalenjin audio plays inside each prompt. */
 		kalenjinReps: number;
+		/** If true, only repeat Kalenjin on first/eligible sentence presentations. */
+		repeatKalenjinOnlyNew: boolean;
 		/** Shuffle sentence order within each lesson. */
 		shuffle: boolean;
 	};
@@ -56,6 +60,7 @@
 		sentence: ListeningSentence;
 		repetition: number;
 		repetitions: number;
+		repeatKalenjinEligible: boolean;
 	};
 
 	function shuffled<T>(items: T[]): T[] {
@@ -69,17 +74,25 @@
 
 	// Playback order is fixed once per session (so prev/next stay stable).
 	// svelte-ignore state_referenced_locally — intentional one-time setup
+	const seenSentences = new Set<string>();
+	// svelte-ignore state_referenced_locally — intentional one-time setup
 	const queue: SessionItem[] = segments.flatMap((segment) => {
 		if (segment.sentences.length === 0) return [];
 		const repetitions = segment.reps ?? settings.reps;
 		return Array.from({ length: repetitions }, (_, index) => {
 			const pass = settings.shuffle ? shuffled(segment.sentences) : segment.sentences;
-			return pass.map((sentence) => ({
-				segmentTitle: segment.title,
-				sentence,
-				repetition: index + 1,
-				repetitions
-			}));
+			return pass.map((sentence) => {
+				const firstInSession = !seenSentences.has(sentence.id);
+				seenSentences.add(sentence.id);
+				return {
+					segmentTitle: segment.title,
+					sentence,
+					repetition: index + 1,
+					repetitions,
+					repeatKalenjinEligible:
+						(segment.repeatKalenjinEligible ?? true) && firstInSession
+				};
+			});
 		}).flat();
 	});
 
@@ -96,6 +109,11 @@
 
 	const item = $derived(queue[itemIndex] ?? null);
 	const sentence = $derived(item?.sentence ?? null);
+	const itemKalenjinReps = $derived(
+		item && (!settings.repeatKalenjinOnlyNew || item.repeatKalenjinEligible)
+			? settings.kalenjinReps
+			: 1
+	);
 	const ttsAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
 	const speakEnglish = $derived(ttsAvailable);
 
@@ -221,7 +239,7 @@
 			});
 		} else if (next === 'repeat') {
 			schedule(producePauseMs(), () => {
-				if (kRep < settings.kalenjinReps) {
+				if (kRep < itemKalenjinReps) {
 					kRep += 1;
 					enterPhase('kalenjin');
 				} else {
@@ -352,8 +370,8 @@
 				{#if item && item.repetitions > 1}
 					<span>Repetition {item.repetition}/{item.repetitions}</span>
 				{/if}
-				{#if settings.kalenjinReps > 1}
-					<span>Kalenjin {kRep}/{settings.kalenjinReps}</span>
+				{#if itemKalenjinReps > 1}
+					<span>Kalenjin {kRep}/{itemKalenjinReps}</span>
 				{/if}
 			</div>
 

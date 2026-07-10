@@ -23,6 +23,7 @@
 	type LocalSegment = {
 		title: string | null;
 		reps: number | null;
+		repeatKalenjinEligible?: boolean;
 		sentences: Array<{ id: string; kalenjin: string; english: string; audioUrl: string }>;
 	};
 
@@ -112,6 +113,7 @@
 					{
 						title: `${segment.title} — day ${entry.age}`,
 						reps: entry.reps,
+						repeatKalenjinEligible: entry.age === 1,
 						sentences: segment.sentences
 					}
 				];
@@ -190,16 +192,19 @@
 	// --- Session settings (picker) -------------------------------------------
 	let reps = $state(1);
 	let repeatKalenjin = $state(false);
+	let repeatKalenjinOnlyNew = $state(false);
 	let shuffle = $state(false);
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	reps = data.settings.reps;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	repeatKalenjin = data.settings.kalenjinReps > 1;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
+	repeatKalenjinOnlyNew = data.settings.repeatKalenjinOnlyNew;
+	// svelte-ignore state_referenced_locally — initialize from the URL once
 	shuffle = data.settings.shuffle;
 
 	const settingsQuery = $derived(
-		`reps=${reps}&kreps=${repeatKalenjin ? 2 : 1}&shuffle=${shuffle ? 1 : 0}`
+		`reps=${reps}&kreps=${repeatKalenjin ? 2 : 1}&knew=${repeatKalenjin && repeatKalenjinOnlyNew ? 1 : 0}&shuffle=${shuffle ? 1 : 0}`
 	);
 
 	function adjustReps(delta: number) {
@@ -451,19 +456,56 @@
 					</button>
 				</span>
 			</div>
-			<label class="setting repetition-setting">
-				<span>Repeat Kalenjin?</span>
-				<input type="checkbox" bind:checked={repeatKalenjin} />
-			</label>
-			<label class="setting toggle">
-				<input type="checkbox" bind:checked={shuffle} />
+			<div class="setting repetition-setting">
+				<Tooltip
+					label="Whether to repeat the Kalenjin sentence twice, like [English] [Kalenjin] [Kalenjin], so you can hear the Kalenjin sentence twice."
+				>
+					<span>Repeat Kalenjin?</span>
+				</Tooltip>
+				<button
+					type="button"
+					class="feature-toggle"
+					class:active={repeatKalenjin}
+					aria-pressed={repeatKalenjin}
+					onclick={() => (repeatKalenjin = !repeatKalenjin)}
+				>
+					{repeatKalenjin ? 'On' : 'Off'}
+				</button>
+			</div>
+			{#if repeatKalenjin}
+				<div class="setting repetition-setting secondary-setting">
+					<Tooltip
+						label="Only repeat Kalenjin the first time a sentence is played in this session. In a daily program, this only applies to sentences introduced that day."
+					>
+						<span>Only for new sentences</span>
+					</Tooltip>
+					<button
+						type="button"
+						class="feature-toggle"
+						class:active={repeatKalenjinOnlyNew}
+						aria-pressed={repeatKalenjinOnlyNew}
+						onclick={() => (repeatKalenjinOnlyNew = !repeatKalenjinOnlyNew)}
+					>
+						{repeatKalenjinOnlyNew ? 'On' : 'Off'}
+					</button>
+				</div>
+			{/if}
+			<div class="setting repetition-setting">
 				<Tooltip
 					label="When enabled, the sentences will be shuffled before playing. Otherwise, they'll be played in the order they're presented in the lesson."
-					placement="right"
 				>
 					<span>Random order</span>
 				</Tooltip>
-			</label>
+				<button
+					type="button"
+					class="feature-toggle"
+					class:active={shuffle}
+					aria-pressed={shuffle}
+					onclick={() => (shuffle = !shuffle)}
+				>
+					{shuffle ? 'On' : 'Off'}
+				</button>
+			</div>
 		</div>
 	</section>
 
@@ -756,6 +798,38 @@
 		gap: 1rem;
 		grid-template-columns: 12rem max-content;
 		justify-content: start;
+	}
+
+	.feature-toggle {
+		background: transparent;
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink-soft);
+		cursor: pointer;
+		font: inherit;
+		font-size: 13px;
+		font-weight: 500;
+		height: 38px;
+		min-width: 4rem;
+		padding: 0 0.8rem;
+		transition: background 0.15s, border-color 0.15s, color 0.15s;
+	}
+
+	.feature-toggle:hover {
+		background: var(--surface);
+		color: var(--ink);
+	}
+
+	.feature-toggle.active {
+		background: var(--brand);
+		border-color: var(--brand);
+		color: var(--on-brand);
+	}
+
+	.feature-toggle.active:hover {
+		background: var(--brand);
+		color: var(--on-brand);
+		filter: brightness(1.08);
 	}
 
 	.stepper {

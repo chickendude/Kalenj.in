@@ -24,6 +24,7 @@ const REPS_COOKIE = 'listen_reps';
 export type ListenSettings = {
 	reps: number;
 	kalenjinReps: number;
+	repeatKalenjinOnlyNew: boolean;
 	shuffle: boolean;
 };
 
@@ -37,6 +38,7 @@ function readSettings(url: URL, storedReps: string | null): ListenSettings {
 	return {
 		reps: clampInt(url.searchParams.get('reps') ?? storedReps, 3, MIN_REPS, MAX_REPS),
 		kalenjinReps: clampInt(url.searchParams.get('kreps'), 1, 1, MAX_KALENJIN_REPS),
+		repeatKalenjinOnlyNew: url.searchParams.get('knew') === '1',
 		shuffle: url.searchParams.get('shuffle') === '1'
 	};
 }

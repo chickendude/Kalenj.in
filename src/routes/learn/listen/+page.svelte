@@ -14,6 +14,7 @@
 	import type { ActionData, PageData, SubmitFunction } from './$types';
 
 	let { data, form }: { data: PageData; form: ActionData } = $props();
+	const REPS_COOKIE = 'listen_reps';
 
 	// --- Signed-out (local) support --------------------------------------------
 	// Missed sentences and the daily program live in localStorage; the server
@@ -187,16 +188,18 @@
 
 	// --- Session settings (picker) -------------------------------------------
 	let reps = $state(1);
-	let kalenjinReps = $state(1);
+	let repeatKalenjin = $state(false);
 	let shuffle = $state(false);
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	reps = data.settings.reps;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
-	kalenjinReps = data.settings.kalenjinReps;
+	repeatKalenjin = data.settings.kalenjinReps > 1;
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	shuffle = data.settings.shuffle;
 
-	const settingsQuery = $derived(`reps=${reps}&kreps=${kalenjinReps}&shuffle=${shuffle ? 1 : 0}`);
+	const settingsQuery = $derived(
+		`reps=${reps}&kreps=${repeatKalenjin ? 2 : 1}&shuffle=${shuffle ? 1 : 0}`
+	);
 
 	function adjustReps(delta: number) {
 		reps = Math.min(9, Math.max(1, reps + delta));
@@ -206,13 +209,10 @@
 		reps = Math.min(9, Math.max(1, Number(reps) || 1));
 	}
 
-	function adjustKalenjinReps(delta: number) {
-		kalenjinReps = Math.min(3, Math.max(1, kalenjinReps + delta));
-	}
-
-	function clampKalenjinReps() {
-		kalenjinReps = Math.min(3, Math.max(1, Number(kalenjinReps) || 1));
-	}
+	$effect(() => {
+		if (data.mode !== 'pick') return;
+		document.cookie = `${REPS_COOKIE}=${reps}; Path=/learn/listen; Max-Age=31536000; SameSite=Lax`;
+	});
 
 	// --- Playlist selection ---------------------------------------------------
 	let playlistSelected = $state(new Set<string>());
@@ -418,14 +418,14 @@
 		<h2 class="panel-title">Session settings</h2>
 		<div class="settings-grid">
 			<div class="setting repetition-setting">
-				<label for="sentence-reps">Repetitions per sentence</label>
+				<label for="sentence-reps">Reps per sentence</label>
 				<span class="stepper">
 					<button
 						type="button"
 						class="btn-sm ghost stepper-button"
 						onclick={() => adjustReps(-1)}
 						disabled={reps <= 1}
-						aria-label="Decrease repetitions per sentence"
+						aria-label="Decrease reps per sentence"
 					>
 						−
 					</button>
@@ -437,52 +437,23 @@
 						max="9"
 						bind:value={reps}
 						oninput={clampReps}
-						aria-label="Repetitions per sentence"
+						aria-label="Reps per sentence"
 					/>
 					<button
 						type="button"
 						class="btn-sm ghost stepper-button"
 						onclick={() => adjustReps(1)}
 						disabled={reps >= 9}
-						aria-label="Increase repetitions per sentence"
+						aria-label="Increase reps per sentence"
 					>
 						+
 					</button>
 				</span>
 			</div>
-			<div class="setting repetition-setting">
-				<label for="kalenjin-reps">Kalenjin repetitions</label>
-				<span class="stepper">
-					<button
-						type="button"
-						class="btn-sm ghost stepper-button"
-						onclick={() => adjustKalenjinReps(-1)}
-						disabled={kalenjinReps <= 1}
-						aria-label="Decrease Kalenjin repetitions"
-					>
-						−
-					</button>
-					<input
-						id="kalenjin-reps"
-						class="stepper-input"
-						type="number"
-						min="1"
-						max="3"
-						bind:value={kalenjinReps}
-						oninput={clampKalenjinReps}
-						aria-label="Kalenjin repetitions"
-					/>
-					<button
-						type="button"
-						class="btn-sm ghost stepper-button"
-						onclick={() => adjustKalenjinReps(1)}
-						disabled={kalenjinReps >= 3}
-						aria-label="Increase Kalenjin repetitions"
-					>
-						+
-					</button>
-				</span>
-			</div>
+			<label class="setting repetition-setting">
+				<span>Repeat Kalenjin?</span>
+				<input type="checkbox" bind:checked={repeatKalenjin} />
+			</label>
 			<label class="setting toggle">
 				<input type="checkbox" bind:checked={shuffle} />
 				<span>Random sentence order</span>

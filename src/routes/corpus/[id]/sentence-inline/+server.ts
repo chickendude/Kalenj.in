@@ -84,6 +84,13 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 						word: {
 							select: WORD_SELECT
 						},
+						compound: {
+							include: {
+								word: {
+									select: WORD_SELECT
+								}
+							}
+						},
 						segments: {
 							orderBy: { segmentOrder: 'asc' },
 							include: {

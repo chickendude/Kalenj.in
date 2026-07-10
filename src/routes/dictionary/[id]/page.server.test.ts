@@ -14,6 +14,11 @@ const mocks = vi.hoisted(() => {
 		relatedWord: {
 			createMany: vi.fn(),
 			deleteMany: vi.fn()
+		},
+		wordComponent: {
+			findFirst: vi.fn(),
+			create: vi.fn(),
+			deleteMany: vi.fn()
 		}
 	};
 	prisma.$transaction.mockImplementation(async (callback) => callback(prisma));
@@ -84,6 +89,8 @@ function makeWord(overrides: Record<string, unknown> = {}) {
 		sentences: [],
 		relatedWords: [],
 		relatedToWords: [],
+		components: [],
+		componentOf: [],
 		...overrides
 	};
 }
@@ -104,6 +111,9 @@ describe('dictionary detail page server', () => {
 		mocks.prisma.word.delete.mockReset();
 		mocks.prisma.relatedWord.createMany.mockReset();
 		mocks.prisma.relatedWord.deleteMany.mockReset();
+		mocks.prisma.wordComponent.findFirst.mockReset();
+		mocks.prisma.wordComponent.create.mockReset();
+		mocks.prisma.wordComponent.deleteMany.mockReset();
 		mocks.prisma.$queryRaw.mockResolvedValue([{ kalenjin: 'che', slug: 'che' }]);
 	});
 
@@ -138,6 +148,102 @@ describe('dictionary detail page server', () => {
 					}
 				]
 			}
+		});
+	});
+
+	it('loads ordered component words and the compounds a word appears in', async () => {
+		mockSlugLookup(
+			makeWord({
+				components: [
+					{
+						id: 'component-2',
+						componentOrder: 1,
+						componentWord: { id: 'word-bek', kalenjin: 'bek', translations: 'water' }
+					},
+					{
+						id: 'component-1',
+						componentOrder: 0,
+						componentWord: { id: 'word-pir', kalenjin: 'pir', translations: 'to hit, to beat' }
+					}
+				],
+				componentOf: [
+					{
+						id: 'component-3',
+						compoundWord: { id: 'word-tes-tai', kalenjin: 'tes tai', translations: 'to continue' }
+					}
+				]
+			})
+		);
+
+		await expect(load({ params: { id: 'che' } } as never)).resolves.toMatchObject({
+			word: {
+				componentWords: [
+					{ id: 'component-1', word: { id: 'word-pir' } },
+					{ id: 'component-2', word: { id: 'word-bek' } }
+				],
+				compoundWords: [{ id: 'word-tes-tai', kalenjin: 'tes tai' }]
+			}
+		});
+	});
+
+	it('appends component words after the current highest order', async () => {
+		const fd = new FormData();
+		fd.set('componentWordId', 'word-b');
+		mocks.prisma.word.findUnique
+			.mockResolvedValueOnce({ id: 'word-a' })
+			.mockResolvedValueOnce({ id: 'word-b' });
+		mocks.prisma.wordComponent.findFirst.mockResolvedValueOnce({ componentOrder: 1 });
+
+		await expect(
+			actions.addComponentWord?.({
+				params: { id: 'che' },
+				locals,
+				request: new Request('http://localhost/dictionary/che', { method: 'POST', body: fd })
+			} as never)
+		).resolves.toEqual({ componentWordSuccess: true });
+
+		expect(mocks.prisma.wordComponent.create).toHaveBeenCalledWith({
+			data: {
+				compoundWordId: 'word-a',
+				componentWordId: 'word-b',
+				componentOrder: 2
+			}
+		});
+	});
+
+	it('rejects adding a word as a component of itself', async () => {
+		const fd = new FormData();
+		fd.set('componentWordId', 'word-a');
+		mocks.prisma.word.findUnique.mockResolvedValueOnce({ id: 'word-a' });
+
+		const result = await actions.addComponentWord?.({
+			params: { id: 'che' },
+			locals,
+			request: new Request('http://localhost/dictionary/che', { method: 'POST', body: fd })
+		} as never);
+
+		expect(result).toMatchObject({
+			status: 400,
+			data: { componentWordError: 'A word cannot be a component of itself.' }
+		});
+		expect(mocks.prisma.wordComponent.create).not.toHaveBeenCalled();
+	});
+
+	it('removes a component link scoped to the current compound', async () => {
+		const fd = new FormData();
+		fd.set('componentId', 'component-1');
+		mocks.prisma.word.findUnique.mockResolvedValueOnce({ id: 'word-a' });
+
+		await expect(
+			actions.removeComponentWord?.({
+				params: { id: 'che' },
+				locals,
+				request: new Request('http://localhost/dictionary/che', { method: 'POST', body: fd })
+			} as never)
+		).resolves.toEqual({ componentWordSuccess: true });
+
+		expect(mocks.prisma.wordComponent.deleteMany).toHaveBeenCalledWith({
+			where: { id: 'component-1', compoundWordId: 'word-a' }
 		});
 	});
 

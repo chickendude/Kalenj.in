@@ -200,11 +200,14 @@ model Word {
   sentences               WordSentence[]
   tokenLinks              ExampleSentenceToken[]
   tokenSegments           ExampleSentenceTokenSegment[]
+  sentenceCompounds       ExampleSentenceCompound[]
   lessonWords             LessonWord[]
   spellings               WordSpelling[]
   wordOfDayEntries        WordOfTheDay[]
   relatedWords            RelatedWord[]                 @relation("RelatedWordSource")
   relatedToWords          RelatedWord[]                 @relation("RelatedWordTarget")
+  components              WordComponent[]               @relation("WordCompoundComponents")
+  componentOf             WordComponent[]               @relation("WordComponentOfCompounds")
   observedForms           ObservedWordForm[]
   suggestionsApproved     WordSuggestion[]              @relation("WordSuggestionApprovedWord")
   reports                 Report[]
@@ -260,6 +263,23 @@ model RelatedWord {
   @@index([relatedWordId])
 }
 
+// Ordered breakdown of a compound entry (e.g. "pir bek" = "pir" + "bek") into
+// the standalone entries it is formed from. The compound keeps its own gloss;
+// components keep their own entries. A component may repeat (reduplication),
+// so only (compound, order) is unique.
+model WordComponent {
+  id              String   @id @default(cuid())
+  compoundWordId  String
+  componentWordId String
+  componentOrder  Int
+  createdAt       DateTime @default(now())
+  compoundWord    Word     @relation("WordCompoundComponents", fields: [compoundWordId], references: [id], onDelete: Cascade)
+  componentWord   Word     @relation("WordComponentOfCompounds", fields: [componentWordId], references: [id], onDelete: Cascade)
+
+  @@unique([compoundWordId, componentOrder])
+  @@index([componentWordId])
+}
+
 // Derived search table for prior surface-form -> lemma links. User-facing edit paths
 // maintain it incrementally; run `npm run backfill:observed-forms` after migrations,
 // imports, or background sync jobs to reconcile drift from bulk token rewrites.
@@ -305,6 +325,7 @@ model ExampleSentence {
   updatedAt           DateTime               @updatedAt
   words               WordSentence[]
   tokens              ExampleSentenceToken[]
+  compounds           ExampleSentenceCompound[]
   lessonWords         LessonWord[]
   storySentence       StorySentence?
   suggestionsApproved SentenceSuggestion[]   @relation("SentenceSuggestionApprovedSentence")
@@ -322,6 +343,7 @@ model ExampleSentenceToken {
   id                   String                        @id @default(cuid())
   exampleSentenceId    String
   wordId               String?
+  compoundId           String?
   inContextTranslation String?
   tokenOrder           Int
   surfaceForm          String
@@ -330,9 +352,33 @@ model ExampleSentenceToken {
   updatedAt            DateTime                      @updatedAt
   exampleSentence      ExampleSentence               @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
   word                 Word?                         @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  compound             ExampleSentenceCompound?      @relation(fields: [compoundId], references: [id], onDelete: SetNull)
   segments             ExampleSentenceTokenSegment[]
 
   @@unique([exampleSentenceId, tokenOrder])
+  @@index([exampleSentenceId])
+  @@index([wordId])
+  @@index([compoundId])
+  @@index([normalizedForm])
+}
+
+// A compound span: a run of adjacent tokens that together realize one
+// multi-word entry ("pir bek" in "Kipire bek..."). Member tokens keep their
+// own word links; the span carries the compound entry link and the combined
+// in-context translation. normalizedForm caches the joined member forms
+// ("kipire bek") for match/translation reuse.
+model ExampleSentenceCompound {
+  id                   String                 @id @default(cuid())
+  exampleSentenceId    String
+  wordId               String?
+  normalizedForm       String
+  inContextTranslation String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  exampleSentence      ExampleSentence        @relation(fields: [exampleSentenceId], references: [id], onDelete: Cascade)
+  word                 Word?                  @relation(fields: [wordId], references: [id], onDelete: SetNull)
+  tokens               ExampleSentenceToken[]
+
   @@index([exampleSentenceId])
   @@index([wordId])
   @@index([normalizedForm])

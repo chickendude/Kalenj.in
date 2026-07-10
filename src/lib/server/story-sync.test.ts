@@ -6,6 +6,7 @@ import {
 	syncStorySentences
 } from './story-sync';
 import {
+	createExampleSentenceCompoundsFromPlans,
 	createExampleSentenceTokensFromPlans,
 	createExampleSentenceWithAutoLemma,
 	createWordSentenceLinks,
@@ -31,6 +32,7 @@ vi.mock('$lib/server/auto-lemma', () => ({
 				.filter(Boolean)
 		)
 	]),
+	createExampleSentenceCompoundsFromPlans: vi.fn(),
 	createExampleSentenceTokensFromPlans: vi.fn(),
 	createExampleSentenceWithAutoLemma: vi.fn(),
 	createWordSentenceLinks: vi.fn(),
@@ -43,6 +45,7 @@ vi.mock('$lib/server/auto-lemma', () => ({
 			segments: [],
 			autoLinked: false
 		})),
+		compounds: [],
 		autoLinkedCount: 0
 	}))
 }));
@@ -68,6 +71,10 @@ const tx = {
 		deleteMany: vi.fn(),
 		updateMany: vi.fn()
 	},
+	exampleSentenceCompound: {
+		findMany: vi.fn(),
+		deleteMany: vi.fn()
+	},
 	wordSentence: {
 		deleteMany: vi.fn()
 	},
@@ -81,6 +88,7 @@ function resetMocks() {
 		tx.storySentence,
 		tx.exampleSentence,
 		tx.exampleSentenceToken,
+		tx.exampleSentenceCompound,
 		tx.wordSentence,
 		tx.lessonWord
 	]) {
@@ -89,6 +97,7 @@ function resetMocks() {
 		}
 	}
 
+	vi.mocked(createExampleSentenceCompoundsFromPlans).mockReset();
 	vi.mocked(createExampleSentenceTokensFromPlans).mockReset();
 	vi.mocked(createExampleSentenceWithAutoLemma).mockReset();
 	vi.mocked(createWordSentenceLinks).mockReset();
@@ -102,9 +111,11 @@ function resetMocks() {
 			segments: [],
 			autoLinked: false
 		})),
+		compounds: [],
 		autoLinkedCount: 0
 	}));
 	tx.lessonWord.findMany.mockResolvedValue([]);
+	tx.exampleSentenceCompound.findMany.mockResolvedValue([]);
 }
 
 beforeEach(() => {

@@ -34,7 +34,7 @@ function clampInt(raw: string | null, fallback: number, min: number, max: number
 
 function readSettings(url: URL): ListenSettings {
 	return {
-		reps: clampInt(url.searchParams.get('reps'), 2, MIN_REPS, MAX_REPS),
+		reps: clampInt(url.searchParams.get('reps'), 1, MIN_REPS, MAX_REPS),
 		kalenjinReps: clampInt(url.searchParams.get('kreps'), 1, 1, MAX_KALENJIN_REPS),
 		shuffle: url.searchParams.get('shuffle') === '1'
 	};
@@ -73,7 +73,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 		return {
 			mode: 'play' as const,
 			scope: scopeParam,
-			title: lesson?.title ?? 'Audio drills',
+			title: lesson?.title ?? 'Speaking Drills',
 			segments,
 			settings
 		};
@@ -143,7 +143,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 					lessonTitles: programLessons.map((entry) => entry.lesson.title),
 					todaySentenceCount:
 						programSession?.segments.reduce((sum, s) => sum + s.sentences.length, 0) ?? 0,
-					todayCycles: programSession?.segments.map((s) => s.reps ?? 1) ?? [],
+					todayRepetitions: programSession?.segments.map((s) => s.reps ?? 1) ?? [],
 					finished: programSession?.finished ?? false
 				}
 			: null

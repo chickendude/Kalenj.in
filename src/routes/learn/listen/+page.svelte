@@ -30,7 +30,7 @@
 		lessonIds: string[];
 		lessonTitles: string[];
 		todaySentenceCount: number;
-		todayCycles: number[];
+		todayRepetitions: number[];
 		finished: boolean;
 	};
 
@@ -137,7 +137,7 @@
 			lessonIds,
 			lessonTitles: lessonIds.map((id) => titleById.get(id)!),
 			todaySentenceCount: 0,
-			todayCycles: [],
+			todayRepetitions: [],
 			finished: plan.finished
 		};
 		localProgramView = view;
@@ -148,7 +148,7 @@
 				const segment = byLesson.get(entry.lessonId);
 				if (segment && segment.sentences.length > 0) {
 					view.todaySentenceCount += segment.sentences.length;
-					view.todayCycles.push(entry.reps);
+					view.todayRepetitions.push(entry.reps);
 				}
 			}
 			localProgramView = { ...view };
@@ -186,7 +186,7 @@
 	);
 
 	// --- Session settings (picker) -------------------------------------------
-	let reps = $state(2);
+	let reps = $state(1);
 	let kalenjinReps = $state(1);
 	let shuffle = $state(false);
 	// svelte-ignore state_referenced_locally — initialize from the URL once
@@ -196,9 +196,23 @@
 	// svelte-ignore state_referenced_locally — initialize from the URL once
 	shuffle = data.settings.shuffle;
 
-	const settingsQuery = $derived(
-		`reps=${reps}&kreps=${kalenjinReps}&shuffle=${shuffle ? 1 : 0}`
-	);
+	const settingsQuery = $derived(`reps=${reps}&kreps=${kalenjinReps}&shuffle=${shuffle ? 1 : 0}`);
+
+	function adjustReps(delta: number) {
+		reps = Math.min(9, Math.max(1, reps + delta));
+	}
+
+	function clampReps() {
+		reps = Math.min(9, Math.max(1, Number(reps) || 1));
+	}
+
+	function adjustKalenjinReps(delta: number) {
+		kalenjinReps = Math.min(3, Math.max(1, kalenjinReps + delta));
+	}
+
+	function clampKalenjinReps() {
+		kalenjinReps = Math.min(3, Math.max(1, Number(kalenjinReps) || 1));
+	}
 
 	// --- Playlist selection ---------------------------------------------------
 	let playlistSelected = $state(new Set<string>());
@@ -353,9 +367,7 @@
 		<h1 class="play-title">{localTitle ?? data.title}</h1>
 		<p class="play-hint">
 			Hear the English, say it in Kalenjin, then listen and repeat —
-			{data.scope === 'program' ? 'cycles per lesson follow your pattern' : `${data.settings.reps}× per sentence`}{data.settings.kalenjinReps > 1
-				? `, Kalenjin ${data.settings.kalenjinReps}× per cycle`
-				: ''}.
+			{data.scope === 'program' ? 'repetitions follow your program pattern' : `${data.settings.reps}× per sentence`}.
 		</p>
 		{#if data.scope === 'program' && (data.user ? data.programFinished : localProgramFinished)}
 			<p class="program-finished">
@@ -405,22 +417,72 @@
 	<section class="settings-panel">
 		<h2 class="panel-title">Session settings</h2>
 		<div class="settings-grid">
-			<label class="setting">
-				<span>Repetitions per sentence</span>
-				<select class="select" bind:value={reps}>
-					{#each [1, 2, 3, 4, 5, 6, 7, 8, 9] as n (n)}
-						<option value={n}>{n}×</option>
-					{/each}
-				</select>
-			</label>
-			<label class="setting">
-				<span>Kalenjin plays per repetition</span>
-				<select class="select" bind:value={kalenjinReps}>
-					{#each [1, 2, 3] as n (n)}
-						<option value={n}>{n}×</option>
-					{/each}
-				</select>
-			</label>
+			<div class="setting repetition-setting">
+				<label for="sentence-reps">Repetitions per sentence</label>
+				<span class="stepper">
+					<button
+						type="button"
+						class="btn-sm ghost stepper-button"
+						onclick={() => adjustReps(-1)}
+						disabled={reps <= 1}
+						aria-label="Decrease repetitions per sentence"
+					>
+						−
+					</button>
+					<input
+						id="sentence-reps"
+						class="stepper-input"
+						type="number"
+						min="1"
+						max="9"
+						bind:value={reps}
+						oninput={clampReps}
+						aria-label="Repetitions per sentence"
+					/>
+					<button
+						type="button"
+						class="btn-sm ghost stepper-button"
+						onclick={() => adjustReps(1)}
+						disabled={reps >= 9}
+						aria-label="Increase repetitions per sentence"
+					>
+						+
+					</button>
+				</span>
+			</div>
+			<div class="setting repetition-setting">
+				<label for="kalenjin-reps">Kalenjin repetitions</label>
+				<span class="stepper">
+					<button
+						type="button"
+						class="btn-sm ghost stepper-button"
+						onclick={() => adjustKalenjinReps(-1)}
+						disabled={kalenjinReps <= 1}
+						aria-label="Decrease Kalenjin repetitions"
+					>
+						−
+					</button>
+					<input
+						id="kalenjin-reps"
+						class="stepper-input"
+						type="number"
+						min="1"
+						max="3"
+						bind:value={kalenjinReps}
+						oninput={clampKalenjinReps}
+						aria-label="Kalenjin repetitions"
+					/>
+					<button
+						type="button"
+						class="btn-sm ghost stepper-button"
+						onclick={() => adjustKalenjinReps(1)}
+						disabled={kalenjinReps >= 3}
+						aria-label="Increase Kalenjin repetitions"
+					>
+						+
+					</button>
+				</span>
+			</div>
 			<label class="setting toggle">
 				<input type="checkbox" bind:checked={shuffle} />
 				<span>Random sentence order</span>
@@ -695,8 +757,8 @@
 
 	.settings-grid {
 		display: grid;
-		gap: 0.7rem 1.5rem;
-		grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+		gap: 0.7rem;
+		grid-template-columns: minmax(0, max-content);
 	}
 
 	.setting {
@@ -712,8 +774,46 @@
 		justify-content: flex-start;
 	}
 
-	.setting .select {
-		width: auto;
+	.repetition-setting {
+		display: grid;
+		gap: 1rem;
+		grid-template-columns: 12rem max-content;
+		justify-content: start;
+	}
+
+	.stepper {
+		align-items: center;
+		display: inline-flex;
+		gap: 0.35rem;
+	}
+
+	.stepper-button {
+		align-items: center;
+		display: inline-flex;
+		height: 38px;
+		justify-content: center;
+		min-width: 2.25rem;
+		padding-left: 0.65rem;
+		padding-right: 0.65rem;
+	}
+
+	.stepper-input {
+		appearance: textfield;
+		background: var(--bg);
+		border: 1px solid var(--line);
+		border-radius: var(--radius);
+		color: var(--ink);
+		font: inherit;
+		height: 38px;
+		padding: 0 0.45rem;
+		text-align: center;
+		width: 3rem;
+	}
+
+	.stepper-input::-webkit-inner-spin-button,
+	.stepper-input::-webkit-outer-spin-button {
+		appearance: none;
+		margin: 0;
 	}
 
 	.program-head {

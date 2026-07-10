@@ -556,7 +556,7 @@
 						▶ Start playlist ({playlistSelected.size})
 					</a>
 				{:else}
-					<span class="playlist-hint">Tick lessons to build a playlist</span>
+					<span class="playlist-hint">Choose lessons for playlist</span>
 				{/if}
 			</div>
 			<label class="select-all-toggle">

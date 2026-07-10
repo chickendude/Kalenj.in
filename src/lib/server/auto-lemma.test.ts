@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import {
 	autoLemmatizeMissingExampleSentenceWords,
 	buildAutoLemmaTokenPlans,
+	compoundSpanForms,
 	loadAutoLemmaInContextTranslations,
+	planCompoundSpans,
+	resolveAutoLemmaTokenPlans,
 	splitMarkedTokenSegments
 } from '$lib/server/auto-lemma';
 
@@ -24,6 +27,204 @@ describe('splitMarkedTokenSegments', () => {
 				normalizedForm: 'nyun'
 			}
 		]);
+	});
+});
+
+describe('compoundSpanForms', () => {
+	it('collects joined normalized forms for adjacent token runs', () => {
+		expect(
+			compoundSpanForms([
+				{ surfaceForm: 'Pir', normalizedForm: 'pir' },
+				{ surfaceForm: 'bek.', normalizedForm: 'bek' }
+			])
+		).toEqual(['pir bek']);
+	});
+
+	it('does not join across interior punctuation or split markers', () => {
+		expect(
+			compoundSpanForms([
+				{ surfaceForm: 'pir,', normalizedForm: 'pir' },
+				{ surfaceForm: 'bek', normalizedForm: 'bek' }
+			])
+		).toEqual([]);
+		expect(
+			compoundSpanForms([
+				{ surfaceForm: 'pir|it', normalizedForm: 'pir|it' },
+				{ surfaceForm: 'bek', normalizedForm: 'bek' }
+			])
+		).toEqual([]);
+	});
+});
+
+describe('planCompoundSpans', () => {
+	const matches = new Map([
+		['tes tai', 'word-continue'],
+		['tes tai kong', 'word-longer']
+	]);
+
+	it('prefers the longest compound match at each position', () => {
+		const spans = planCompoundSpans(
+			[
+				{ surfaceForm: 'tes', normalizedForm: 'tes' },
+				{ surfaceForm: 'tai', normalizedForm: 'tai' },
+				{ surfaceForm: 'kong', normalizedForm: 'kong' }
+			],
+			matches
+		);
+
+		expect(spans).toEqual([
+			{
+				startIndex: 0,
+				tokenCount: 3,
+				surfaceForm: 'tes tai kong',
+				normalizedForm: 'tes tai kong',
+				wordId: 'word-longer'
+			}
+		]);
+	});
+
+	it('does not overlap spans and skips ungroupable tokens', () => {
+		const spans = planCompoundSpans(
+			[
+				{ surfaceForm: 'tes', normalizedForm: 'tes', locked: false },
+				{ surfaceForm: 'tai', normalizedForm: 'tai', locked: true }
+			],
+			new Map([['tes tai', 'word-continue']]),
+			(token) => !token.locked
+		);
+
+		expect(spans).toEqual([]);
+	});
+});
+
+describe('resolveAutoLemmaTokenPlans', () => {
+	function compoundDb() {
+		return {
+			word: {
+				findMany: vi
+					.fn()
+					.mockResolvedValue([{ id: 'word-swim', kalenjinNormalized: 'pir bek' }])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceCompound: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			wordComponent: {
+				findMany: vi.fn().mockResolvedValue([])
+			}
+		};
+	}
+
+	it('keeps tokens individual and plans a compound span over the matched run', async () => {
+		const db = compoundDb();
+
+		const plan = await resolveAutoLemmaTokenPlans(db as never, [
+			{ tokenOrder: 0, surfaceForm: 'Pir', normalizedForm: 'pir' },
+			{ tokenOrder: 1, surfaceForm: 'bek.', normalizedForm: 'bek' }
+		]);
+
+		expect(plan.tokens).toHaveLength(2);
+		expect(plan.tokens.map((token) => token.surfaceForm)).toEqual(['Pir', 'bek.']);
+		expect(plan.compounds).toEqual([
+			{
+				tokenOrders: [0, 1],
+				normalizedForm: 'pir bek',
+				wordId: 'word-swim',
+				inContextTranslation: null,
+				autoLinked: true
+			}
+		]);
+		expect(plan.autoLinkedCount).toBe(1);
+		expect(db.word.findMany).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { kalenjinNormalized: { in: ['pir bek'] } }
+			})
+		);
+	});
+
+	it('keeps individual annotations and still plans the compound span', async () => {
+		const db = compoundDb();
+
+		const plan = await resolveAutoLemmaTokenPlans(
+			db as never,
+			[
+				{ tokenOrder: 0, surfaceForm: 'Pir', normalizedForm: 'pir' },
+				{ tokenOrder: 1, surfaceForm: 'bek.', normalizedForm: 'bek' }
+			],
+			[
+				{
+					tokenOrder: 0,
+					surfaceForm: 'Pir',
+					normalizedForm: 'pir',
+					wordId: 'word-hit',
+					inContextTranslation: 'hit'
+				}
+			]
+		);
+
+		expect(plan.tokens).toHaveLength(2);
+		expect(plan.tokens[0]).toMatchObject({ wordId: 'word-hit', inContextTranslation: 'hit' });
+		expect(plan.compounds).toHaveLength(1);
+		expect(plan.compounds[0]).toMatchObject({ wordId: 'word-swim', tokenOrders: [0, 1] });
+	});
+
+	it('links unlinked span members from the compound entry components, position by position', async () => {
+		const db = compoundDb();
+		db.word.findMany.mockResolvedValue([]);
+		db.observedWordForm.findMany.mockResolvedValue([
+			{ normalizedForm: 'kipire bek', wordId: 'word-swim' }
+		]);
+		db.wordComponent.findMany.mockResolvedValue([
+			{ compoundWordId: 'word-swim', componentWordId: 'word-pir' },
+			{ compoundWordId: 'word-swim', componentWordId: 'word-bek' }
+		]);
+
+		const plan = await resolveAutoLemmaTokenPlans(db as never, [
+			{ tokenOrder: 0, surfaceForm: 'Kipire', normalizedForm: 'kipire' },
+			{ tokenOrder: 1, surfaceForm: 'bek', normalizedForm: 'bek' }
+		]);
+
+		expect(plan.tokens[0]).toMatchObject({ wordId: 'word-pir', autoLinked: true });
+		expect(plan.tokens[1]).toMatchObject({ wordId: 'word-bek', autoLinked: true });
+		expect(plan.compounds[0]).toMatchObject({ wordId: 'word-swim' });
+		expect(plan.autoLinkedCount).toBe(3);
+	});
+
+	it('re-applies an editor-grouped compound span with its combined translation', async () => {
+		const db = compoundDb();
+		db.word.findMany.mockResolvedValue([]);
+
+		const plan = await resolveAutoLemmaTokenPlans(
+			db as never,
+			[
+				{ tokenOrder: 0, surfaceForm: 'Kipire', normalizedForm: 'kipire' },
+				{ tokenOrder: 1, surfaceForm: 'bek', normalizedForm: 'bek' }
+			],
+			[],
+			[
+				{
+					normalizedForm: 'kipire bek',
+					wordId: 'word-swim',
+					inContextTranslation: "we're swimming"
+				}
+			]
+		);
+
+		expect(plan.compounds).toEqual([
+			{
+				tokenOrders: [0, 1],
+				normalizedForm: 'kipire bek',
+				wordId: 'word-swim',
+				inContextTranslation: "we're swimming",
+				autoLinked: false
+			}
+		]);
+		expect(plan.autoLinkedCount).toBe(0);
 	});
 });
 
@@ -300,6 +501,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -351,6 +553,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -430,6 +633,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -489,6 +693,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -548,6 +753,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -600,6 +806,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',
@@ -643,6 +850,186 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 		});
 	});
 
+	it('groups adjacent tokens matching a compound entry without merging them', async () => {
+		const tx = {
+			exampleSentenceToken: { update: vi.fn(), updateMany: vi.fn() },
+			exampleSentenceTokenSegment: { update: vi.fn(), createMany: vi.fn() },
+			exampleSentenceCompound: { create: vi.fn().mockResolvedValue({ id: 'compound-1' }), update: vi.fn() },
+			exampleSentence: { update: vi.fn() },
+			wordSentence: { createMany: vi.fn() },
+			observedWordForm: { upsert: vi.fn() }
+		};
+		const db = {
+			exampleSentence: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: 'sentence-1',
+						compounds: [],
+						tokens: [
+							{
+								id: 'token-1',
+								tokenOrder: 0,
+								surfaceForm: 'Amoche',
+								normalizedForm: 'amoche',
+								wordId: null,
+								compoundId: null,
+								inContextTranslation: null,
+								segments: []
+							},
+							{
+								id: 'token-2',
+								tokenOrder: 1,
+								surfaceForm: 'pir',
+								normalizedForm: 'pir',
+								wordId: null,
+								compoundId: null,
+								inContextTranslation: null,
+								segments: []
+							},
+							{
+								id: 'token-3',
+								tokenOrder: 2,
+								surfaceForm: 'bek.',
+								normalizedForm: 'bek',
+								wordId: null,
+								compoundId: null,
+								inContextTranslation: null,
+								segments: []
+							}
+						]
+					}
+				])
+			},
+			word: {
+				findMany: vi
+					.fn()
+					.mockResolvedValue([{ id: 'word-swim', kalenjinNormalized: 'pir bek' }])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceCompound: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			wordComponent: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			$transaction: vi.fn((callback) => callback(tx))
+		};
+
+		const result = await autoLemmatizeMissingExampleSentenceWords(db as never);
+
+		expect(result).toMatchObject({
+			scannedSentences: 1,
+			updatedSentences: 1,
+			linkedWords: 1
+		});
+		expect(tx.exampleSentenceCompound.create).toHaveBeenCalledWith({
+			data: {
+				exampleSentenceId: 'sentence-1',
+				normalizedForm: 'pir bek',
+				wordId: 'word-swim'
+			}
+		});
+		expect(tx.exampleSentenceToken.updateMany).toHaveBeenCalledWith({
+			where: { id: { in: ['token-2', 'token-3'] } },
+			data: { compoundId: 'compound-1' }
+		});
+		expect(tx.exampleSentenceToken.update).not.toHaveBeenCalled();
+		expect(tx.observedWordForm.upsert).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { normalizedForm_wordId: { normalizedForm: 'pir bek', wordId: 'word-swim' } }
+			})
+		);
+		expect(tx.wordSentence.createMany).toHaveBeenCalledWith({
+			data: [{ wordId: 'word-swim', exampleSentenceId: 'sentence-1' }],
+			skipDuplicates: true
+		});
+		expect(tx.exampleSentence.update).toHaveBeenCalledWith({
+			where: { id: 'sentence-1' },
+			data: { status: 'NEEDS_PROOFREAD', lemmaProofreadAt: null }
+		});
+	});
+
+	it('links individual tokens while grouping when both match', async () => {
+		const tx = {
+			exampleSentenceToken: { update: vi.fn(), updateMany: vi.fn() },
+			exampleSentenceTokenSegment: { update: vi.fn(), createMany: vi.fn() },
+			exampleSentenceCompound: { create: vi.fn().mockResolvedValue({ id: 'compound-1' }), update: vi.fn() },
+			exampleSentence: { update: vi.fn() },
+			wordSentence: { createMany: vi.fn() },
+			observedWordForm: { upsert: vi.fn() }
+		};
+		const db = {
+			exampleSentence: {
+				findMany: vi.fn().mockResolvedValue([
+					{
+						id: 'sentence-1',
+						compounds: [],
+						tokens: [
+							{
+								id: 'token-1',
+								tokenOrder: 0,
+								surfaceForm: 'pir',
+								normalizedForm: 'pir',
+								wordId: 'word-hit',
+								compoundId: null,
+								inContextTranslation: 'hit',
+								segments: []
+							},
+							{
+								id: 'token-2',
+								tokenOrder: 1,
+								surfaceForm: 'bek',
+								normalizedForm: 'bek',
+								wordId: null,
+								compoundId: null,
+								inContextTranslation: null,
+								segments: []
+							}
+						]
+					}
+				])
+			},
+			word: {
+				findMany: vi
+					.fn()
+					.mockResolvedValue([{ id: 'word-swim', kalenjinNormalized: 'pir bek' }])
+			},
+			observedWordForm: {
+				findMany: vi.fn().mockResolvedValue([{ normalizedForm: 'bek', wordId: 'word-water' }])
+			},
+			exampleSentenceToken: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			exampleSentenceCompound: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			wordComponent: {
+				findMany: vi.fn().mockResolvedValue([])
+			},
+			$transaction: vi.fn((callback) => callback(tx))
+		};
+
+		const result = await autoLemmatizeMissingExampleSentenceWords(db as never);
+
+		expect(result).toMatchObject({ updatedSentences: 1, linkedWords: 2 });
+		expect(tx.exampleSentenceToken.update).toHaveBeenCalledWith({
+			where: { id: 'token-2' },
+			data: { wordId: 'word-water' }
+		});
+		expect(tx.exampleSentenceCompound.create).toHaveBeenCalledWith({
+			data: {
+				exampleSentenceId: 'sentence-1',
+				normalizedForm: 'pir bek',
+				wordId: 'word-swim'
+			}
+		});
+	});
+
 	it('replays known fused-token splits whose stored source form has punctuation', async () => {
 		const tx = {
 			exampleSentenceToken: { update: vi.fn() },
@@ -656,6 +1043,7 @@ describe('autoLemmatizeMissingExampleSentenceWords', () => {
 				findMany: vi.fn().mockResolvedValue([
 					{
 						id: 'sentence-1',
+						compounds: [],
 						tokens: [
 							{
 								id: 'token-1',

@@ -3,11 +3,13 @@ import { parseStoryImportText } from '$lib/story-import';
 import { prisma } from '$lib/server/prisma';
 import {
 	collectLinkedWordIds,
+	createExampleSentenceCompoundsFromPlans,
 	createExampleSentenceTokensFromPlans,
 	createExampleSentenceWithAutoLemma,
 	createWordSentenceLinks,
 	recordAutoLemmaObservedForms,
 	resolveAutoLemmaTokenPlans,
+	type AutoLemmaCompoundPlan,
 	type AutoLemmaTokenPlan
 } from '$lib/server/auto-lemma';
 import { splitIntoSentences, splitSentenceText } from '$lib/story-split';
@@ -54,7 +56,17 @@ async function replaceExampleSentenceTokens(
 	tokenData: TokenizedWord[],
 	preservedTokens: ExampleTokenSnapshot[] = []
 ): Promise<void> {
+	const existingCompounds = await tx.exampleSentenceCompound.findMany({
+		where: { exampleSentenceId },
+		select: {
+			normalizedForm: true,
+			wordId: true,
+			inContextTranslation: true,
+			tokens: { select: { tokenOrder: true } }
+		}
+	});
 	await tx.exampleSentenceToken.deleteMany({ where: { exampleSentenceId } });
+	await tx.exampleSentenceCompound.deleteMany({ where: { exampleSentenceId } });
 
 	if (tokenData.length === 0) {
 		await tx.wordSentence.deleteMany({ where: { exampleSentenceId } });
@@ -71,14 +83,38 @@ async function replaceExampleSentenceTokens(
 						snapshot?.normalizedForm === token.normalizedForm ? snapshot : undefined
 					);
 				}),
+				// Token count (and per-index forms) are unchanged, so existing
+				// compound spans re-attach to the same token orders.
+				compounds: existingCompounds.flatMap((compound): AutoLemmaCompoundPlan[] => {
+					const tokenOrders = compound.tokens
+						.map((token) => token.tokenOrder)
+						.sort((a, b) => a - b);
+					if (tokenOrders.length < 2 || tokenOrders.some((order) => order >= tokenData.length)) {
+						return [];
+					}
+					return [
+						{
+							tokenOrders,
+							normalizedForm: compound.normalizedForm,
+							wordId: compound.wordId,
+							inContextTranslation: compound.inContextTranslation,
+							autoLinked: false
+						}
+					];
+				}),
 				autoLinkedCount: 0
 			}
-		: await resolveAutoLemmaTokenPlans(tx, tokenData, preservedTokens);
+		: await resolveAutoLemmaTokenPlans(tx, tokenData, preservedTokens, existingCompounds);
 
 	await createExampleSentenceTokensFromPlans(tx, exampleSentenceId, plan.tokens);
+	await createExampleSentenceCompoundsFromPlans(tx, exampleSentenceId, plan.compounds);
 	await tx.wordSentence.deleteMany({ where: { exampleSentenceId } });
-	await createWordSentenceLinks(tx, exampleSentenceId, collectLinkedWordIds(plan.tokens));
-	await recordAutoLemmaObservedForms(tx, plan.tokens);
+	await createWordSentenceLinks(
+		tx,
+		exampleSentenceId,
+		collectLinkedWordIds(plan.tokens, plan.compounds)
+	);
+	await recordAutoLemmaObservedForms(tx, plan.tokens, plan.compounds);
 
 	if (plan.autoLinkedCount > 0) {
 		await tx.exampleSentence.update({

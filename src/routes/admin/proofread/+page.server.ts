@@ -129,6 +129,7 @@ const pageSentenceIncludeBase = {
 		orderBy: { tokenOrder: 'asc' },
 		include: {
 			word: { select: buildWordSelect() },
+			compound: { include: { word: { select: buildWordSelect() } } },
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
 				include: {

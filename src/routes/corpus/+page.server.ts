@@ -61,6 +61,7 @@ const sentenceIncludeBase = {
 		orderBy: { tokenOrder: 'asc' },
 		include: {
 			word: true,
+			compound: { include: { word: true } },
 			segments: {
 				orderBy: { segmentOrder: 'asc' },
 				include: { word: true }

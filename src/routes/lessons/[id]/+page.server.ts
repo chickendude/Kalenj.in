@@ -355,6 +355,17 @@ async function getLessonDetail(lessonId: string) {
 													}
 												}
 											},
+											compound: {
+												include: {
+													word: {
+														include: {
+															spellings: {
+																orderBy: [{ spelling: 'asc' }]
+															}
+														}
+													}
+												}
+											},
 											segments: {
 												orderBy: { segmentOrder: 'asc' },
 												include: {
@@ -389,6 +400,17 @@ async function getLessonDetail(lessonId: string) {
 												include: {
 													spellings: {
 														orderBy: [{ spelling: 'asc' }]
+													}
+												}
+											},
+											compound: {
+												include: {
+													word: {
+														include: {
+															spellings: {
+																orderBy: [{ spelling: 'asc' }]
+															}
+														}
 													}
 												}
 											},

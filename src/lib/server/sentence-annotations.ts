@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import {
 	buildAutoLemmaTokenPlans,
 	collectLinkedWordIds,
+	createExampleSentenceCompoundsFromPlans,
 	createExampleSentenceTokensFromPlans,
 	createWordSentenceLinks,
 	recordAutoLemmaObservedForms,
@@ -59,8 +60,19 @@ export async function syncExampleSentenceTokens(
 			}
 		}
 	});
+	const existingCompounds = await tx.exampleSentenceCompound.findMany({
+		where: { exampleSentenceId },
+		select: {
+			normalizedForm: true,
+			wordId: true,
+			inContextTranslation: true
+		}
+	});
 
 	await tx.exampleSentenceToken.deleteMany({
+		where: { exampleSentenceId }
+	});
+	await tx.exampleSentenceCompound.deleteMany({
 		where: { exampleSentenceId }
 	});
 
@@ -68,10 +80,15 @@ export async function syncExampleSentenceTokens(
 		return;
 	}
 
-	const plan = await resolveAutoLemmaTokenPlans(tx, tokenData, existingTokens);
+	const plan = await resolveAutoLemmaTokenPlans(tx, tokenData, existingTokens, existingCompounds);
 	await createExampleSentenceTokensFromPlans(tx, exampleSentenceId, plan.tokens);
-	await createWordSentenceLinks(tx, exampleSentenceId, collectLinkedWordIds(plan.tokens));
-	await recordAutoLemmaObservedForms(tx, plan.tokens);
+	await createExampleSentenceCompoundsFromPlans(tx, exampleSentenceId, plan.compounds);
+	await createWordSentenceLinks(
+		tx,
+		exampleSentenceId,
+		collectLinkedWordIds(plan.tokens, plan.compounds)
+	);
+	await recordAutoLemmaObservedForms(tx, plan.tokens, plan.compounds);
 
 	if (plan.autoLinkedCount > 0) {
 		await tx.exampleSentence.update({

@@ -18,6 +18,15 @@ const mocks = vi.hoisted(() => {
 			findMany: vi.fn(),
 			upsert: vi.fn()
 		},
+		word: {
+			findMany: vi.fn()
+		},
+		exampleSentenceCompound: {
+			findMany: vi.fn(),
+			deleteMany: vi.fn(),
+			create: vi.fn(),
+			updateMany: vi.fn()
+		},
 		wordSentence: {
 			createMany: vi.fn()
 		},
@@ -50,6 +59,8 @@ function resetMocks() {
 		mocks.tx.exampleSentence,
 		mocks.tx.exampleSentenceToken,
 		mocks.tx.observedWordForm,
+		mocks.tx.word,
+		mocks.tx.exampleSentenceCompound,
 		mocks.tx.wordSentence,
 		mocks.tx.lessonWord
 	]) {
@@ -62,6 +73,8 @@ function resetMocks() {
 	mocks.prisma.$transaction.mockImplementation((callback) => callback(mocks.tx));
 	mocks.tx.exampleSentenceToken.findMany.mockResolvedValue([]);
 	mocks.tx.observedWordForm.findMany.mockResolvedValue([]);
+	mocks.tx.word.findMany.mockResolvedValue([]);
+	mocks.tx.exampleSentenceCompound.findMany.mockResolvedValue([]);
 	mocks.tx.exampleSentence.create.mockResolvedValue({ id: 'sentence-2' });
 	mocks.prisma.exampleSentence.findFirst.mockResolvedValue(null);
 }

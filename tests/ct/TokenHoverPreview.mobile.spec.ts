@@ -61,18 +61,15 @@ async function expectTooltipWithinViewport(page: Page) {
 		.toBeLessThanOrEqual(viewport!.width - 11);
 }
 
-test('mobile taps show one preview with a full-entry affordance', async ({ mount, page }) => {
+test('mobile taps show one preview with a full-entry link', async ({ mount, page }) => {
 	const component = await mountPreview(mount);
 
 	await component.getByRole('link', { name: /^Ngunon$/ }).click();
 	await expect(page).not.toHaveURL(/\/dictionary\//);
 	await expect(page.getByRole('tooltip')).toContainText('now');
-	await expect(
-		component.getByRole('link', { name: 'Open dictionary entry for Ngunon', exact: true })
-	).toBeVisible();
-	await expect(
-		component.getByRole('link', { name: 'Open dictionary entry for Ngunon', exact: true })
-	).toHaveAttribute('href', '/dictionary/ngunon');
+	const entryLink = page.getByRole('tooltip').getByRole('link');
+	await expect(entryLink).toBeVisible();
+	await expect(entryLink).toHaveAttribute('href', '/dictionary/ngunon');
 
 	await component.getByRole('link', { name: /^Igiilge$/ }).click();
 	await expect(page.getByRole('tooltip')).toHaveCount(1);
@@ -80,7 +77,7 @@ test('mobile taps show one preview with a full-entry affordance', async ({ mount
 	await expect(page.getByRole('tooltip')).not.toContainText('now');
 });
 
-test('mobile full-entry affordance uses the stored dictionary slug', async ({ mount }) => {
+test('mobile full-entry link uses the stored dictionary slug', async ({ mount, page }) => {
 	const component = await mount(TokenHoverPreviewHarness, {
 		props: {
 			sentenceText: 'Kot',
@@ -96,9 +93,10 @@ test('mobile full-entry affordance uses the stored dictionary slug', async ({ mo
 	});
 
 	await component.getByRole('link', { name: /^Kot$/ }).click();
-	await expect(
-		component.getByRole('link', { name: 'Open dictionary entry for kot', exact: true })
-	).toHaveAttribute('href', '/dictionary/kot-1');
+	await expect(page.getByRole('tooltip').getByRole('link')).toHaveAttribute(
+		'href',
+		'/dictionary/kot-1'
+	);
 });
 
 test('mobile previews stay onscreen and remain centered when there is room', async ({

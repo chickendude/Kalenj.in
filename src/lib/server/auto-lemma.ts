@@ -35,8 +35,23 @@ export type AutoLemmaTokenPlan = {
 	autoLinked: boolean;
 };
 
+export type AutoLemmaCompoundPlan = {
+	tokenOrders: number[];
+	normalizedForm: string;
+	wordId: string | null;
+	inContextTranslation: string | null;
+	autoLinked: boolean;
+};
+
+export type ExistingCompoundAnnotation = {
+	normalizedForm: string;
+	wordId: string | null;
+	inContextTranslation: string | null;
+};
+
 export type AutoLemmaPlanResult = {
 	tokens: AutoLemmaTokenPlan[];
+	compounds: AutoLemmaCompoundPlan[];
 	autoLinkedCount: number;
 };
 
@@ -50,6 +65,21 @@ export type AutoLemmaSegmentPattern = Array<{
 }>;
 
 const COMMON_EDGE_PUNCTUATION = ['.', '?', '!', ',', ';', ':'];
+
+const MAX_COMPOUND_TOKEN_SPAN = 4;
+
+export type CompoundSpan = {
+	startIndex: number;
+	tokenCount: number;
+	surfaceForm: string;
+	normalizedForm: string;
+	wordId: string;
+};
+
+type CompoundSpanToken = {
+	surfaceForm: string;
+	normalizedForm: string;
+};
 
 type ExampleSentenceCreateInput = {
 	kalenjin: string;
@@ -230,6 +260,292 @@ function inferKnownFusedTokenSegments(
 			autoLinked: true
 		};
 	});
+}
+
+/**
+ * Joined surface/normalized forms for a run of adjacent tokens, or null when
+ * the run cannot form a compound (interior punctuation, split markers, or a
+ * token that normalizes to nothing).
+ */
+function joinedCompoundSpan(span: CompoundSpanToken[]): CompoundSpanToken | null {
+	if (span.some((token) => token.surfaceForm.includes('|'))) {
+		return null;
+	}
+
+	const expectedNormalized = span.map((token) => effectiveNormalizedForm(token.normalizedForm));
+	if (expectedNormalized.some((form) => !form)) {
+		return null;
+	}
+
+	const surfaceForm = span.map((token) => token.surfaceForm).join(' ');
+	const normalizedForm = normalizeToken(surfaceForm);
+	if (normalizedForm !== expectedNormalized.join(' ')) {
+		return null;
+	}
+
+	return { surfaceForm, normalizedForm };
+}
+
+export function compoundSpanForms<T extends CompoundSpanToken>(
+	tokens: T[],
+	canInclude: (token: T) => boolean = () => true
+): string[] {
+	const forms: string[] = [];
+	for (let start = 0; start < tokens.length - 1; start += 1) {
+		const maxCount = Math.min(MAX_COMPOUND_TOKEN_SPAN, tokens.length - start);
+		for (let count = 2; count <= maxCount; count += 1) {
+			const span = tokens.slice(start, start + count);
+			if (!span.every(canInclude)) break;
+			const joined = joinedCompoundSpan(span);
+			if (!joined) break;
+			forms.push(joined.normalizedForm);
+		}
+	}
+	return distinct(forms);
+}
+
+/**
+ * Match multi-word dictionary entries ("pir bek") against joined forms of
+ * adjacent tokens. Candidates come from entry lemmas and from observed forms
+ * recorded when editors merged tokens; a form only matches when exactly one
+ * word is a candidate.
+ */
+export async function loadAutoLemmaCompoundMatches(
+	db: AutoLemmaDb,
+	forms: string[]
+): Promise<Map<string, string>> {
+	const requestedForms = distinct(forms).filter((form) => form.includes(' '));
+	if (requestedForms.length === 0) {
+		return new Map();
+	}
+
+	const [wordRows, observedRows] = await Promise.all([
+		db.word.findMany({
+			where: { kalenjinNormalized: { in: requestedForms } },
+			select: { id: true, kalenjinNormalized: true }
+		}),
+		db.observedWordForm.findMany({
+			where: { normalizedForm: { in: requestedForms } },
+			select: { normalizedForm: true, wordId: true }
+		})
+	]);
+
+	const requestedFormSet = new Set(requestedForms);
+	const candidates = new Map<string, Set<string>>();
+	const addCandidate = (normalizedForm: string, wordId: string) => {
+		if (!requestedFormSet.has(normalizedForm)) return;
+		const wordIds = candidates.get(normalizedForm) ?? new Set<string>();
+		wordIds.add(wordId);
+		candidates.set(normalizedForm, wordIds);
+	};
+	for (const row of wordRows) {
+		addCandidate(row.kalenjinNormalized, row.id);
+	}
+	for (const row of observedRows) {
+		addCandidate(row.normalizedForm, row.wordId);
+	}
+
+	const matches = new Map<string, string>();
+	for (const [normalizedForm, wordIds] of candidates) {
+		if (wordIds.size === 1) {
+			matches.set(normalizedForm, [...wordIds][0]);
+		}
+	}
+
+	return matches;
+}
+
+/**
+ * Ordered component entries ("pir bek" -> [pir, bek]) for compound words, from
+ * the dictionary-level WordComponent breakdown.
+ */
+async function loadCompoundComponentMap(
+	db: AutoLemmaDb,
+	wordIds: string[]
+): Promise<Map<string, string[]>> {
+	const requestedIds = distinct(wordIds);
+	if (requestedIds.length === 0) {
+		return new Map();
+	}
+
+	const rows = await db.wordComponent.findMany({
+		where: { compoundWordId: { in: requestedIds } },
+		orderBy: { componentOrder: 'asc' },
+		select: { compoundWordId: true, componentWordId: true }
+	});
+
+	const map = new Map<string, string[]>();
+	for (const row of rows) {
+		const components = map.get(row.compoundWordId) ?? [];
+		components.push(row.componentWordId);
+		map.set(row.compoundWordId, components);
+	}
+	return map;
+}
+
+/**
+ * Positionally link a compound span's still-unlinked member tokens to the
+ * compound entry's component words ("Kipire bek" linked to pir bek fills
+ * kipire -> pir and bek -> bek), teaching the observed-forms cache the
+ * inflected member forms along the way. Only applies when the member count
+ * matches the component count.
+ */
+export async function linkCompoundMemberTokensByComponents(
+	db: AutoLemmaDb,
+	exampleSentenceId: string,
+	compoundId: string,
+	compoundWordId: string
+): Promise<number> {
+	const componentMap = await loadCompoundComponentMap(db, [compoundWordId]);
+	const components = componentMap.get(compoundWordId) ?? [];
+	if (components.length < 2) {
+		return 0;
+	}
+
+	const members = await db.exampleSentenceToken.findMany({
+		where: { compoundId },
+		orderBy: { tokenOrder: 'asc' },
+		select: {
+			id: true,
+			wordId: true,
+			normalizedForm: true,
+			segments: { select: { id: true }, take: 1 }
+		}
+	});
+	if (members.length !== components.length) {
+		return 0;
+	}
+
+	const linkedWordIds: string[] = [];
+	for (let index = 0; index < members.length; index += 1) {
+		const member = members[index];
+		const componentWordId = components[index];
+		if (member.wordId || member.segments.length > 0) continue;
+		await db.exampleSentenceToken.update({
+			where: { id: member.id },
+			data: { wordId: componentWordId }
+		});
+		await recordObservedWordForm(db, {
+			wordId: componentWordId,
+			normalizedForm: member.normalizedForm
+		});
+		linkedWordIds.push(componentWordId);
+	}
+
+	if (linkedWordIds.length > 0) {
+		await createWordSentenceLinks(db, exampleSentenceId, linkedWordIds);
+	}
+	return linkedWordIds.length;
+}
+
+/**
+ * Pick non-overlapping compound spans, scanning left to right and preferring
+ * the longest match at each position.
+ */
+export function planCompoundSpans<T extends CompoundSpanToken>(
+	tokens: T[],
+	compoundMatches: Map<string, string>,
+	canGroup: (token: T) => boolean = () => true
+): CompoundSpan[] {
+	if (compoundMatches.size === 0) {
+		return [];
+	}
+
+	const spans: CompoundSpan[] = [];
+	let index = 0;
+	while (index < tokens.length - 1) {
+		let matched: CompoundSpan | null = null;
+		const maxCount = Math.min(MAX_COMPOUND_TOKEN_SPAN, tokens.length - index);
+		for (let count = maxCount; count >= 2; count -= 1) {
+			const span = tokens.slice(index, index + count);
+			if (!span.every(canGroup)) continue;
+			const joined = joinedCompoundSpan(span);
+			if (!joined) continue;
+			const wordId = compoundMatches.get(joined.normalizedForm);
+			if (!wordId) continue;
+			matched = {
+				startIndex: index,
+				tokenCount: count,
+				surfaceForm: joined.surfaceForm,
+				normalizedForm: joined.normalizedForm,
+				wordId
+			};
+			break;
+		}
+
+		if (matched) {
+			spans.push(matched);
+			index += matched.tokenCount;
+		} else {
+			index += 1;
+		}
+	}
+
+	return spans;
+}
+
+/**
+ * Most common prior combined translation for (compound normalizedForm, wordId)
+ * pairs — the compound-span sibling of loadAutoLemmaInContextTranslations.
+ */
+export async function loadCompoundInContextTranslations(
+	db: AutoLemmaDb,
+	pairs: Iterable<AutoLemmaTranslationPair>
+): Promise<Map<AutoLemmaTranslationKey, string>> {
+	const lookupPairs = [
+		...new Map(
+			[...pairs]
+				.filter(([normalizedForm, wordId]) => normalizedForm && wordId)
+				.map(([normalizedForm, wordId]) => [
+					translationKey(normalizedForm, wordId),
+					[normalizedForm, wordId] as AutoLemmaTranslationPair
+				])
+		).values()
+	];
+	if (lookupPairs.length === 0) {
+		return new Map();
+	}
+
+	const rows = await db.exampleSentenceCompound.findMany({
+		where: {
+			OR: lookupPairs.map(([normalizedForm, wordId]) => ({ normalizedForm, wordId })),
+			inContextTranslation: { not: null }
+		},
+		orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+		select: {
+			normalizedForm: true,
+			wordId: true,
+			inContextTranslation: true
+		}
+	});
+
+	const candidates = new Map<
+		AutoLemmaTranslationKey,
+		Map<string, { count: number; firstIndex: number }>
+	>();
+	for (const [index, row] of rows.entries()) {
+		if (!row.wordId) continue;
+		const translation = row.inContextTranslation?.trim();
+		if (!translation) continue;
+		const key = translationKey(row.normalizedForm, row.wordId);
+		const values = candidates.get(key) ?? new Map<string, { count: number; firstIndex: number }>();
+		const current = values.get(translation);
+		values.set(translation, {
+			count: (current?.count ?? 0) + 1,
+			firstIndex: current?.firstIndex ?? index
+		});
+		candidates.set(key, values);
+	}
+
+	const translations = new Map<AutoLemmaTranslationKey, string>();
+	for (const [key, values] of candidates) {
+		const [translation] = [...values.entries()].sort(
+			([, left], [, right]) => right.count - left.count || left.firstIndex - right.firstIndex
+		)[0];
+		translations.set(key, translation);
+	}
+
+	return translations;
 }
 
 async function loadAutoLemmaMatches(
@@ -528,14 +844,28 @@ export function buildAutoLemmaTokenPlans(
 		};
 	});
 
-	return { tokens, autoLinkedCount };
+	return { tokens, compounds: [], autoLinkedCount };
 }
 
 export async function resolveAutoLemmaTokenPlans(
 	db: AutoLemmaDb,
 	tokenData: TokenizedWord[],
-	existingTokens: ExistingLemmaAnnotation[] = []
+	existingTokens: ExistingLemmaAnnotation[] = [],
+	existingCompounds: ExistingCompoundAnnotation[] = []
 ): Promise<AutoLemmaPlanResult> {
+	const compoundMatches = await loadAutoLemmaCompoundMatches(db, compoundSpanForms(tokenData));
+	// Spans an editor already grouped in this sentence stay grouped (and keep
+	// their link) even when the form is not — or is ambiguously — observed.
+	const preservedCompounds = new Map(
+		existingCompounds
+			.filter((compound) => compound.wordId)
+			.map((compound) => [compound.normalizedForm, compound])
+	);
+	for (const [normalizedForm, compound] of preservedCompounds) {
+		compoundMatches.set(normalizedForm, compound.wordId!);
+	}
+	const spans = planCompoundSpans(tokenData, compoundMatches);
+
 	const patternForms = tokenData
 		.filter((token) => !token.surfaceForm.includes('|'))
 		.map((token) => token.normalizedForm);
@@ -549,21 +879,69 @@ export async function resolveAutoLemmaTokenPlans(
 	const existingTranslationPairs: AutoLemmaTranslationPair[] = existingTokens
 		.filter((token) => token.wordId && !token.inContextTranslation?.trim())
 		.map((token) => [token.normalizedForm, token.wordId!]);
-	const [matches, segmentPatterns] = await Promise.all([
+	const [matches, segmentPatterns, compoundTranslations] = await Promise.all([
 		loadAutoLemmaMatches(db, normalizedForms),
-		loadAutoLemmaSegmentPatterns(db, patternForms)
+		loadAutoLemmaSegmentPatterns(db, patternForms),
+		loadCompoundInContextTranslations(
+			db,
+			spans.map((span): AutoLemmaTranslationPair => [span.normalizedForm, span.wordId])
+		)
 	]);
 	const inContextTranslations = await loadAutoLemmaInContextTranslations(db, [
 		...matches.entries(),
 		...existingTranslationPairs
 	]);
-	return buildAutoLemmaTokenPlans(
+	const plan = buildAutoLemmaTokenPlans(
 		tokenData,
 		existingTokens,
 		matches,
 		segmentPatterns,
 		inContextTranslations
 	);
+
+	// Fill still-unlinked member tokens from the compound entry's dictionary
+	// breakdown (pir bek = pir + bek), position by position.
+	const componentMap = await loadCompoundComponentMap(
+		db,
+		spans.map((span) => span.wordId)
+	);
+	let componentLinkedCount = 0;
+	for (const span of spans) {
+		const components = componentMap.get(span.wordId) ?? [];
+		if (components.length !== span.tokenCount) continue;
+		for (let index = 0; index < span.tokenCount; index += 1) {
+			const tokenPlan = plan.tokens[span.startIndex + index];
+			if (!tokenPlan || tokenPlan.wordId || tokenPlan.segments.length > 0) continue;
+			tokenPlan.wordId = components[index];
+			tokenPlan.autoLinked = true;
+			componentLinkedCount += 1;
+		}
+	}
+
+	const compounds = spans.map((span): AutoLemmaCompoundPlan => {
+		const preserved = preservedCompounds.get(span.normalizedForm);
+		const preservedTranslation =
+			preserved?.wordId === span.wordId ? preserved.inContextTranslation?.trim() || null : null;
+		return {
+			tokenOrders: tokenData
+				.slice(span.startIndex, span.startIndex + span.tokenCount)
+				.map((token) => token.tokenOrder),
+			normalizedForm: span.normalizedForm,
+			wordId: span.wordId,
+			inContextTranslation:
+				preservedTranslation ??
+				compoundTranslations.get(translationKey(span.normalizedForm, span.wordId)) ??
+				null,
+			autoLinked: preserved?.wordId !== span.wordId
+		};
+	});
+
+	return {
+		tokens: plan.tokens,
+		compounds,
+		autoLinkedCount:
+			plan.autoLinkedCount + componentLinkedCount + compounds.filter((c) => c.autoLinked).length
+	};
 }
 
 function tokenCreateData(token: AutoLemmaTokenPlan) {
@@ -623,13 +1001,41 @@ export async function createExampleSentenceTokensFromPlans(
 	}
 }
 
-export function collectLinkedWordIds(plans: AutoLemmaTokenPlan[]): string[] {
-	return distinct(
-		plans.flatMap((token) => [
+export async function createExampleSentenceCompoundsFromPlans(
+	db: AutoLemmaDb,
+	exampleSentenceId: string,
+	compounds: AutoLemmaCompoundPlan[]
+): Promise<void> {
+	for (const plan of compounds) {
+		if (plan.tokenOrders.length < 2) continue;
+		const compound = await db.exampleSentenceCompound.create({
+			data: {
+				exampleSentenceId,
+				normalizedForm: plan.normalizedForm,
+				wordId: plan.wordId,
+				...(plan.inContextTranslation?.trim()
+					? { inContextTranslation: plan.inContextTranslation }
+					: {})
+			}
+		});
+		await db.exampleSentenceToken.updateMany({
+			where: { exampleSentenceId, tokenOrder: { in: plan.tokenOrders } },
+			data: { compoundId: compound.id }
+		});
+	}
+}
+
+export function collectLinkedWordIds(
+	plans: AutoLemmaTokenPlan[],
+	compounds: AutoLemmaCompoundPlan[] = []
+): string[] {
+	return distinct([
+		...plans.flatMap((token) => [
 			token.wordId ?? '',
 			...token.segments.map((segment) => segment.wordId ?? '')
-		])
-	);
+		]),
+		...compounds.map((compound) => compound.wordId ?? '')
+	]);
 }
 
 export async function createWordSentenceLinks(
@@ -650,7 +1056,8 @@ export async function createWordSentenceLinks(
 
 export async function recordAutoLemmaObservedForms(
 	db: AutoLemmaDb,
-	plans: AutoLemmaTokenPlan[]
+	plans: AutoLemmaTokenPlan[],
+	compounds: AutoLemmaCompoundPlan[] = []
 ): Promise<void> {
 	for (const token of plans) {
 		if (token.autoLinked && token.wordId) {
@@ -666,6 +1073,14 @@ export async function recordAutoLemmaObservedForms(
 					normalizedForm: segment.normalizedForm
 				});
 			}
+		}
+	}
+	for (const compound of compounds) {
+		if (compound.autoLinked && compound.wordId) {
+			await recordObservedWordForm(db, {
+				wordId: compound.wordId,
+				normalizedForm: compound.normalizedForm
+			});
 		}
 	}
 }
@@ -689,8 +1104,9 @@ export async function createExampleSentenceWithAutoLemma(
 		}
 	});
 
-	await createWordSentenceLinks(db, sentence.id, collectLinkedWordIds(plan.tokens));
-	await recordAutoLemmaObservedForms(db, plan.tokens);
+	await createExampleSentenceCompoundsFromPlans(db, sentence.id, plan.compounds);
+	await createWordSentenceLinks(db, sentence.id, collectLinkedWordIds(plan.tokens, plan.compounds));
+	await recordAutoLemmaObservedForms(db, plan.tokens, plan.compounds);
 
 	return sentence;
 }
@@ -699,9 +1115,11 @@ type ExistingSentenceForAutoLemma = {
 	id: string;
 	tokens: Array<{
 		id: string;
+		tokenOrder: number;
 		surfaceForm: string;
 		normalizedForm: string;
 		wordId: string | null;
+		compoundId: string | null;
 		inContextTranslation: string | null;
 		segments: Array<{
 			id: string;
@@ -709,7 +1127,21 @@ type ExistingSentenceForAutoLemma = {
 			wordId: string | null;
 		}>;
 	}>;
+	compounds: Array<{
+		id: string;
+		wordId: string | null;
+		normalizedForm: string;
+		inContextTranslation: string | null;
+	}>;
 };
+
+type ExistingSentenceToken = ExistingSentenceForAutoLemma['tokens'][number];
+
+// Grouping is an additive overlay — tokens keep their own links — so only
+// membership in an existing compound blocks auto-grouping.
+function canAutoGroupToken(token: ExistingSentenceToken): boolean {
+	return !token.compoundId;
+}
 
 export type AutoLemmatizeExistingSummary = {
 	scannedSentences: number;
@@ -752,9 +1184,11 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 				orderBy: { tokenOrder: 'asc' },
 				select: {
 					id: true,
+					tokenOrder: true,
 					surfaceForm: true,
 					normalizedForm: true,
 					wordId: true,
+					compoundId: true,
 					inContextTranslation: true,
 					segments: {
 						orderBy: { segmentOrder: 'asc' },
@@ -764,6 +1198,14 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 							wordId: true
 						}
 					}
+				}
+			},
+			compounds: {
+				select: {
+					id: true,
+					wordId: true,
+					normalizedForm: true,
+					inContextTranslation: true
 				}
 			}
 		}
@@ -795,13 +1237,42 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 			.filter((token) => !token.wordId && token.segments.length === 0 && !token.surfaceForm.includes('|'))
 			.map((token) => effectiveNormalizedForm(token.normalizedForm))
 	);
-	const [matches, segmentPatterns] = await Promise.all([
+	const compoundForms = distinct(
+		sentences.flatMap((sentence) => compoundSpanForms(sentence.tokens, canAutoGroupToken))
+	);
+	const [matches, segmentPatterns, compoundMatches] = await Promise.all([
 		loadAutoLemmaMatches(db, normalizedForms),
-		loadAutoLemmaSegmentPatterns(db, patternForms)
+		loadAutoLemmaSegmentPatterns(db, patternForms),
+		loadAutoLemmaCompoundMatches(db, compoundForms)
 	]);
-	const inContextTranslations = await loadAutoLemmaInContextTranslations(db, [
-		...matches.entries(),
-		...existingTranslationPairs
+
+	const sentenceSpans = new Map(
+		sentences.map((sentence) => [
+			sentence.id,
+			planCompoundSpans(sentence.tokens, compoundMatches, canAutoGroupToken)
+		])
+	);
+	const componentMap = await loadCompoundComponentMap(db, [
+		...[...sentenceSpans.values()].flatMap((spans) => spans.map((span) => span.wordId)),
+		...sentences.flatMap((sentence) =>
+			sentence.compounds.flatMap((compound) => (compound.wordId ? [compound.wordId] : []))
+		)
+	]);
+	const compoundTranslationPairs: AutoLemmaTranslationPair[] = [
+		...[...sentenceSpans.values()].flatMap((spans) =>
+			spans.map((span): AutoLemmaTranslationPair => [span.normalizedForm, span.wordId])
+		),
+		...sentences.flatMap((sentence) =>
+			sentence.compounds
+				.filter((compound) => compound.wordId && !compound.inContextTranslation?.trim())
+				.map(
+					(compound): AutoLemmaTranslationPair => [compound.normalizedForm, compound.wordId!]
+				)
+		)
+	];
+	const [inContextTranslations, compoundTranslations] = await Promise.all([
+		loadAutoLemmaInContextTranslations(db, [...matches.entries(), ...existingTranslationPairs]),
+		loadCompoundInContextTranslations(db, compoundTranslationPairs)
 	]);
 
 	let updatedSentences = 0;
@@ -809,6 +1280,23 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 	let translatedWords = 0;
 
 	for (const sentence of sentences) {
+		const compoundCreates = (sentenceSpans.get(sentence.id) ?? []).map((span) => ({
+			memberTokenIds: sentence.tokens
+				.slice(span.startIndex, span.startIndex + span.tokenCount)
+				.map((token) => token.id),
+			normalizedForm: span.normalizedForm,
+			wordId: span.wordId,
+			inContextTranslation:
+				compoundTranslations.get(translationKey(span.normalizedForm, span.wordId)) ?? null
+		}));
+		const compoundTranslationUpdates = sentence.compounds
+			.filter((compound) => compound.wordId && !compound.inContextTranslation?.trim())
+			.flatMap((compound) => {
+				const translation = compoundTranslations.get(
+					translationKey(compound.normalizedForm, compound.wordId!)
+				);
+				return translation ? [{ compoundId: compound.id, inContextTranslation: translation }] : [];
+			});
 		const tokenUpdates: Array<{
 			tokenId: string;
 			normalizedForm: string;
@@ -889,7 +1377,47 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 			}
 		}
 
+		// Fill unlinked span members from the compound entry's dictionary
+		// breakdown, position by position (kipire -> pir, bek -> bek). Covers
+		// both the spans created in this pass and pre-existing groups.
+		const memberRuns = [
+			...(sentenceSpans.get(sentence.id) ?? []).map((span) => ({
+				wordId: span.wordId,
+				members: sentence.tokens.slice(span.startIndex, span.startIndex + span.tokenCount)
+			})),
+			...sentence.compounds.flatMap((compound) =>
+				compound.wordId
+					? [
+							{
+								wordId: compound.wordId,
+								members: sentence.tokens.filter((token) => token.compoundId === compound.id)
+							}
+						]
+					: []
+			)
+		];
+		for (const run of memberRuns) {
+			const components = componentMap.get(run.wordId) ?? [];
+			if (components.length !== run.members.length) continue;
+			for (let index = 0; index < run.members.length; index += 1) {
+				const member = run.members[index];
+				if (member.wordId || member.segments.length > 0) continue;
+				if (tokenUpdates.some((update) => update.tokenId === member.id)) continue;
+				if (segmentCreates.some((entry) => entry.tokenId === member.id)) continue;
+				tokenUpdates.push({
+					tokenId: member.id,
+					normalizedForm: effectiveNormalizedForm(member.normalizedForm),
+					wordId: components[index],
+					inContextTranslation: null
+				});
+			}
+		}
+
 		const sentenceLinkedRows = [
+			...compoundCreates.map((create) => ({
+				wordId: create.wordId,
+				normalizedForm: create.normalizedForm
+			})),
 			...tokenUpdates.map((update) => ({
 				wordId: update.wordId,
 				normalizedForm: update.normalizedForm
@@ -908,11 +1436,39 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 			)
 		];
 
-		if (sentenceLinkedRows.length === 0 && tokenTranslationUpdates.length === 0) {
+		if (
+			sentenceLinkedRows.length === 0 &&
+			tokenTranslationUpdates.length === 0 &&
+			compoundTranslationUpdates.length === 0
+		) {
 			continue;
 		}
 
 		await db.$transaction(async (tx) => {
+			for (const create of compoundCreates) {
+				const compound = await tx.exampleSentenceCompound.create({
+					data: {
+						exampleSentenceId: sentence.id,
+						normalizedForm: create.normalizedForm,
+						wordId: create.wordId,
+						...(create.inContextTranslation
+							? { inContextTranslation: create.inContextTranslation }
+							: {})
+					}
+				});
+				await tx.exampleSentenceToken.updateMany({
+					where: { id: { in: create.memberTokenIds } },
+					data: { compoundId: compound.id }
+				});
+			}
+
+			for (const update of compoundTranslationUpdates) {
+				await tx.exampleSentenceCompound.update({
+					where: { id: update.compoundId },
+					data: { inContextTranslation: update.inContextTranslation }
+				});
+			}
+
 			for (const update of tokenTranslationUpdates) {
 				await tx.exampleSentenceToken.update({
 					where: { id: update.tokenId },
@@ -977,7 +1533,9 @@ export async function autoLemmatizeMissingExampleSentenceWords(
 		linkedWords += sentenceLinkedRows.length;
 		translatedWords +=
 			tokenTranslationUpdates.length +
-			tokenUpdates.filter((update) => update.inContextTranslation?.trim()).length;
+			compoundTranslationUpdates.length +
+			tokenUpdates.filter((update) => update.inContextTranslation?.trim()).length +
+			compoundCreates.filter((create) => create.inContextTranslation?.trim()).length;
 	}
 
 	return {

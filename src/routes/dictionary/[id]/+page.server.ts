@@ -56,6 +56,7 @@ const wordDetailInclude = {
 						orderBy: { tokenOrder: 'asc' as const },
 						include: {
 							word: true,
+							compound: { include: { word: true } },
 							segments: {
 								orderBy: { segmentOrder: 'asc' as const },
 								include: { word: true }
@@ -83,6 +84,35 @@ const wordDetailInclude = {
 	relatedToWords: {
 		include: {
 			word: {
+				select: {
+					id: true,
+					kalenjin: true,
+					slug: true,
+					translations: true,
+					partOfSpeech: true,
+					isSwahiliLoan: true
+				}
+			}
+		}
+	},
+	components: {
+		orderBy: { componentOrder: 'asc' as const },
+		include: {
+			componentWord: {
+				select: {
+					id: true,
+					kalenjin: true,
+					slug: true,
+					translations: true,
+					partOfSpeech: true,
+					isSwahiliLoan: true
+				}
+			}
+		}
+	},
+	componentOf: {
+		include: {
+			compoundWord: {
 				select: {
 					id: true,
 					kalenjin: true,
@@ -174,10 +204,25 @@ export const load: PageServerLoad = async ({ params, request, url }) => {
 		}))
 	]);
 
+	const componentWords = [...word.components]
+		.sort((a, b) => a.componentOrder - b.componentOrder)
+		.map((link) => ({
+			id: link.id,
+			word: link.componentWord
+		}));
+	const compoundWords = word.componentOf
+		.map((link) => link.compoundWord)
+		.sort(
+			(a, b) =>
+				a.kalenjin.localeCompare(b.kalenjin) || a.translations.localeCompare(b.translations)
+		);
+
 	return {
 		word: {
 			...word,
-			relatedWords
+			relatedWords,
+			componentWords,
+			compoundWords
 		},
 		socialPreview: buildDictionarySocialPreview(
 			word,
@@ -383,6 +428,68 @@ export const actions: Actions = {
 		});
 
 		return { relatedWordSuccess: true };
+	},
+	addComponentWord: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const formData = await request.formData();
+		const componentWordId = readText(formData, 'componentWordId');
+
+		if (!componentWordId) {
+			return fail(400, { componentWordError: 'Choose a word to add.' });
+		}
+
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
+
+		if (componentWordId === wordId) {
+			return fail(400, { componentWordError: 'A word cannot be a component of itself.' });
+		}
+
+		const componentWord = await prisma.word.findUnique({
+			where: { id: componentWordId },
+			select: { id: true }
+		});
+		if (!componentWord) {
+			return fail(404, { componentWordError: 'Component word not found.' });
+		}
+
+		await prisma.$transaction(async (tx) => {
+			const lastComponent = await tx.wordComponent.findFirst({
+				where: { compoundWordId: wordId },
+				orderBy: { componentOrder: 'desc' },
+				select: { componentOrder: true }
+			});
+			await tx.wordComponent.create({
+				data: {
+					compoundWordId: wordId,
+					componentWordId,
+					componentOrder: (lastComponent?.componentOrder ?? -1) + 1
+				}
+			});
+		});
+
+		return { componentWordSuccess: true };
+	},
+	removeComponentWord: async ({ request, params, locals }) => {
+		requireEditor(locals);
+		const wordId = await resolveWordId(params.id);
+		if (!wordId) {
+			error(404, 'Word not found');
+		}
+		const formData = await request.formData();
+		const componentId = readText(formData, 'componentId');
+
+		if (!componentId) {
+			return fail(400, { componentWordError: 'Choose a component to remove.' });
+		}
+
+		await prisma.wordComponent.deleteMany({
+			where: { id: componentId, compoundWordId: wordId }
+		});
+
+		return { componentWordSuccess: true };
 	},
 	removeRelatedWord: async ({ request, params, locals }) => {
 		requireEditor(locals);

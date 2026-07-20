@@ -1361,13 +1361,20 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 /* ---------- Users table ---------- */
 .users-table {
   width: 100%;
-  border-collapse: collapse;
+  /* `collapse` makes browsers ignore border-radius; `separate` with zero
+     spacing keeps the same look but lets the corners round. */
+  border-collapse: separate;
+  border-spacing: 0;
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   overflow: hidden;
   font-size: 14px;
 }
+.users-table th:first-child { border-top-left-radius: var(--radius-lg); }
+.users-table th:last-child { border-top-right-radius: var(--radius-lg); }
+.users-table tr:last-child td:first-child { border-bottom-left-radius: var(--radius-lg); }
+.users-table tr:last-child td:last-child { border-bottom-right-radius: var(--radius-lg); }
 .users-table th, .users-table td {
   text-align: left;
   padding: 12px 14px;

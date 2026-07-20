@@ -72,6 +72,41 @@ export const actions: Actions = {
 		return { createSuccess: `User “${username}” created.` };
 	},
 
+	updateUser: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const data = await request.formData();
+		const userId = String(data.get('userId') ?? '');
+		const username = String(data.get('username') ?? '').trim();
+		const displayName = String(data.get('displayName') ?? '').trim() || null;
+
+		if (!userId) return fail(400, { updateError: 'Missing user.' });
+		if (!USERNAME_RE.test(username)) {
+			return fail(400, {
+				updateError: 'Username must be 2–40 chars: letters, digits, _ . -',
+				updateUserId: userId,
+				updateForm: { username, displayName }
+			});
+		}
+		const target = await prisma.user.findUnique({ where: { id: userId } });
+		if (!target) return fail(400, { updateError: 'User not found.' });
+		const existing = await prisma.user.findUnique({ where: { username } });
+		if (existing && existing.id !== userId) {
+			return fail(400, {
+				updateError: 'Username already taken.',
+				updateUserId: userId,
+				updateForm: { username, displayName }
+			});
+		}
+
+		await prisma.user.update({ where: { id: userId }, data: { username, displayName } });
+		return {
+			updateSuccess:
+				target.username === username
+					? `Saved changes to “${username}”.`
+					: `“${target.username}” is now “${username}”.`
+		};
+	},
+
 	changeRole: async ({ request, locals }) => {
 		const admin = requireAdmin(locals);
 		const data = await request.formData();

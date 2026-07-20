@@ -8,6 +8,22 @@
 
 	let resetOpenFor = $state<string | null>(null);
 	let editOpenFor = $state<string | null>(null);
+	let editFocus = $state<'username' | 'displayName'>('username');
+
+	function startEdit(userId: string, field: 'username' | 'displayName') {
+		editOpenFor = userId;
+		editFocus = field;
+		resetOpenFor = null;
+	}
+
+	// Focus (and select) the field the user clicked once its input renders.
+	function focusField(node: HTMLInputElement, enabled: boolean) {
+		if (enabled) node.select();
+	}
+
+	function onEditKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') editOpenFor = null;
+	}
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 
@@ -133,6 +149,8 @@
 							autocomplete="off"
 							required
 							value={values.username}
+							use:focusField={editFocus === 'username'}
+							onkeydown={onEditKeydown}
 						/>
 					</td>
 					<td>
@@ -143,11 +161,28 @@
 							aria-label={`Display name for ${u.username}`}
 							placeholder="Display name"
 							value={values.displayName ?? ''}
+							use:focusField={editFocus === 'displayName'}
+							onkeydown={onEditKeydown}
 						/>
 					</td>
 				{:else}
-					<td><strong>{u.username}</strong></td>
-					<td>{u.displayName ?? '—'}</td>
+					<td>
+						<button
+							type="button"
+							class="cell-edit"
+							aria-label={`Edit username for ${u.username}`}
+							onclick={() => startEdit(u.id, 'username')}><strong>{u.username}</strong></button
+						>
+					</td>
+					<td>
+						<button
+							type="button"
+							class="cell-edit"
+							class:muted={!u.displayName}
+							aria-label={`Edit display name for ${u.username}`}
+							onclick={() => startEdit(u.id, 'displayName')}>{u.displayName ?? '—'}</button
+						>
+					</td>
 				{/if}
 				<td>
 					{#if u.id === data.user?.id}
@@ -205,14 +240,6 @@
 							<button
 								type="button"
 								class="btn-sm ghost"
-								onclick={() => {
-									editOpenFor = u.id;
-									resetOpenFor = null;
-								}}>Edit</button
-							>
-							<button
-								type="button"
-								class="btn-sm ghost"
 								onclick={() => (resetOpenFor = u.id)}>Reset password</button
 							>
 							{#if u.id !== data.user?.id}
@@ -240,3 +267,25 @@
 		{/each}
 	</tbody>
 </table>
+
+<style>
+	.cell-edit {
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.cell-edit:hover,
+	.cell-edit:focus-visible {
+		text-decoration: underline dotted;
+		text-underline-offset: 3px;
+	}
+
+	.cell-edit.muted {
+		color: var(--ink-mute);
+	}
+</style>

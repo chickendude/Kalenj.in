@@ -7,6 +7,7 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 
 	let resetOpenFor = $state<string | null>(null);
+	let editOpenFor = $state<string | null>(null);
 
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
 
@@ -22,23 +23,35 @@
 	$effect(() => {
 		if (form && 'roleSuccess' in form && form.roleSuccess) toast.success(form.roleSuccess);
 	});
+	$effect(() => {
+		if (form && 'updateSuccess' in form && form.updateSuccess) {
+			toast.success(form.updateSuccess);
+			editOpenFor = null;
+		}
+	});
+
+	function editValues(u: {
+		id: string;
+		username: string;
+		displayName: string | null;
+	}): { username: string; displayName: string | null } {
+		if (
+			form &&
+			'updateUserId' in form &&
+			form.updateUserId === u.id &&
+			'updateForm' in form &&
+			form.updateForm
+		) {
+			// ActionData collapses the variant's object type; the shape is fixed above.
+			return form.updateForm as { username: string; displayName: string | null };
+		}
+		return { username: u.username, displayName: u.displayName };
+	}
 </script>
 
 <svelte:head>
 	<title>Users · Admin</title>
 </svelte:head>
-
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Users</h1>
-		<p>Create new editors and admins, or reset their passwords.</p>
-	</div>
-	<div class="page-stat">
-		<b>{data.users.length}</b>
-		account{data.users.length === 1 ? '' : 's'}
-	</div>
-</div>
 
 <section class="form-card">
 	<h2>New user</h2>
@@ -91,6 +104,7 @@
 	</form>
 </section>
 
+<FormErrorFeedback error={form && 'updateError' in form ? form.updateError : null} />
 <FormErrorFeedback error={form && 'resetError' in form ? form.resetError : null} />
 <FormErrorFeedback error={form && 'deleteError' in form ? form.deleteError : null} />
 <FormErrorFeedback error={form && 'roleError' in form ? form.roleError : null} />
@@ -108,8 +122,33 @@
 	<tbody>
 		{#each data.users as u (u.id)}
 			<tr>
-				<td><strong>{u.username}</strong></td>
-				<td>{u.displayName ?? '—'}</td>
+				{#if editOpenFor === u.id}
+					{@const values = editValues(u)}
+					<td>
+						<input
+							name="username"
+							form="edit-user-{u.id}"
+							class="input"
+							aria-label={`Username for ${u.username}`}
+							autocomplete="off"
+							required
+							value={values.username}
+						/>
+					</td>
+					<td>
+						<input
+							name="displayName"
+							form="edit-user-{u.id}"
+							class="input"
+							aria-label={`Display name for ${u.username}`}
+							placeholder="Display name"
+							value={values.displayName ?? ''}
+						/>
+					</td>
+				{:else}
+					<td><strong>{u.username}</strong></td>
+					<td>{u.displayName ?? '—'}</td>
+				{/if}
 				<td>
 					{#if u.id === data.user?.id}
 						<span class="role-pill {u.role.toLowerCase()}">{u.role}</span>
@@ -133,7 +172,17 @@
 				<td>{dateFmt.format(u.createdAt)}</td>
 				<td>
 					<div class="row-actions">
-						{#if resetOpenFor === u.id}
+						{#if editOpenFor === u.id}
+							<form id="edit-user-{u.id}" method="POST" action="?/updateUser" use:enhance class="inline-form">
+								<input type="hidden" name="userId" value={u.id} />
+								<button type="submit" class="btn-sm">Save</button>
+								<button
+									type="button"
+									class="btn-sm ghost"
+									onclick={() => (editOpenFor = null)}>Cancel</button
+								>
+							</form>
+						{:else if resetOpenFor === u.id}
 							<form method="POST" action="?/resetPassword" use:enhance class="inline-form">
 								<input type="hidden" name="userId" value={u.id} />
 								<input
@@ -153,6 +202,14 @@
 								>
 							</form>
 						{:else}
+							<button
+								type="button"
+								class="btn-sm ghost"
+								onclick={() => {
+									editOpenFor = u.id;
+									resetOpenFor = null;
+								}}>Edit</button
+							>
 							<button
 								type="button"
 								class="btn-sm ghost"

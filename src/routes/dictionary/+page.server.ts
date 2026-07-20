@@ -168,7 +168,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 export const actions: Actions = {
 	createWord: async ({ request, locals }) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const translations = readText(formData, 'translations');
@@ -285,7 +285,8 @@ export const actions: Actions = {
 					isSingularOnly,
 					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
-					imageUrl
+					imageUrl,
+					createdById: user.id
 				});
 				if (relatedWordIds.length > 0) {
 					await tx.relatedWord.createMany({

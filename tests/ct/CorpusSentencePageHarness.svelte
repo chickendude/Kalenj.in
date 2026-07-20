@@ -26,6 +26,7 @@
 			audioUrl: null,
 			audioRecordedById: null,
 			audioRecordedAt: null,
+			createdById: null,
 			createdAt: new Date('2026-06-05T00:00:00.000Z'),
 			updatedAt: new Date('2026-06-05T00:00:00.000Z'),
 			tokens: [],

@@ -31,7 +31,7 @@ function clean(value: unknown): string {
 }
 
 export const POST: RequestHandler = async ({ params, request, locals }) => {
-	requireEditor(locals);
+	const user = requireEditor(locals);
 	const payload = (await request.json()) as CreateWordPayload;
 
 	const tokenId = clean(payload.tokenId);
@@ -52,7 +52,8 @@ export const POST: RequestHandler = async ({ params, request, locals }) => {
 				slug: await generateUniqueWordSlug(tx, kalenjin),
 				kalenjinNormalized: normalizeLemma(kalenjin),
 				translations,
-				notes: notes || null
+				notes: notes || null,
+				createdById: user.id
 			},
 			select: {
 				id: true,

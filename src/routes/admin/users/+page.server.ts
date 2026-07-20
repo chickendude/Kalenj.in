@@ -7,6 +7,11 @@ import type { Actions, PageServerLoad } from './$types';
 
 const MIN_PASSWORD_LENGTH = 12;
 const USERNAME_RE = /^[a-zA-Z0-9_.-]{2,40}$/;
+const ROLE_LABELS: Record<'ADMIN' | 'MANAGER' | 'USER', string> = {
+	ADMIN: 'an admin',
+	MANAGER: 'a manager',
+	USER: 'a regular user'
+};
 
 export const load: PageServerLoad = async ({ locals }) => {
 	requireAdmin(locals);
@@ -65,6 +70,29 @@ export const actions: Actions = {
 		});
 
 		return { createSuccess: `User “${username}” created.` };
+	},
+
+	changeRole: async ({ request, locals }) => {
+		const admin = requireAdmin(locals);
+		const data = await request.formData();
+		const userId = String(data.get('userId') ?? '');
+		const role = String(data.get('role') ?? '');
+
+		if (!userId) return fail(400, { roleError: 'Missing user.' });
+		if (role !== 'ADMIN' && role !== 'MANAGER' && role !== 'USER') {
+			return fail(400, { roleError: 'Choose a valid role.' });
+		}
+		if (userId === admin.id) {
+			return fail(400, { roleError: 'You cannot change your own role.' });
+		}
+		const target = await prisma.user.findUnique({ where: { id: userId } });
+		if (!target) return fail(400, { roleError: 'User not found.' });
+		if (target.role === role) {
+			return fail(400, { roleError: `“${target.username}” already has that role.` });
+		}
+
+		await prisma.user.update({ where: { id: userId }, data: { role } });
+		return { roleSuccess: `“${target.username}” is now ${ROLE_LABELS[role]}.` };
 	},
 
 	resetPassword: async ({ request, locals }) => {

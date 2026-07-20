@@ -100,7 +100,8 @@ async function createLessonRecord(
 		type,
 		vocabularyType,
 		grammarMarkdown,
-		storyImportText
+		storyImportText,
+		createdById
 	}: {
 		title: string;
 		level: (typeof CEFR_LEVELS)[number];
@@ -109,6 +110,7 @@ async function createLessonRecord(
 		vocabularyType: ReturnType<typeof parseVocabularyLessonTypeValue>;
 		grammarMarkdown: string | null;
 		storyImportText: string | null;
+		createdById: string | null;
 	}
 ) {
 	const story =
@@ -121,7 +123,7 @@ async function createLessonRecord(
 			: null;
 
 	if (story && storyImportText) {
-		await syncStorySentences(tx, story.id, storyImportText);
+		await syncStorySentences(tx, story.id, storyImportText, createdById);
 	}
 
 	const lesson = await tx.lesson.create({
@@ -283,7 +285,7 @@ export const load: PageServerLoad = async ({ url, locals }) => {
 
 export const actions: Actions = {
 	create: async ({ request, locals }) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const level = parseCefrLevelValue(readText(formData, 'level'));
@@ -355,7 +357,8 @@ export const actions: Actions = {
 					type,
 					vocabularyType,
 					grammarMarkdown,
-					storyImportText
+					storyImportText,
+					createdById: user.id
 				});
 			});
 
@@ -376,7 +379,7 @@ export const actions: Actions = {
 		redirect(303, `/lessons/${lessonId}`);
 	},
 	createAdjacent: async ({ request, locals }) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const title = readText(formData, 'title');
 		const anchorLessonId = readText(formData, 'anchorLessonId');
@@ -461,7 +464,8 @@ export const actions: Actions = {
 					type,
 					vocabularyType,
 					grammarMarkdown,
-					storyImportText
+					storyImportText,
+					createdById: user.id
 				});
 			});
 

@@ -19,6 +19,9 @@
 	$effect(() => {
 		if (form && 'deleteSuccess' in form && form.deleteSuccess) toast.success(form.deleteSuccess);
 	});
+	$effect(() => {
+		if (form && 'roleSuccess' in form && form.roleSuccess) toast.success(form.roleSuccess);
+	});
 </script>
 
 <svelte:head>
@@ -90,6 +93,7 @@
 
 <FormErrorFeedback error={form && 'resetError' in form ? form.resetError : null} />
 <FormErrorFeedback error={form && 'deleteError' in form ? form.deleteError : null} />
+<FormErrorFeedback error={form && 'roleError' in form ? form.roleError : null} />
 
 <table class="users-table">
 	<thead>
@@ -107,7 +111,24 @@
 				<td><strong>{u.username}</strong></td>
 				<td>{u.displayName ?? '—'}</td>
 				<td>
-					<span class="role-pill {u.role === 'ADMIN' ? 'admin' : 'manager'}">{u.role}</span>
+					{#if u.id === data.user?.id}
+						<span class="role-pill {u.role.toLowerCase()}">{u.role}</span>
+					{:else}
+						<form method="POST" action="?/changeRole" use:enhance>
+							<input type="hidden" name="userId" value={u.id} />
+							<select
+								name="role"
+								class="select"
+								value={u.role}
+								aria-label={`Role for ${u.username}`}
+								onchange={(event) => event.currentTarget.form?.requestSubmit()}
+							>
+								<option value="ADMIN">Admin</option>
+								<option value="MANAGER">Manager</option>
+								<option value="USER">User</option>
+							</select>
+						</form>
+					{/if}
 				</td>
 				<td>{dateFmt.format(u.createdAt)}</td>
 				<td>

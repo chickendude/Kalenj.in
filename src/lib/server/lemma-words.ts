@@ -77,6 +77,8 @@ export type LemmaWordInput = {
 	presentTense?: PresentTenseConjugations | null;
 	/** `undefined` leaves the image untouched, a string sets a new URL, `null` clears it. */
 	imageUrl?: string | null;
+	/** Recorded only when creating a new word; updates never reassign the creator. */
+	createdById?: string | null;
 };
 
 export function readPresentTenseFromFormData(formData: FormData): PresentTenseConjugations {
@@ -189,6 +191,7 @@ export async function createOrUpdateLinkedWord(
 			...isSwahiliLoanPatch,
 			...presentTense,
 			imageUrl: input.imageUrl ?? null,
+			createdById: input.createdById ?? null,
 			spellings: spellings.length ? { createMany: { data: spellings } } : undefined
 		},
 		select: buildWordSelect()

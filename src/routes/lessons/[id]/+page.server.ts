@@ -920,7 +920,7 @@ export const actions: Actions = {
 		return { deleteSectionSuccess: true };
 	},
 	createWord: async ({ request, locals}) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const lessonId = readText(formData, 'lessonId');
 		const existingWordId = readText(formData, 'wordId');
@@ -1039,7 +1039,8 @@ export const actions: Actions = {
 							kalenjin: sentenceKalenjin,
 							english: sentenceEnglish,
 							notes: sentenceNotes,
-							imageUrl: sentenceImageUrl
+							imageUrl: sentenceImageUrl,
+							createdById: user.id
 						}
 					});
 					await syncExampleSentenceTokens(tx, sentence.id, sentenceKalenjin);
@@ -1064,7 +1065,8 @@ export const actions: Actions = {
 							isPluralOnly,
 							isSingularOnly,
 							presentTense,
-							imageUrl: wordImageUrl
+							imageUrl: wordImageUrl,
+							createdById: user.id
 						});
 
 				const createdLessonWord = await tx.lessonWord.create({
@@ -1302,7 +1304,7 @@ export const actions: Actions = {
 		};
 	},
 	createExampleSentenceWord: async ({ request, locals}) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const lessonWordId = readText(formData, 'lessonWordId');
 		const tokenId = readText(formData, 'tokenId');
@@ -1376,7 +1378,8 @@ export const actions: Actions = {
 					isPluralOnly,
 					isSingularOnly,
 					presentTense,
-					...(imageUrl !== undefined ? { imageUrl } : {})
+					...(imageUrl !== undefined ? { imageUrl } : {}),
+					createdById: user.id
 				});
 
 				if (checkedSegment) {

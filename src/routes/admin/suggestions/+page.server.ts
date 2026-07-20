@@ -203,7 +203,8 @@ export const actions: Actions = {
 					isSingularOnly,
 					isSwahiliLoan: isSwahiliLoanRaw === 'on',
 					presentTense,
-					imageUrl
+					imageUrl,
+					createdById: reviewer.id
 				});
 				if (relatedWordIds.length > 0) {
 					await tx.relatedWord.createMany({
@@ -332,6 +333,7 @@ export const actions: Actions = {
 						kalenjin,
 						english,
 						notes: notesRaw,
+						createdById: reviewer.id,
 						tokenData
 					});
 					await tx.sentenceSuggestion.update({

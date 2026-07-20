@@ -127,11 +127,13 @@ async function replaceExampleSentenceTokens(
 async function createStoryExampleSentence(
 	tx: Prisma.TransactionClient,
 	kalenjin: string,
-	english: string
+	english: string,
+	createdById: string | null
 ): Promise<{ id: string }> {
 	return createExampleSentenceWithAutoLemma(tx, {
 		kalenjin,
 		english,
+		createdById,
 		tokenData: tokenizeSentence(kalenjin)
 	});
 }
@@ -190,6 +192,7 @@ export async function splitStorySentence(
 					audioUrl: true,
 					audioRecordedById: true,
 					audioRecordedAt: true,
+					createdById: true,
 					status: true,
 					lemmaProofreadAt: true,
 					lessonWords: { select: { id: true }, take: 1 },
@@ -281,6 +284,7 @@ export async function splitStorySentence(
 				audioUrl: null,
 				audioRecordedById: null,
 				audioRecordedAt: null,
+				createdById: original.exampleSentence.createdById,
 				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null
 			},
@@ -494,7 +498,8 @@ export async function mergeStorySentenceWithNext(
 export async function syncStorySentences(
 	tx: Prisma.TransactionClient,
 	storyId: string,
-	storyText: string | null
+	storyText: string | null,
+	createdById: string | null = null
 ): Promise<void> {
 	const sentences = storyText ? parseStoryImportText(storyText) : [];
 	const existing = await tx.storySentence.findMany({
@@ -526,7 +531,8 @@ export async function syncStorySentences(
 		const exampleSentence = await createStoryExampleSentence(
 			tx,
 			sentence.kalenjin,
-			sentence.english
+			sentence.english,
+			createdById
 		);
 
 		await tx.storySentence.create({

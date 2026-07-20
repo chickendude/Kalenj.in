@@ -85,6 +85,7 @@ type ExampleSentenceCreateInput = {
 	kalenjin: string;
 	english: string;
 	notes?: string | null;
+	createdById?: string | null;
 	tokenData: TokenizedWord[];
 };
 
@@ -1096,6 +1097,7 @@ export async function createExampleSentenceWithAutoLemma(
 			kalenjin: input.kalenjin,
 			english: input.english,
 			...(input.notes !== undefined ? { notes: input.notes } : {}),
+			createdById: input.createdById ?? null,
 			status: 'NEEDS_PROOFREAD',
 			lemmaProofreadAt: null,
 			tokens: {

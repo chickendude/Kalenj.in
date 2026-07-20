@@ -16,8 +16,11 @@
 </script>
 
 <nav class="admin-tabs" aria-label="Admin tools">
-	{#each visibleTabs as tab (tab.href)}
+	{#each visibleTabs as tab, i (tab.href)}
 		{@const count = counts[tab.href]}
+		{#if i > 0 && visibleTabs[i - 1].feedback && !tab.feedback}
+			<span class="tab-divider" aria-hidden="true"></span>
+		{/if}
 		<a
 			href={tab.href}
 			class:active={isActive(tab.href)}
@@ -60,6 +63,14 @@
 
 	.admin-tabs a + a {
 		border-left: 0;
+	}
+
+	.tab-divider {
+		flex: 0 0 auto;
+		width: 1px;
+		align-self: stretch;
+		margin: 4px 10px 8px;
+		background: var(--line);
 	}
 
 	.admin-tabs a:hover {

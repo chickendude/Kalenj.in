@@ -4,20 +4,21 @@ export type AdminTab = {
 	href: string;
 	label: string;
 	adminOnly?: boolean;
+	/** User-feedback queues, grouped and visually separated from the other tools. */
+	feedback?: boolean;
 };
 
 export const ADMIN_TAB_STORAGE_KEY = 'admin:last-tab';
 
 export const ADMIN_TABS: AdminTab[] = [
-	{ href: '/admin/suggestions', label: 'Suggestions' },
+	{ href: '/admin/suggestions', label: 'Suggestions', feedback: true },
+	{ href: '/admin/reports', label: 'Reports', feedback: true },
+	{ href: '/admin/clarifications', label: 'Questions', feedback: true },
 	{ href: '/admin/word-of-day', label: 'WOTD' },
-	{ href: '/admin/cleanup', label: 'Cleanup' },
 	{ href: '/admin/proofread', label: 'Proofread' },
 	{ href: '/admin/word-audio', label: 'Word audio' },
 	{ href: '/admin/sentence-audio', label: 'Sentence audio' },
 	{ href: '/admin/duplicates', label: 'Duplicates' },
-	{ href: '/admin/reports', label: 'Reports' },
-	{ href: '/admin/clarifications', label: 'Questions' },
 	{ href: '/admin/activity', label: 'Activity', adminOnly: true },
 	{ href: '/admin/users', label: 'Users', adminOnly: true }
 ];
@@ -29,7 +30,9 @@ const ADMIN_TABS_BY_PATH = new Map(ADMIN_TABS.map((tab) => [tab.href, tab]));
 const LEGACY_ADMIN_TAB_PATHS = new Map([
 	['/dictionary/record-audio', '/admin/word-audio'],
 	['/corpus/record-audio', '/admin/sentence-audio'],
-	['/corpus/duplicates', '/admin/duplicates']
+	['/corpus/duplicates', '/admin/duplicates'],
+	// The cleanup page was removed; proofread covers the same work and more.
+	['/admin/cleanup', '/admin/proofread']
 ]);
 
 export type AdminTabRole = 'ADMIN' | 'MANAGER' | string | null | undefined;

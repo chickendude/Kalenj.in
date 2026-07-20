@@ -125,7 +125,7 @@ describe('POST /lessons/[id]/lesson-word-inline', () => {
 
 		expect(response.status).toBe(200);
 		expect(mocks.tx.exampleSentence.create).toHaveBeenCalledWith({
-			data: { kalenjin: 'Chamgei', english: UNSET_SENTENCE_ENGLISH }
+			data: { kalenjin: 'Chamgei', english: UNSET_SENTENCE_ENGLISH, createdById: 'u1' }
 		});
 		expect(mocks.tx.lessonWord.update).toHaveBeenCalledWith({
 			where: { id: 'lesson-word-1' },

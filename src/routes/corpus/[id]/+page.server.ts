@@ -294,7 +294,7 @@ export const actions: Actions = {
 		};
 	},
 	createCorpusSentenceWord: async ({ request, params, locals }) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const sentenceId = readText(formData, 'sentenceId');
 		const tokenId = readText(formData, 'tokenId');
@@ -370,7 +370,8 @@ export const actions: Actions = {
 					isPluralOnly,
 					isSingularOnly,
 					presentTense,
-					...(imageUrl !== undefined ? { imageUrl } : {})
+					...(imageUrl !== undefined ? { imageUrl } : {}),
+					createdById: user.id
 				});
 
 				if (checkedSegment) {

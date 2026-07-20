@@ -18,6 +18,7 @@ export const ADMIN_TABS: AdminTab[] = [
 	{ href: '/admin/duplicates', label: 'Duplicates' },
 	{ href: '/admin/reports', label: 'Reports' },
 	{ href: '/admin/clarifications', label: 'Questions' },
+	{ href: '/admin/activity', label: 'Activity', adminOnly: true },
 	{ href: '/admin/users', label: 'Users', adminOnly: true }
 ];
 

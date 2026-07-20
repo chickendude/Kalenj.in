@@ -149,7 +149,7 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 
 export const actions: Actions = {
 	createSentence: async ({ request, locals }) => {
-		requireEditor(locals);
+		const user = requireEditor(locals);
 		const formData = await request.formData();
 		const kalenjin = readText(formData, 'kalenjin');
 		const english = readText(formData, 'english');
@@ -179,6 +179,7 @@ export const actions: Actions = {
 			kalenjin,
 			english,
 			notes: notes || null,
+			createdById: user.id,
 			tokenData
 		});
 
@@ -202,7 +203,7 @@ export const actions: Actions = {
 		}
 	},
 	saveBulkSentences: async ({ request, locals }) => {
-		requireAdmin(locals);
+		const user = requireAdmin(locals);
 		const formData = await request.formData();
 		let reviewRows: BulkSentenceReviewRow[];
 		try {
@@ -251,6 +252,7 @@ export const actions: Actions = {
 				await createExampleSentenceWithAutoLemma(tx, {
 					kalenjin: sentence.kalenjin,
 					english: sentence.english,
+					createdById: user.id,
 					tokenData: sentence.tokenData
 				});
 			}

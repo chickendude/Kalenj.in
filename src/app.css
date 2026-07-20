@@ -1395,6 +1395,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 .role-pill.admin { background: var(--accent-soft); color: var(--brand-ink); }
 .role-pill.manager { background: var(--surface); color: var(--ink-soft); }
+.role-pill.user { background: var(--surface); color: var(--ink-mute); }
 .users-table .row-actions {
   display: flex;
   gap: 8px;

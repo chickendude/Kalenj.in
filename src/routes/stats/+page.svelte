@@ -7,6 +7,8 @@
 		cumulativeCellValue,
 		filterEmptyBucketIndices,
 		getEffectiveChangeMetrics,
+		RANGE_LABELS,
+		RANGE_SHORT_LABELS,
 		type MetricId,
 		type RangeId
 	} from '$lib/stats';
@@ -51,26 +53,6 @@
 			]
 		}
 	];
-
-	const RANGE_LABELS: Record<RangeId, string> = {
-		past7Days: 'Past 7 Days',
-		past30Days: 'Past 30 Days',
-		pastYear: 'Past Year',
-		thisWeek: 'This Week',
-		thisMonth: 'This Month',
-		thisYear: 'This Year',
-		allTime: 'All Time'
-	};
-
-	const RANGE_SHORT_LABELS: Record<RangeId, string> = {
-		past7Days: '7D',
-		past30Days: '30D',
-		pastYear: '1Y',
-		thisWeek: '1W',
-		thisMonth: '1M',
-		thisYear: 'YTD',
-		allTime: 'All'
-	};
 
 	const RANGES: RangeId[] = [
 		'past7Days',

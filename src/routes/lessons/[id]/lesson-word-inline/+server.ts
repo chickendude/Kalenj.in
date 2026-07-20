@@ -26,7 +26,7 @@ const NON_EMPTY_FIELDS: InlineField[] = [
 ];
 
 export const POST: RequestHandler = async ({ request, params, locals }) => {
-	requireEditor(locals);
+	const user = requireEditor(locals);
 	const body = (await request.json()) as { lessonWordId?: string; field?: string; value?: string };
 	const { lessonWordId, field, value } = body;
 
@@ -84,7 +84,7 @@ export const POST: RequestHandler = async ({ request, params, locals }) => {
 				let sentenceId = match?.id;
 				if (!sentenceId) {
 					const sentence = await tx.exampleSentence.create({
-						data: { kalenjin: nextKalenjin, english: nextEnglish }
+						data: { kalenjin: nextKalenjin, english: nextEnglish, createdById: user.id }
 					});
 					await syncExampleSentenceTokens(tx, sentence.id, nextKalenjin);
 					sentenceId = sentence.id;

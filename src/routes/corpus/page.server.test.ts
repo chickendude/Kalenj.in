@@ -143,6 +143,7 @@ describe('saveBulkSentences action', () => {
 			data: {
 				kalenjin: 'Labat kaa.',
 				english: 'Run home.',
+				createdById: 'u1',
 				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null,
 				tokens: {
@@ -169,6 +170,7 @@ describe('saveBulkSentences action', () => {
 			data: {
 				kalenjin: 'Labat boisyet.',
 				english: 'Run to work.',
+				createdById: 'u1',
 				status: 'NEEDS_PROOFREAD',
 				lemmaProofreadAt: null,
 				tokens: {

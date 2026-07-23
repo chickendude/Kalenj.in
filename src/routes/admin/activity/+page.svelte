@@ -52,10 +52,8 @@
 		<tr>
 			<th>User</th>
 			<th>Role</th>
-			<th class="num">Words{showRangeColumns ? ` · ${RANGE_SHORT_LABELS[data.range]}` : ''}</th>
-			<th class="num">
-				Sentences{showRangeColumns ? ` · ${RANGE_SHORT_LABELS[data.range]}` : ''}
-			</th>
+			<th class="num count-col">Words</th>
+			<th class="num count-col">Sentences</th>
 		</tr>
 	</thead>
 	<tbody>
@@ -107,6 +105,13 @@
 	.num {
 		text-align: right;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* Keep the two count columns at the same width they had when the table
+	   held four of them, instead of spreading across the freed space. */
+	.count-col {
+		width: 16%;
+		white-space: nowrap;
 	}
 
 	.display-name {

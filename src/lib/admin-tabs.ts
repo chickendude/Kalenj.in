@@ -10,15 +10,18 @@ export type AdminTab = {
 
 export const ADMIN_TAB_STORAGE_KEY = 'admin:last-tab';
 
+// Managers (staff) see only the user-feedback queues; every other tool is
+// admin-only. They reach their own activity via the "My activity" user-menu
+// link, not a tab.
 export const ADMIN_TABS: AdminTab[] = [
 	{ href: '/admin/suggestions', label: 'Suggestions', feedback: true },
 	{ href: '/admin/reports', label: 'Reports', feedback: true },
 	{ href: '/admin/clarifications', label: 'Questions', feedback: true },
-	{ href: '/admin/word-of-day', label: 'WOTD' },
-	{ href: '/admin/proofread', label: 'Proofread' },
-	{ href: '/admin/word-audio', label: 'Word audio' },
-	{ href: '/admin/sentence-audio', label: 'Sentence audio' },
-	{ href: '/admin/duplicates', label: 'Duplicates' },
+	{ href: '/admin/word-of-day', label: 'WOTD', adminOnly: true },
+	{ href: '/admin/proofread', label: 'Proofread', adminOnly: true },
+	{ href: '/admin/word-audio', label: 'Word audio', adminOnly: true },
+	{ href: '/admin/sentence-audio', label: 'Sentence audio', adminOnly: true },
+	{ href: '/admin/duplicates', label: 'Duplicates', adminOnly: true },
 	{ href: '/admin/activity', label: 'Activity', adminOnly: true },
 	{ href: '/admin/users', label: 'Users', adminOnly: true }
 ];

@@ -5,4 +5,4 @@
 	let { data, form }: { data: PageData; form: ActionData } = $props();
 </script>
 
-<ActivityEntriesView {data} form={form ?? null} adminView />
+<ActivityEntriesView {data} form={form ?? null} />

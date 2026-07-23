@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { applyAction, enhance } from '$app/forms';
+	import FilterChips from '$lib/components/FilterChips.svelte';
 	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import AddWordDialog, { type AddWordInitial } from '$lib/components/AddWordDialog.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -15,6 +16,20 @@
 		dateStyle: 'medium',
 		timeStyle: 'short'
 	});
+
+	const STATUS_FILTERS = [
+		['PENDING', 'Pending'],
+		['APPROVED', 'Approved'],
+		['REJECTED', 'Declined'],
+		['ALL', 'All']
+	] as const;
+	const statusItems = $derived(
+		STATUS_FILTERS.map(([value, label]) => ({
+			href: `?status=${value}`,
+			label,
+			active: data.statusFilter === value
+		}))
+	);
 
 	function displayUser(u: { username: string; displayName: string | null } | null): string {
 		if (!u) return '—';
@@ -104,29 +119,7 @@
 	<title>Suggestions · Admin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Suggestions</h1>
-		<p>Review words and sentences submitted by signed-in users.</p>
-	</div>
-	<div class="page-stat">
-		<b>{data.pendingWordCount + data.pendingSentenceCount}</b>
-		pending
-	</div>
-</div>
-
-<nav class="status-tabs" data-sveltekit-noscroll data-sveltekit-replacestate>
-	{#each [['PENDING', 'Pending'], ['APPROVED', 'Approved'], ['REJECTED', 'Declined'], ['ALL', 'All']] as [value, label] (value)}
-		<a
-			href={`?status=${value}`}
-			class:active={data.statusFilter === value}
-			aria-current={data.statusFilter === value ? 'page' : undefined}
-		>
-			{label}
-		</a>
-	{/each}
-</nav>
+<FilterChips label="Suggestion status filters" items={statusItems} />
 
 <FormErrorFeedback error={form && 'error' in form ? form.error : null} />
 
@@ -366,26 +359,6 @@
 </Modal>
 
 <style>
-	.status-tabs {
-		display: flex;
-		gap: 4px;
-		margin: 8px 0 16px;
-		flex-wrap: wrap;
-	}
-	.status-tabs a {
-		padding: 6px 12px;
-		border-radius: 6px;
-		text-decoration: none;
-		color: var(--ink-mute);
-		border: 1px solid var(--rule, var(--line));
-		background: var(--bg-elev, var(--paper));
-		font-size: 0.9rem;
-	}
-	.status-tabs a.active {
-		color: var(--brand);
-		border-color: var(--brand);
-		background: color-mix(in oklch, var(--brand) 12%, transparent);
-	}
 	.admin-section {
 		margin-top: 28px;
 	}

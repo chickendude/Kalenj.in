@@ -165,6 +165,16 @@
 		>
 			Settings
 		</a>
+		{#if data.user.role === 'MANAGER'}
+			<a
+				href="/activity"
+				role="menuitem"
+				class:active={isActive('/activity')}
+				onclick={onSelect}
+			>
+				My activity
+			</a>
+		{/if}
 		{#if data.user.role === 'ADMIN' || data.user.role === 'MANAGER'}
 			<a
 				href={adminHref}
@@ -172,7 +182,7 @@
 				class:active={isAdminActive()}
 				onclick={onSelect}
 			>
-				Admin
+				{data.user.role === 'ADMIN' ? 'Admin' : 'Feedback'}
 			</a>
 		{/if}
 		<form method="POST" action="/logout">

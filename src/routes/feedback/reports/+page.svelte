@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import FilterChips from '$lib/components/FilterChips.svelte';
 	import { REPORT_ISSUE_LABELS } from '$lib/report-issue-types';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dictionaryEntryHref } from '$lib/word-url';
@@ -99,26 +100,7 @@
 	<title>Reports · Admin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Reports</h1>
-		<p>User-submitted issue reports for words and sentences.</p>
-	</div>
-	<div class="page-stat">
-		<b>{data.statusCounts.open}</b>
-		open
-	</div>
-</div>
-
-<nav class="status-tabs" aria-label="Report status filters">
-	{#each statusTabs as tab}
-		<a href={tab.href} class:active={tab.active}>
-			<span>{tab.label}</span>
-			<span>{tab.count.toLocaleString()}</span>
-		</a>
-	{/each}
-</nav>
+<FilterChips label="Report status filters" items={statusTabs} />
 
 {#if data.reports.length === 0}
 	<section class="form-card reports-empty">
@@ -208,28 +190,6 @@
 />
 
 <style>
-	.status-tabs {
-		display: flex;
-		gap: 4px;
-		flex-wrap: wrap;
-		margin-bottom: 16px;
-	}
-	.status-tabs a {
-		align-items: center;
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		color: var(--ink-soft);
-		display: inline-flex;
-		font-size: 13px;
-		gap: 8px;
-		padding: 4px 12px;
-		text-decoration: none;
-	}
-	.status-tabs a.active {
-		background: var(--brand);
-		border-color: var(--brand);
-		color: var(--brand-ink, #fff);
-	}
 	.reports-list {
 		display: grid;
 		gap: 12px;

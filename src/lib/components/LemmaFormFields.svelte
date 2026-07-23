@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
+	import CapitalizationHint from '$lib/components/CapitalizationHint.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import type { PartOfSpeech } from '@prisma/client';
 
@@ -242,6 +243,7 @@
 				autocomplete="off"
 				bind:value={kalenjin}
 			/>
+			<CapitalizationHint bind:value={kalenjin} suppress={partOfSpeech === 'NAME'} auto />
 		</div>
 		<div class="field">
 			<label for="{idPrefix}-alt">Alternative spellings</label>
@@ -418,6 +420,7 @@
 				bind:value={translations}
 			/>
 		{/if}
+		<CapitalizationHint bind:value={translations} suppress={partOfSpeech === 'NAME'} auto />
 	</div>
 
 	<div class="field lemma-full-field">

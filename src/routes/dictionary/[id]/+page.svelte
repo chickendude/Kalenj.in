@@ -9,6 +9,7 @@
 	import TokenHoverPreview from '$lib/components/TokenHoverPreview.svelte';
 	import WordLinkEditor from '$lib/components/WordLinkEditor.svelte';
 	import ImageUploadField from '$lib/components/ImageUploadField.svelte';
+	import CapitalizationHint from '$lib/components/CapitalizationHint.svelte';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
 	import BackLink from '$lib/components/BackLink.svelte';
 	import ReportDialog from '$lib/components/ReportDialog.svelte';
@@ -710,6 +711,10 @@
 									required
 									bind:value={kalenjinValue}
 								/>
+								<CapitalizationHint
+									bind:value={kalenjinValue}
+									suppress={partOfSpeechValue === 'NAME'}
+								/>
 							</div>
 							<div class="side-field">
 								<label for="alternativeSpellings">Alt. Spellings</label>
@@ -732,6 +737,10 @@
 								required
 								placeholder="semicolon-separated"
 								bind:value={translationsValue}
+							/>
+							<CapitalizationHint
+								bind:value={translationsValue}
+								suppress={partOfSpeechValue === 'NAME'}
 							/>
 						</div>
 						<div class="side-field">

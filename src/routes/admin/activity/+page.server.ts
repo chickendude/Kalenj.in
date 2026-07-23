@@ -15,7 +15,7 @@ function toActivityCounts(rows: GroupByRow[]): ActivityCount[] {
 export const load: PageServerLoad = async ({ locals, url }) => {
 	const viewer = requireEditor(locals);
 	// Managers see only their own activity, so send them straight to their page.
-	if (viewer.role !== 'ADMIN') redirect(302, `/admin/activity/${viewer.id}${url.search}`);
+	if (viewer.role !== 'ADMIN') redirect(302, `/activity${url.search}`);
 
 	const range = parseStatsRange(url.searchParams.get('range'));
 	const { from, to } = await rangeBounds(range);

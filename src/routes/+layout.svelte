@@ -66,11 +66,6 @@
 	}
 
 	function isAdminActive(): boolean {
-		// For managers the activity pages belong to the "My activity" menu
-		// item, not to Admin.
-		if (data.user?.role === 'MANAGER' && page.url.pathname.startsWith('/admin/activity')) {
-			return false;
-		}
 		return (
 			page.url.pathname === '/admin' ||
 			page.url.pathname.startsWith('/admin/') ||
@@ -172,9 +167,9 @@
 		</a>
 		{#if data.user.role === 'MANAGER'}
 			<a
-				href="/admin/activity"
+				href="/activity"
 				role="menuitem"
-				class:active={page.url.pathname.startsWith('/admin/activity')}
+				class:active={isActive('/activity')}
 				onclick={onSelect}
 			>
 				My activity

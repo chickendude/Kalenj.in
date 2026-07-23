@@ -197,6 +197,7 @@ model Word {
   incertainAudioRecordedById String?
   incertainAudioRecordedAt   DateTime?
   incertainAudioRecordedBy   User?                      @relation("WordIncertainAudioRecorder", fields: [incertainAudioRecordedById], references: [id], onDelete: SetNull)
+  proofreadAt             DateTime?
   createdById             String?
   createdBy               User?                         @relation("WordCreator", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt               DateTime                      @default(now())

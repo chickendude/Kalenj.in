@@ -1,9 +1,83 @@
 <script lang="ts">
+	import { enhance } from '$app/forms';
+	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
+	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
+	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
+	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
+	import WordProofreadToggle from '$lib/components/WordProofreadToggle.svelte';
+	import { PARTS_OF_SPEECH, PART_OF_SPEECH_LABELS } from '$lib/parts-of-speech';
 	import { RANGE_IDS, RANGE_LABELS, RANGE_SHORT_LABELS } from '$lib/stats';
-	import type { PageData } from './$types';
+	import { toast } from '$lib/stores/toast.svelte';
+	import type { ActionData, PageData } from './$types';
 
-	let { data }: { data: PageData } = $props();
+	let { data, form }: { data: PageData; form: ActionData } = $props();
+
+	type EditableField = 'kalenjin' | 'pos' | 'translations' | 'pluralForm' | 'incertainForm';
+
+	const FIELD_LABELS: Record<
+		Exclude<EditableField, 'kalenjin' | 'pos'>,
+		string
+	> = {
+		translations: 'translations',
+		pluralForm: 'plural form',
+		incertainForm: 'incertain form'
+	};
+
+	let editing = $state<{ wordId: string; field: EditableField; width: number } | null>(null);
+
+	function startEdit(wordId: string, field: EditableField, event: MouseEvent) {
+		// Size the inline input to the text it replaces so the row barely moves.
+		const width = (event.currentTarget as HTMLElement).offsetWidth;
+		editing = { wordId, field, width };
+	}
+
+	function isEditing(wordId: string, field: EditableField): boolean {
+		return editing?.wordId === wordId && editing.field === field;
+	}
+
+	// Match the replaced text exactly so nothing beside it moves; only tiny
+	// values like the "—" placeholder get a typeable minimum.
+	const editWidth = $derived((editing?.width ?? 0) < 40 ? 80 : (editing?.width ?? 0) + 2);
+
+	// Focus and select the clicked field once its input renders.
+	function focusField(node: HTMLInputElement) {
+		node.select();
+	}
+
+	function focusSelect(node: HTMLSelectElement) {
+		node.focus();
+	}
+
+	function onEditKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') editing = null;
+	}
+
+	$effect(() => {
+		if (form && 'updateSuccess' in form && form.updateSuccess) {
+			toast.success(form.updateSuccess);
+			editing = null;
+		}
+	});
+	$effect(() => {
+		if (form && 'deleteSuccess' in form && form.deleteSuccess) toast.success(form.deleteSuccess);
+	});
+
+	let pendingDelete = $state<{ form: HTMLFormElement; kalenjin: string } | null>(null);
+
+	function requestDeleteWord(event: SubmitEvent, kalenjin: string) {
+		// A confirmed submit (requestSubmit below) passes through untouched.
+		if (pendingDelete?.form === event.currentTarget) return;
+		event.preventDefault();
+		pendingDelete = { form: event.currentTarget as HTMLFormElement, kalenjin };
+	}
+
+	function confirmPendingDelete() {
+		const pending = pendingDelete;
+		if (!pending) return;
+		pending.form.requestSubmit();
+		pendingDelete = null;
+	}
 
 	const numberFmt = new Intl.NumberFormat();
 	const dateFmt = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' });
@@ -30,39 +104,30 @@
 	<title>{displayName}'s {data.type} · Admin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">
-			<a href="/admin/activity?range={data.range}">Staff activity</a>
-		</div>
-		<h1>
-			{data.type === 'words' ? 'Words' : 'Sentences'} added by {displayName}
-			<span class="role-pill {data.targetUser.role.toLowerCase()}">{data.targetUser.role}</span>
-		</h1>
-		<p>{RANGE_LABELS[data.range]} · newest first.</p>
-	</div>
-	<div class="page-stat">
-		<b>{numberFmt.format(data.totalCount)}</b>
-		{data.type === 'words'
-			? `word${data.totalCount === 1 ? '' : 's'}`
-			: `sentence${data.totalCount === 1 ? '' : 's'}`}
-	</div>
-</div>
-
 <div class="entry-controls">
-	<div class="type-tabs" role="tablist" aria-label="Entry type">
-		<a
-			href={pageHref({ type: 'words' })}
-			class="type-tab"
-			class:active={data.type === 'words'}
-			aria-current={data.type === 'words' ? 'page' : undefined}>Words</a
-		>
-		<a
-			href={pageHref({ type: 'sentences' })}
-			class="type-tab"
-			class:active={data.type === 'sentences'}
-			aria-current={data.type === 'sentences' ? 'page' : undefined}>Sentences</a
-		>
+	<div class="entry-controls-group">
+		<div class="type-tabs" role="tablist" aria-label="Entry type">
+			<a
+				href={pageHref({ type: 'words' })}
+				class="type-tab"
+				class:active={data.type === 'words'}
+				aria-current={data.type === 'words' ? 'page' : undefined}>Words</a
+			>
+			<a
+				href={pageHref({ type: 'sentences' })}
+				class="type-tab"
+				class:active={data.type === 'sentences'}
+				aria-current={data.type === 'sentences' ? 'page' : undefined}>Sentences</a
+			>
+		</div>
+		<div class="entry-count">
+			<span class="entry-count-name">{displayName}</span>
+			<span class="entry-count-divider" aria-hidden="true">|</span>
+			<b>{numberFmt.format(data.totalCount)}</b>
+			{data.type === 'words'
+				? `word${data.totalCount === 1 ? '' : 's'}`
+				: `sentence${data.totalCount === 1 ? '' : 's'}`}
+		</div>
 	</div>
 	<div class="period-buttons" role="radiogroup" aria-label="Range">
 		{#each RANGE_IDS as r (r)}
@@ -80,6 +145,42 @@
 	</div>
 </div>
 
+<FormErrorFeedback error={form && 'updateError' in form ? form.updateError : null} />
+<FormErrorFeedback error={form && 'proofreadError' in form ? form.proofreadError : null} />
+
+{#snippet fieldEditor(
+	entry: (typeof data.entries)[number],
+	field: 'translations' | 'pluralForm' | 'incertainForm',
+	current: string
+)}
+	{#if isEditing(entry.id, field)}
+		<form method="POST" action="?/updateWordField" use:enhance class="inline-edit-form">
+			<input type="hidden" name="wordId" value={entry.id} />
+			<input type="hidden" name="field" value={field} />
+			<input
+				name="value"
+				class="inline-edit-input"
+				style="width: {editWidth}px"
+				aria-label={`${FIELD_LABELS[field]} of ${entry.kalenjin}`}
+				autocomplete="off"
+				required={field === 'translations'}
+				value={current}
+				use:focusField
+				onkeydown={onEditKeydown}
+				onblur={() => (editing = null)}
+			/>
+		</form>
+	{:else}
+		<button
+			type="button"
+			class="cell-edit"
+			class:muted={!current}
+			aria-label={`Edit ${FIELD_LABELS[field]} of ${entry.kalenjin}`}
+			onclick={(event) => startEdit(entry.id, field, event)}>{current || '—'}</button
+		>
+	{/if}
+{/snippet}
+
 {#if data.entries.length === 0}
 	<p class="empty-note">
 		No {data.type} added by {displayName} in this range.
@@ -90,20 +191,213 @@
 			<tr>
 				<th>Kalenjin</th>
 				<th>{data.type === 'words' ? 'Translations' : 'English'}</th>
+				{#if data.type === 'words'}
+					<th>Plural</th>
+					<th>Incertain</th>
+				{/if}
+				<th class="status-col">Status</th>
 				<th class="num">Added</th>
+				{#if data.type === 'words'}
+					<th class="actions-col"><span class="sr-only">Actions</span></th>
+				{/if}
 			</tr>
 		</thead>
 		<tbody>
 			{#each data.entries as entry (entry.id)}
+				{@const hasForms =
+					entry.partOfSpeech === 'NOUN' || entry.partOfSpeech === 'ADJECTIVE'}
 				<tr>
-					<td><a href={entry.href}><strong>{entry.kalenjin}</strong></a></td>
-					<td>{entry.english}</td>
+					<td>
+						<span class="word-with-pos">
+							{#if data.type === 'words'}
+								{#if isEditing(entry.id, 'kalenjin')}
+									<form
+										method="POST"
+										action="?/updateWordKalenjin"
+										use:enhance
+										class="inline-edit-form"
+									>
+										<input type="hidden" name="wordId" value={entry.id} />
+										<input
+											name="kalenjin"
+											class="inline-edit-input strong"
+											style="width: {editWidth}px"
+											aria-label={`Kalenjin spelling of ${entry.kalenjin}`}
+											autocomplete="off"
+											required
+											value={entry.kalenjin}
+											use:focusField
+											onkeydown={onEditKeydown}
+											onblur={() => (editing = null)}
+										/>
+									</form>
+								{:else}
+									<button
+										type="button"
+										class="cell-edit"
+										aria-label={`Edit spelling of ${entry.kalenjin}`}
+										onclick={(event) => startEdit(entry.id, 'kalenjin', event)}
+										><strong>{entry.kalenjin}</strong></button
+									>
+								{/if}
+								{#if isEditing(entry.id, 'pos')}
+									<form
+										method="POST"
+										action="?/updateWordPartOfSpeech"
+										use:enhance
+										class="inline-edit-form"
+									>
+										<input type="hidden" name="wordId" value={entry.id} />
+										<select
+											name="partOfSpeech"
+											class="select pos-select"
+											aria-label={`Part of speech for ${entry.kalenjin}`}
+											value={entry.partOfSpeech ?? ''}
+											use:focusSelect
+											onchange={(event) => event.currentTarget.form?.requestSubmit()}
+											onkeydown={onEditKeydown}
+											onblur={() => (editing = null)}
+										>
+											<option value="">None</option>
+											{#each PARTS_OF_SPEECH as pos (pos)}
+												<option value={pos}>{PART_OF_SPEECH_LABELS[pos]}</option>
+											{/each}
+										</select>
+									</form>
+								{:else}
+									<button
+										type="button"
+										class="cell-edit pos-edit"
+										aria-label={`Change part of speech of ${entry.kalenjin}`}
+										onclick={(event) => startEdit(entry.id, 'pos', event)}
+									>
+										{#if entry.partOfSpeech}
+											<PartOfSpeechInline value={entry.partOfSpeech} size="tiny" />
+										{:else}
+											<span class="pos-empty">?</span>
+										{/if}
+									</button>
+								{/if}
+							{:else}
+								<a href={entry.href}><strong>{entry.kalenjin}</strong></a>
+							{/if}
+						</span>
+					</td>
+					<td>
+						{#if data.type === 'words'}
+							{@render fieldEditor(entry, 'translations', entry.english)}
+						{:else}
+							{entry.english}
+						{/if}
+					</td>
+					{#if data.type === 'words'}
+						{@const canEditPlural = hasForms && !entry.isPluralOnly}
+						{@const canEditIncertain = entry.partOfSpeech === 'NOUN' && !entry.isPluralOnly}
+						<td class="form-col">
+							{#if canEditPlural}
+								{@render fieldEditor(entry, 'pluralForm', entry.pluralForm ?? '')}
+							{:else if hasForms}
+								{#if entry.pluralForm}{entry.pluralForm}{:else}<span class="form-missing">—</span
+									>{/if}
+							{/if}
+						</td>
+						<td class="form-col">
+							{#if canEditIncertain}
+								{@render fieldEditor(entry, 'incertainForm', entry.incertainForm ?? '')}
+							{:else if entry.incertainForm}
+								{entry.incertainForm}
+							{/if}
+						</td>
+					{/if}
+					<td class="status-col">
+						{#if data.type === 'words'}
+							<WordProofreadToggle
+								wordId={entry.id}
+								proofread={Boolean(entry.proofreadAt)}
+								canEdit={data.viewerIsAdmin}
+							/>
+						{:else if entry.status}
+							<SentenceStatusToggle status={entry.status} />
+						{/if}
+					</td>
 					<td class="num">{dateFmt.format(entry.createdAt)}</td>
+					{#if data.type === 'words'}
+						<td class="actions-col">
+							<div class="row-icon-actions">
+								<Tooltip label="View entry">
+									<a
+										class="icon-action"
+										href={entry.href}
+										aria-label={`View ${entry.kalenjin} in the dictionary`}
+									>
+										<svg
+											width="16"
+											height="16"
+											viewBox="0 0 24 24"
+											fill="none"
+											stroke="currentColor"
+											stroke-width="2"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											aria-hidden="true"
+										>
+											<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+											<polyline points="15 3 21 3 21 9" />
+											<line x1="10" y1="14" x2="21" y2="3" />
+										</svg>
+									</a>
+								</Tooltip>
+								<form
+									method="POST"
+									action="?/deleteWord"
+									use:enhance
+									onsubmit={(event) => requestDeleteWord(event, entry.kalenjin)}
+								>
+									<input type="hidden" name="wordId" value={entry.id} />
+									<Tooltip label="Delete word">
+										<button
+											type="submit"
+											class="icon-action danger"
+											aria-label={`Delete ${entry.kalenjin}`}
+										>
+											<svg
+												width="16"
+												height="16"
+												viewBox="0 0 24 24"
+												fill="none"
+												stroke="currentColor"
+												stroke-width="2"
+												stroke-linecap="round"
+												stroke-linejoin="round"
+												aria-hidden="true"
+											>
+												<polyline points="3 6 5 6 21 6" />
+												<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+												<path d="M10 11v6" />
+												<path d="M14 11v6" />
+												<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+											</svg>
+										</button>
+									</Tooltip>
+								</form>
+							</div>
+						</td>
+					{/if}
 				</tr>
 			{/each}
 		</tbody>
 	</table>
 {/if}
+
+<ConfirmDialog
+	open={pendingDelete !== null}
+	title="Delete this word?"
+	message={`"${pendingDelete?.kalenjin ?? ''}" will be permanently removed from the dictionary.`}
+	confirmLabel="Delete word"
+	variant="danger"
+	onconfirm={confirmPendingDelete}
+	oncancel={() => (pendingDelete = null)}
+/>
 
 {#if pageCount > 1}
 	<nav class="pagination" aria-label="Pages">
@@ -124,13 +418,173 @@
 		white-space: nowrap;
 	}
 
-	.page-kicker a {
+	.status-col {
+		text-align: center;
+		width: 1%;
+		white-space: nowrap;
+	}
+
+	.form-missing {
+		color: var(--ink-mute);
+	}
+
+	.cell-edit {
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+		cursor: pointer;
+	}
+
+	.cell-edit:hover,
+	.cell-edit:focus-visible {
+		text-decoration: underline dotted;
+		text-underline-offset: 3px;
+	}
+
+	.cell-edit.muted {
+		color: var(--ink-mute);
+	}
+
+	/* The editor replaces the clicked text in normal flow — no border, no
+	   background, same font — so it reads as editing the cell text itself.
+	   Only a dashed underline marks the editable region. */
+	.inline-edit-form {
+		display: inline-flex;
+		margin: 0;
+	}
+
+	.inline-edit-input {
+		box-sizing: border-box;
+		padding: 0;
+		border: 0;
+		border-bottom: 1px dashed color-mix(in oklch, var(--accent) 60%, var(--line));
+		border-radius: 0;
+		background: transparent;
+		font: inherit;
 		color: inherit;
 	}
 
-	.page-head h1 .role-pill {
-		vertical-align: middle;
-		margin-left: 8px;
+	.inline-edit-input.strong {
+		font-weight: 650;
+	}
+
+	.inline-edit-input:focus {
+		outline: none;
+		border-bottom-color: var(--accent);
+	}
+
+	/* Where supported, size the input to its text exactly (and grow as the
+	   user types); the measured inline width is only the fallback. */
+	@supports (field-sizing: content) {
+		.inline-edit-input {
+			field-sizing: content;
+			width: auto !important;
+			min-width: 40px;
+			max-width: 100%;
+		}
+	}
+
+	.pos-edit:hover,
+	.pos-edit:focus-visible {
+		text-decoration: none;
+	}
+
+	.pos-edit :global(.word-pill) {
+		cursor: pointer;
+	}
+
+	.pos-empty {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		border: 1px dashed var(--line);
+		border-radius: 999px;
+		padding: 0.2rem 0.46rem;
+		font-size: 0.78rem;
+		font-weight: 600;
+		line-height: 1;
+		color: var(--ink-mute);
+	}
+
+	.pos-select {
+		padding: 2px 6px;
+		font-size: 12px;
+		min-height: 0;
+		height: auto;
+	}
+
+	.actions-col {
+		width: 1%;
+		white-space: nowrap;
+	}
+
+	.row-icon-actions {
+		display: flex;
+		align-items: center;
+		justify-content: flex-end;
+		gap: 4px;
+	}
+
+	.row-icon-actions form {
+		display: inline-flex;
+	}
+
+	.icon-action {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		padding: 0;
+		border: 0;
+		border-radius: 6px;
+		background: none;
+		color: var(--ink-mute);
+		cursor: pointer;
+	}
+
+	.icon-action:hover,
+	.icon-action:focus-visible {
+		background: var(--surface);
+		color: var(--ink);
+		text-decoration: none;
+	}
+
+	.icon-action.danger:hover,
+	.icon-action.danger:focus-visible {
+		background: var(--danger-soft);
+		color: var(--danger);
+	}
+
+	.entry-controls-group {
+		display: flex;
+		align-items: center;
+		gap: 14px;
+	}
+
+	.entry-count {
+		color: var(--ink-mute);
+		font-size: 0.9rem;
+		white-space: nowrap;
+	}
+
+	.entry-count-name {
+		color: var(--ink);
+		font-weight: 600;
+	}
+
+	.entry-count-divider {
+		margin: 0 4px;
+		color: var(--line);
+	}
+
+	.entry-count b {
+		color: var(--ink);
+		font-size: 1.05rem;
+		font-variant-numeric: tabular-nums;
 	}
 
 	.entry-controls {

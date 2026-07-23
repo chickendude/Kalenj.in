@@ -1,10 +1,17 @@
-import { error } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
+import { Prisma, type ExampleSentenceStatus, type PartOfSpeech } from '@prisma/client';
+import { isPartOfSpeech } from '$lib/parts-of-speech';
 import { prisma } from '$lib/server/prisma';
-import { requireAdmin } from '$lib/server/guards';
+import { requireAdmin, requireEditor } from '$lib/server/guards';
 import { attachDictionaryHrefs } from '$lib/server/dictionary-hrefs';
+import { prepareIncertainForm, preparePluralForms } from '$lib/server/kalenjin-word-search';
+import { normalizeLemma } from '$lib/server/normalize-lemma';
+import { propagateKalenjinRename } from '$lib/server/propagate-rename';
+import { deleteUploadedImage } from '$lib/server/uploads';
 import { rangeBounds } from '$lib/server/stats';
+import { generateUniqueWordSlug } from '$lib/server/word-slugs';
 import { parseStatsRange } from '$lib/stats-preferences';
-import type { PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from './$types';
 
 const PAGE_SIZE = 50;
 
@@ -16,6 +23,15 @@ type ActivityEntry = {
 	kalenjin: string;
 	english: string;
 	createdAt: Date;
+	/** Words only. */
+	proofreadAt?: Date | null;
+	partOfSpeech?: PartOfSpeech | null;
+	pluralForm?: string | null;
+	incertainForm?: string | null;
+	isPluralOnly?: boolean;
+	isSingularOnly?: boolean;
+	/** Sentences only. */
+	status?: ExampleSentenceStatus;
 };
 
 function parsePage(raw: string | null): number {
@@ -25,7 +41,9 @@ function parsePage(raw: string | null): number {
 }
 
 export const load: PageServerLoad = async ({ locals, params, url }) => {
-	requireAdmin(locals);
+	const viewer = requireEditor(locals);
+	// Managers may only see their own activity; admins can see anyone's.
+	if (viewer.role !== 'ADMIN' && viewer.id !== params.userId) error(404, 'Not Found');
 
 	const type: ActivityEntryType =
 		url.searchParams.get('type') === 'sentences' ? 'sentences' : 'words';
@@ -55,7 +73,19 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 				orderBy: { createdAt: 'desc' },
 				skip: (page - 1) * PAGE_SIZE,
 				take: PAGE_SIZE,
-				select: { id: true, kalenjin: true, slug: true, translations: true, createdAt: true }
+				select: {
+					id: true,
+					kalenjin: true,
+					slug: true,
+					translations: true,
+					createdAt: true,
+					proofreadAt: true,
+					partOfSpeech: true,
+					pluralForm: true,
+					incertainForm: true,
+					isPluralOnly: true,
+					isSingularOnly: true
+				}
 			})
 		]);
 		totalCount = count;
@@ -64,7 +94,13 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			href: word.href,
 			kalenjin: word.kalenjin,
 			english: word.translations,
-			createdAt: word.createdAt
+			createdAt: word.createdAt,
+			proofreadAt: word.proofreadAt,
+			partOfSpeech: word.partOfSpeech,
+			pluralForm: word.pluralForm,
+			incertainForm: word.incertainForm,
+			isPluralOnly: word.isPluralOnly,
+			isSingularOnly: word.isSingularOnly
 		}));
 	} else {
 		const [count, sentences] = await Promise.all([
@@ -74,7 +110,7 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 				orderBy: { createdAt: 'desc' },
 				skip: (page - 1) * PAGE_SIZE,
 				take: PAGE_SIZE,
-				select: { id: true, kalenjin: true, english: true, createdAt: true }
+				select: { id: true, kalenjin: true, english: true, createdAt: true, status: true }
 			})
 		]);
 		totalCount = count;
@@ -83,12 +119,14 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 			href: `/corpus/${sentence.id}`,
 			kalenjin: sentence.kalenjin,
 			english: sentence.english,
-			createdAt: sentence.createdAt
+			createdAt: sentence.createdAt,
+			status: sentence.status
 		}));
 	}
 
 	return {
 		targetUser,
+		viewerIsAdmin: viewer.role === 'ADMIN',
 		type,
 		range,
 		page,
@@ -96,4 +134,180 @@ export const load: PageServerLoad = async ({ locals, params, url }) => {
 		totalCount,
 		entries
 	};
+};
+
+export const actions: Actions = {
+	setWordProofread: async ({ request, locals }) => {
+		requireAdmin(locals);
+		const data = await request.formData();
+		const wordId = String(data.get('wordId') ?? '').trim();
+		const proofread = String(data.get('proofread') ?? '') === '1';
+
+		if (!wordId) {
+			return fail(400, { proofreadError: 'Word is required.' });
+		}
+
+		await prisma.word.update({
+			where: { id: wordId },
+			data: { proofreadAt: proofread ? new Date() : null }
+		});
+
+		return {
+			proofreadSuccess: proofread ? 'Word marked proofread.' : 'Word returned to not proofread.'
+		};
+	},
+
+	updateWordKalenjin: async ({ request, locals }) => {
+		requireEditor(locals);
+		const data = await request.formData();
+		const wordId = String(data.get('wordId') ?? '').trim();
+		const kalenjin = String(data.get('kalenjin') ?? '').trim();
+
+		if (!wordId) return fail(400, { updateError: 'Word is required.' });
+		if (!kalenjin) return fail(400, { updateError: 'The Kalenjin spelling cannot be empty.' });
+
+		await prisma.$transaction(async (tx) => {
+			// Lock the row so concurrent renames serialize (same as the entry edit page).
+			const rows = await tx.$queryRaw<Array<{ kalenjin: string; slug: string }>>(
+				Prisma.sql`SELECT "kalenjin", "slug" FROM "Word" WHERE "id" = ${wordId} FOR UPDATE`
+			);
+			const existing = rows[0];
+			if (!existing) error(404, 'Word not found.');
+			if (existing.kalenjin === kalenjin) return;
+
+			await tx.word.update({
+				where: { id: wordId },
+				data: {
+					kalenjin,
+					kalenjinNormalized: normalizeLemma(kalenjin),
+					slug: await generateUniqueWordSlug(tx, kalenjin, wordId)
+				}
+			});
+			await propagateKalenjinRename(tx, wordId, kalenjin, existing.slug);
+		});
+
+		return { updateSuccess: 'Word updated.' };
+	},
+
+	updateWordPartOfSpeech: async ({ request, locals }) => {
+		requireEditor(locals);
+		const data = await request.formData();
+		const wordId = String(data.get('wordId') ?? '').trim();
+		const rawPos = String(data.get('partOfSpeech') ?? '').trim();
+
+		if (!wordId) return fail(400, { updateError: 'Word is required.' });
+		if (rawPos && !isPartOfSpeech(rawPos)) {
+			return fail(400, { updateError: `Unknown part of speech: "${rawPos}".` });
+		}
+
+		const partOfSpeech: PartOfSpeech | null = rawPos ? (rawPos as PartOfSpeech) : null;
+		const canHavePlural = partOfSpeech === 'NOUN' || partOfSpeech === 'ADJECTIVE';
+		await prisma.word.update({
+			where: { id: wordId },
+			data: {
+				partOfSpeech,
+				// Same invariants as the full edit form: forms that no longer apply are cleared.
+				...(canHavePlural
+					? {}
+					: {
+							pluralForm: null,
+							pluralFormNormalized: null,
+							isPluralOnly: false,
+							isSingularOnly: false
+						}),
+				...(partOfSpeech === 'NOUN'
+					? {}
+					: { incertainForm: null, incertainFormNormalized: null }),
+				...(partOfSpeech === 'VERB'
+					? {}
+					: {
+							presentAnee: null,
+							presentInyee: null,
+							presentInee: null,
+							presentEchek: null,
+							presentOkwek: null,
+							presentIchek: null
+						})
+			}
+		});
+
+		return { updateSuccess: 'Part of speech updated.' };
+	},
+
+	updateWordField: async ({ request, locals }) => {
+		requireEditor(locals);
+		const data = await request.formData();
+		const wordId = String(data.get('wordId') ?? '').trim();
+		const field = String(data.get('field') ?? '').trim();
+		const rawValue = String(data.get('value') ?? '').trim();
+
+		if (!wordId) return fail(400, { updateError: 'Word is required.' });
+
+		if (field === 'translations') {
+			if (!rawValue) return fail(400, { updateError: 'Translations cannot be empty.' });
+			await prisma.word.update({ where: { id: wordId }, data: { translations: rawValue } });
+			return { updateSuccess: 'Translations updated.' };
+		}
+
+		const word = await prisma.word.findUnique({
+			where: { id: wordId },
+			select: { partOfSpeech: true, isPluralOnly: true, isSingularOnly: true }
+		});
+		if (!word) return fail(404, { updateError: 'Word not found.' });
+
+		if (field === 'pluralForm') {
+			const canHavePlural =
+				(word.partOfSpeech === 'NOUN' || word.partOfSpeech === 'ADJECTIVE') &&
+				!word.isPluralOnly;
+			if (!canHavePlural) {
+				return fail(400, { updateError: 'This word cannot have a plural form.' });
+			}
+			const { pluralForm, pluralFormNormalized } = preparePluralForms(rawValue);
+			await prisma.word.update({
+				where: { id: wordId },
+				data: {
+					pluralForm,
+					pluralFormNormalized,
+					// Entering a plural for a singular-only word means it isn't
+					// singular-only after all.
+					...(pluralForm && word.isSingularOnly ? { isSingularOnly: false } : {})
+				}
+			});
+			return { updateSuccess: 'Plural form updated.' };
+		}
+
+		if (field === 'incertainForm') {
+			const canHaveIncertain = word.partOfSpeech === 'NOUN' && !word.isPluralOnly;
+			if (!canHaveIncertain) {
+				return fail(400, { updateError: 'Only nouns can have an incertain form.' });
+			}
+			const { incertainForm, incertainFormNormalized } = prepareIncertainForm(rawValue);
+			await prisma.word.update({
+				where: { id: wordId },
+				data: { incertainForm, incertainFormNormalized }
+			});
+			return { updateSuccess: 'Incertain form updated.' };
+		}
+
+		return fail(400, { updateError: `Unknown field: "${field}".` });
+	},
+
+	deleteWord: async ({ request, locals }) => {
+		requireEditor(locals);
+		const data = await request.formData();
+		const wordId = String(data.get('wordId') ?? '').trim();
+
+		if (!wordId) return fail(400, { updateError: 'Word is required.' });
+
+		const existing = await prisma.word.findUnique({
+			where: { id: wordId },
+			select: { kalenjin: true, imageUrl: true }
+		});
+		if (!existing) return fail(404, { updateError: 'Word not found.' });
+
+		await prisma.word.delete({ where: { id: wordId } });
+		if (existing.imageUrl) await deleteUploadedImage(existing.imageUrl);
+
+		return { deleteSuccess: `"${existing.kalenjin}" deleted from the dictionary.` };
+	}
 };

@@ -50,10 +50,11 @@
 <table class="users-table">
 	<thead>
 		<tr>
-			<th>User</th>
-			<th>Role</th>
+			<th class="user-col">User</th>
+			<th class="role-col">Role</th>
 			<th class="num count-col">Words</th>
 			<th class="num count-col">Sentences</th>
+			<th class="spacer-col"></th>
 		</tr>
 	</thead>
 	<tbody>
@@ -84,6 +85,7 @@
 						{numberFmt.format(sentences)}
 					{/if}
 				</td>
+				<td class="spacer-col"></td>
 			</tr>
 		{/each}
 	</tbody>
@@ -107,11 +109,25 @@
 		font-variant-numeric: tabular-nums;
 	}
 
-	/* Keep the two count columns at the same width they had when the table
-	   held four of them, instead of spreading across the freed space. */
+	/* Size the real columns to their content and let the trailing spacer
+	   absorb the leftover width, so the counts sit right after Role instead
+	   of being pushed to the table's far edge. */
+	.user-col {
+		width: 32%;
+	}
+
+	.role-col {
+		width: 14%;
+	}
+
 	.count-col {
-		width: 16%;
+		width: 1%;
 		white-space: nowrap;
+		padding-right: 28px;
+	}
+
+	.spacer-col {
+		padding: 0;
 	}
 
 	.display-name {

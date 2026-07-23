@@ -14,9 +14,9 @@ export const ADMIN_TAB_STORAGE_KEY = 'admin:last-tab';
 // admin-only. They reach their own activity via the "My activity" user-menu
 // link, not a tab.
 export const ADMIN_TABS: AdminTab[] = [
-	{ href: '/admin/suggestions', label: 'Suggestions', feedback: true },
-	{ href: '/admin/reports', label: 'Reports', feedback: true },
-	{ href: '/admin/clarifications', label: 'Questions', feedback: true },
+	{ href: '/feedback/suggestions', label: 'Suggestions', feedback: true },
+	{ href: '/feedback/reports', label: 'Reports', feedback: true },
+	{ href: '/feedback/questions', label: 'Questions', feedback: true },
 	{ href: '/admin/word-of-day', label: 'WOTD', adminOnly: true },
 	{ href: '/admin/proofread', label: 'Proofread', adminOnly: true },
 	{ href: '/admin/word-audio', label: 'Word audio', adminOnly: true },

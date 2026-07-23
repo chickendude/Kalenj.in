@@ -44,7 +44,7 @@
 <FilterChips
 	label="Filter by status"
 	items={FILTERS.map((filter) => ({
-		href: `/admin/clarifications?status=${filter.key}`,
+		href: `?status=${filter.key}`,
 		label: filter.label,
 		active: data.statusFilter === filter.key,
 		count: data.statusCounts[filter.key]

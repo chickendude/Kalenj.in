@@ -18,7 +18,7 @@ function requireSignedIn(locals: App.Locals, url: URL): NonNullable<App.Locals['
 	}
 	// Staff add words directly; the contribute flow is just for regular users.
 	if (locals.user.role !== 'USER') {
-		throw redirect(303, '/admin/suggestions');
+		throw redirect(303, '/feedback/suggestions');
 	}
 	return locals.user;
 }

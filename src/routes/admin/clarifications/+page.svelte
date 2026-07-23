@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
+	import FilterChips from '$lib/components/FilterChips.svelte';
 	import { toast } from '$lib/stores/toast.svelte';
 	import { dictionaryEntryHref } from '$lib/word-url';
 	import type { ActionData, PageData, SubmitFunction } from './$types';
@@ -40,26 +41,15 @@
 	<title>Learner questions · Admin</title>
 </svelte:head>
 
-<div class="page-head">
-	<div>
-		<div class="page-kicker">Admin</div>
-		<h1>Learner questions</h1>
-		<p>Clarification requests from lessons — answers go straight back to the learner.</p>
-	</div>
-</div>
-
-<nav class="filter-row" aria-label="Filter by status">
-	{#each FILTERS as filter (filter.key)}
-		<a
-			class="filter-chip"
-			class:active={data.statusFilter === filter.key}
-			href="/admin/clarifications?status={filter.key}"
-		>
-			{filter.label}
-			<span class="filter-count">{data.statusCounts[filter.key]}</span>
-		</a>
-	{/each}
-</nav>
+<FilterChips
+	label="Filter by status"
+	items={FILTERS.map((filter) => ({
+		href: `/admin/clarifications?status=${filter.key}`,
+		label: filter.label,
+		active: data.statusFilter === filter.key,
+		count: data.statusCounts[filter.key]
+	}))}
+/>
 
 {#if form?.error}
 	<p class="form-feedback error">{form.error}</p>
@@ -147,36 +137,6 @@
 {/if}
 
 <style>
-	.filter-row {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 0.4rem;
-		margin: 1rem 0 1.2rem;
-	}
-
-	.filter-chip {
-		align-items: center;
-		border: 1px solid var(--line);
-		border-radius: 999px;
-		color: var(--ink-soft);
-		display: inline-flex;
-		font-size: 13px;
-		gap: 0.35rem;
-		padding: 0.25rem 0.75rem;
-		text-decoration: none;
-	}
-
-	.filter-chip.active {
-		background: var(--brand);
-		border-color: var(--brand);
-		color: var(--on-brand, #fff);
-	}
-
-	.filter-count {
-		font-size: 11.5px;
-		opacity: 0.75;
-	}
-
 	.empty {
 		color: var(--ink-mute);
 	}

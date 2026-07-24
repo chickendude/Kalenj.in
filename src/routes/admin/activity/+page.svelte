@@ -50,20 +50,17 @@
 <table class="users-table">
 	<thead>
 		<tr>
-			<th>User</th>
-			<th>Role</th>
-			<th class="num">Words</th>
-			{#if showRangeColumns}
-				<th class="num">Words · {RANGE_SHORT_LABELS[data.range]}</th>
-			{/if}
-			<th class="num">Sentences</th>
-			{#if showRangeColumns}
-				<th class="num">Sentences · {RANGE_SHORT_LABELS[data.range]}</th>
-			{/if}
+			<th class="user-col">User</th>
+			<th class="role-col">Role</th>
+			<th class="num count-col">Words</th>
+			<th class="num count-col">Sentences</th>
+			<th class="spacer-col"></th>
 		</tr>
 	</thead>
 	<tbody>
 		{#each data.activity.rows as row (row.userId)}
+			{@const words = showRangeColumns ? row.wordsInRange : row.words}
+			{@const sentences = showRangeColumns ? row.sentencesInRange : row.sentences}
 			<tr>
 				<td>
 					<strong>{row.username}</strong>
@@ -73,43 +70,22 @@
 				</td>
 				<td><span class="role-pill {row.role.toLowerCase()}">{row.role}</span></td>
 				<td class="num">
-					{#if row.words > 0}
-						<a href={entriesHref(row.userId, 'words', 'allTime')}>{numberFmt.format(row.words)}</a>
+					{#if words > 0}
+						<a href={entriesHref(row.userId, 'words', data.range)}>{numberFmt.format(words)}</a>
 					{:else}
-						{numberFmt.format(row.words)}
+						{numberFmt.format(words)}
 					{/if}
 				</td>
-				{#if showRangeColumns}
-					<td class="num">
-						{#if row.wordsInRange > 0}
-							<a href={entriesHref(row.userId, 'words', data.range)}>
-								{numberFmt.format(row.wordsInRange)}
-							</a>
-						{:else}
-							{numberFmt.format(row.wordsInRange)}
-						{/if}
-					</td>
-				{/if}
 				<td class="num">
-					{#if row.sentences > 0}
-						<a href={entriesHref(row.userId, 'sentences', 'allTime')}>
-							{numberFmt.format(row.sentences)}
+					{#if sentences > 0}
+						<a href={entriesHref(row.userId, 'sentences', data.range)}>
+							{numberFmt.format(sentences)}
 						</a>
 					{:else}
-						{numberFmt.format(row.sentences)}
+						{numberFmt.format(sentences)}
 					{/if}
 				</td>
-				{#if showRangeColumns}
-					<td class="num">
-						{#if row.sentencesInRange > 0}
-							<a href={entriesHref(row.userId, 'sentences', data.range)}>
-								{numberFmt.format(row.sentencesInRange)}
-							</a>
-						{:else}
-							{numberFmt.format(row.sentencesInRange)}
-						{/if}
-					</td>
-				{/if}
+				<td class="spacer-col"></td>
 			</tr>
 		{/each}
 	</tbody>
@@ -131,6 +107,27 @@
 	.num {
 		text-align: right;
 		font-variant-numeric: tabular-nums;
+	}
+
+	/* Size the real columns to their content and let the trailing spacer
+	   absorb the leftover width, so the counts sit right after Role instead
+	   of being pushed to the table's far edge. */
+	.user-col {
+		width: 32%;
+	}
+
+	.role-col {
+		width: 14%;
+	}
+
+	.count-col {
+		width: 1%;
+		white-space: nowrap;
+		padding-right: 28px;
+	}
+
+	.spacer-col {
+		padding: 0;
 	}
 
 	.display-name {

@@ -59,11 +59,14 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 	};
 
 	let totalCount: number;
+	/** Words marked proofread within the same filter; null on the sentences view. */
+	let proofreadCount: number | null = null;
 	let entries: ActivityEntry[];
 
 	if (type === 'words') {
-		const [count, words] = await Promise.all([
+		const [count, accepted, words] = await Promise.all([
 			prisma.word.count({ where }),
+			prisma.word.count({ where: { ...where, proofreadAt: { not: null } } }),
 			prisma.word.findMany({
 				where,
 				orderBy: { createdAt: 'desc' },
@@ -85,6 +88,7 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 			})
 		]);
 		totalCount = count;
+		proofreadCount = accepted;
 		entries = (await attachDictionaryHrefs(prisma, words)).map((word) => ({
 			id: word.id,
 			href: word.href,
@@ -128,6 +132,7 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 		page,
 		pageSize: PAGE_SIZE,
 		totalCount,
+		proofreadCount,
 		entries
 	};
 }

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
@@ -81,14 +80,23 @@
 	$effect(() => {
 		if (form && 'deleteSuccess' in form && form.deleteSuccess) toast.success(form.deleteSuccess);
 	});
+	$effect(() => {
+		if (form && 'updateError' in form && form.updateError) toast.error(form.updateError);
+	});
+	$effect(() => {
+		if (form && 'proofreadError' in form && form.proofreadError) toast.error(form.proofreadError);
+	});
 
 	let pendingDelete = $state<{ form: HTMLFormElement; kalenjin: string } | null>(null);
 
-	function requestDeleteWord(event: SubmitEvent, kalenjin: string) {
-		// A confirmed submit (requestSubmit below) passes through untouched.
-		if (pendingDelete?.form === event.currentTarget) return;
+	// Intercept the click, before any submit event exists: enhance's submit
+	// handler ignores preventDefault from other listeners, so a submit-time
+	// interception would let the delete through while the dialog opens.
+	function requestDeleteWord(event: MouseEvent, kalenjin: string) {
 		event.preventDefault();
-		pendingDelete = { form: event.currentTarget as HTMLFormElement, kalenjin };
+		const form = (event.currentTarget as HTMLButtonElement).form;
+		if (!form) return;
+		pendingDelete = { form, kalenjin };
 	}
 
 	function confirmPendingDelete() {
@@ -146,6 +154,11 @@
 			{data.type === 'words'
 				? `word${data.totalCount === 1 ? '' : 's'}`
 				: `sentence${data.totalCount === 1 ? '' : 's'}`}
+			{#if data.proofreadCount !== null}
+				<span class="entry-count-accepted"
+					>({numberFmt.format(data.proofreadCount)} accepted)</span
+				>
+			{/if}
 		</div>
 	</div>
 	<div class="period-buttons" role="radiogroup" aria-label="Range">
@@ -163,9 +176,6 @@
 		{/each}
 	</div>
 </div>
-
-<FormErrorFeedback error={form && 'updateError' in form ? form.updateError : null} />
-<FormErrorFeedback error={form && 'proofreadError' in form ? form.proofreadError : null} />
 
 {#snippet fieldEditor(
 	entry: (typeof data.entries)[number],
@@ -366,18 +376,14 @@
 										</svg>
 									</a>
 								</Tooltip>
-								<form
-									method="POST"
-									action="?/deleteWord"
-									use:enhance
-									onsubmit={(event) => requestDeleteWord(event, entry.kalenjin)}
-								>
+								<form method="POST" action="?/deleteWord" use:enhance>
 									<input type="hidden" name="wordId" value={entry.id} />
 									<Tooltip label="Delete word">
 										<button
 											type="submit"
 											class="icon-action danger"
 											aria-label={`Delete ${entry.kalenjin}`}
+											onclick={(event) => requestDeleteWord(event, entry.kalenjin)}
 										>
 											<svg
 												width="16"
@@ -603,6 +609,10 @@
 	.entry-count b {
 		color: var(--ink);
 		font-size: 1.05rem;
+		font-variant-numeric: tabular-nums;
+	}
+
+	.entry-count-accepted {
 		font-variant-numeric: tabular-nums;
 	}
 

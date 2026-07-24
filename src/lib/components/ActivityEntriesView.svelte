@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { enhance } from '$app/forms';
 	import ConfirmDialog from '$lib/components/ConfirmDialog.svelte';
-	import FormErrorFeedback from '$lib/components/FormErrorFeedback.svelte';
 	import PartOfSpeechInline from '$lib/components/PartOfSpeechInline.svelte';
 	import SentenceStatusToggle from '$lib/components/SentenceStatusToggle.svelte';
 	import Tooltip from '$lib/components/Tooltip.svelte';
@@ -80,6 +79,12 @@
 	});
 	$effect(() => {
 		if (form && 'deleteSuccess' in form && form.deleteSuccess) toast.success(form.deleteSuccess);
+	});
+	$effect(() => {
+		if (form && 'updateError' in form && form.updateError) toast.error(form.updateError);
+	});
+	$effect(() => {
+		if (form && 'proofreadError' in form && form.proofreadError) toast.error(form.proofreadError);
 	});
 
 	let pendingDelete = $state<{ form: HTMLFormElement; kalenjin: string } | null>(null);
@@ -171,9 +176,6 @@
 		{/each}
 	</div>
 </div>
-
-<FormErrorFeedback error={form && 'updateError' in form ? form.updateError : null} />
-<FormErrorFeedback error={form && 'proofreadError' in form ? form.proofreadError : null} />
 
 {#snippet fieldEditor(
 	entry: (typeof data.entries)[number],

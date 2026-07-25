@@ -1781,30 +1781,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 /* ==================== HOME ==================== */
 .home { padding-top: 0; margin-top: -20px; }
 
-.home-mast {
-  padding-bottom: 0;
-  margin-bottom: 0;
-  position: relative;
-}
-.home-greeting {
-  font-family: var(--font-display);
-  font-size: 48px;
-  line-height: 0.98;
-  letter-spacing: -0.028em;
-  font-weight: 500;
-  margin: 0 0 8px;
-  color: var(--ink);
-  text-wrap: balance;
-}
-.home-greeting .g-dot { color: var(--accent); font-style: italic; }
-.home-greeting .g-bang { color: var(--accent); }
-.home-greeting-en {
-  font-family: var(--font-display);
-  font-style: italic;
-  font-size: 18px;
-  color: var(--ink-soft);
-  margin-bottom: 0;
-}
 .home-lede {
   font-family: var(--font-display);
   font-size: 19px;
@@ -2296,7 +2272,6 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; text-decoratio
 }
 
 @media (max-width: 900px) {
-  .home-greeting { font-size: 38px; }
   .home-top { flex-direction: column; gap: 0; }
   .home-top .home-search { margin: 20px 0 0; }
   .home-top .home-stats { margin-top: 24px; }

@@ -96,7 +96,7 @@
 			class="home-search-input"
 			type="text"
 			role="combobox"
-			placeholder="Search the dictionary — Kalenjin or English"
+			placeholder="Search the dictionary (Kalenjin or English)"
 			bind:value={query}
 			onfocus={() => (focused = true)}
 			onblur={onBlur}

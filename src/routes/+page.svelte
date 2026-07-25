@@ -11,13 +11,6 @@
 </svelte:head>
 
 <div class="home">
-	<section class="home-mast">
-		<h1 class="home-greeting">
-			Chamgei<span class="g-dot">,</span> chorwenyun<span class="g-bang">!</span>
-		</h1>
-		<div class="home-greeting-en">Hello, my friend.</div>
-	</section>
-
 	<div class="home-top">
 		<HomeSearch totalCount={data.wordCount} />
 

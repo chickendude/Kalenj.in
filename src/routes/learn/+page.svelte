@@ -96,8 +96,8 @@
 
 {#if !data.user}
 	<p class="local-note">
-		Your progress is saved on this device — <a href="/signup">create an account</a> and it moves
-		with you.
+		(Your progress will be saved on this device, if you want to sync your progress across devices
+		you can <a href="/signup">create an account</a>.)
 	</p>
 {/if}
 

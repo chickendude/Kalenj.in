@@ -341,20 +341,12 @@
 			: Math.round((stats.overview.sentencesWithAudio / stats.overview.totalSentences) * 100)
 	);
 
-	const totalSelected = $derived(
-		visibleMetrics.reduce(
-			(sum, id) => sum + stats.series[id].reduce((s, p) => s + p.count, 0),
-			0
-		)
-	);
-
 	const effectiveChangeMetrics = $derived(getEffectiveChangeMetrics(visibleMetrics));
 
 	const tableIndices = $derived(
 		filterEmptyBucketIndices(chartLabels.length, stats.series, effectiveChangeMetrics).reverse()
 	);
 
-	const hiddenRowCount = $derived(chartLabels.length - tableIndices.length);
 
 	const totalPages = $derived(Math.max(1, Math.ceil(tableIndices.length / data.pageSize)));
 	const currentPage = $derived(Math.min(Math.max(1, data.page), totalPages));
@@ -375,15 +367,8 @@
 </script>
 
 <svelte:head>
-	<title>Stats · Admin</title>
+	<title>Stats · Kalenjin</title>
 </svelte:head>
-
-<div class="page-head stats-page-head">
-	<div>
-		<h1>Stats</h1>
-		<p>Activity over time across the dictionary and corpus.</p>
-	</div>
-</div>
 
 <section class="stats-overview">
 	<div class="stat-card">
@@ -539,9 +524,6 @@
 			{/if}
 		</div>
 
-		<p class="chart-summary">
-			Sum across selected metrics for this range: <b>{totalSelected.toLocaleString()}</b>
-		</p>
 	{/if}
 </section>
 
@@ -549,7 +531,7 @@
 	<header class="stats-table-head">
 		<h2>Data</h2>
 		<span class="stats-table-meta">
-			{BUCKET_LABELS[stats.bucket]} totals · newest first
+			{BUCKET_LABELS[stats.bucket]} totals
 		</span>
 	</header>
 	<div class="table-scroll">
@@ -587,11 +569,8 @@
 			{#if tableIndices.length === 0}
 				No rows
 			{:else}
-				Showing {pageRangeStart.toLocaleString()}–{pageRangeEnd.toLocaleString()} of
+				{pageRangeStart.toLocaleString()}–{pageRangeEnd.toLocaleString()} of
 				{tableIndices.length.toLocaleString()}
-			{/if}
-			{#if hiddenRowCount > 0}
-				· {hiddenRowCount.toLocaleString()} empty bucket{hiddenRowCount === 1 ? '' : 's'} hidden
 			{/if}
 		</span>
 		{#if totalPages > 1}
@@ -624,9 +603,6 @@
 		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 		gap: 12px;
 		margin-bottom: 24px;
-	}
-	.stats-page-head p {
-		max-width: none;
 	}
 	.stat-card {
 		background: var(--bg-raised);
@@ -862,11 +838,6 @@
 		text-align: center;
 		padding: 40px;
 		margin: 0;
-	}
-	.chart-summary {
-		margin: 12px 0 0;
-		font-size: 13px;
-		color: var(--ink-soft);
 	}
 
 	.stats-table-section {

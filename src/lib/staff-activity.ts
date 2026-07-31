@@ -17,8 +17,12 @@ type StaffActivityRow = {
 	role: 'ADMIN' | 'MANAGER' | 'USER';
 	words: number;
 	wordsInRange: number;
+	wordsNotProofread: number;
+	wordsNotProofreadInRange: number;
 	sentences: number;
 	sentencesInRange: number;
+	sentencesNotProofread: number;
+	sentencesNotProofreadInRange: number;
 };
 
 export type StaffActivity = {
@@ -42,14 +46,22 @@ export function buildStaffActivity(
 	counts: {
 		words: ActivityCount[];
 		wordsInRange: ActivityCount[];
+		wordsNotProofread: ActivityCount[];
+		wordsNotProofreadInRange: ActivityCount[];
 		sentences: ActivityCount[];
 		sentencesInRange: ActivityCount[];
+		sentencesNotProofread: ActivityCount[];
+		sentencesNotProofreadInRange: ActivityCount[];
 	}
 ): StaffActivity {
 	const words = toCountMap(counts.words);
 	const wordsInRange = toCountMap(counts.wordsInRange);
+	const wordsNotProofread = toCountMap(counts.wordsNotProofread);
+	const wordsNotProofreadInRange = toCountMap(counts.wordsNotProofreadInRange);
 	const sentences = toCountMap(counts.sentences);
 	const sentencesInRange = toCountMap(counts.sentencesInRange);
+	const sentencesNotProofread = toCountMap(counts.sentencesNotProofread);
+	const sentencesNotProofreadInRange = toCountMap(counts.sentencesNotProofreadInRange);
 
 	const rows = users
 		.map(
@@ -60,8 +72,12 @@ export function buildStaffActivity(
 				role: user.role,
 				words: words.get(user.id) ?? 0,
 				wordsInRange: wordsInRange.get(user.id) ?? 0,
+				wordsNotProofread: wordsNotProofread.get(user.id) ?? 0,
+				wordsNotProofreadInRange: wordsNotProofreadInRange.get(user.id) ?? 0,
 				sentences: sentences.get(user.id) ?? 0,
-				sentencesInRange: sentencesInRange.get(user.id) ?? 0
+				sentencesInRange: sentencesInRange.get(user.id) ?? 0,
+				sentencesNotProofread: sentencesNotProofread.get(user.id) ?? 0,
+				sentencesNotProofreadInRange: sentencesNotProofreadInRange.get(user.id) ?? 0
 			})
 		)
 		.filter((row) => row.role !== 'USER' || row.words > 0 || row.sentences > 0)

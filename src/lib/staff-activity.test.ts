@@ -5,7 +5,16 @@ const admin: ActivityUser = { id: 'u1', username: 'amos', displayName: 'Amos', r
 const manager: ActivityUser = { id: 'u2', username: 'beth', displayName: null, role: 'MANAGER' };
 const learner: ActivityUser = { id: 'u3', username: 'carol', displayName: null, role: 'USER' };
 
-const emptyCounts = { words: [], wordsInRange: [], sentences: [], sentencesInRange: [] };
+const emptyCounts = {
+	words: [],
+	wordsInRange: [],
+	wordsNotProofread: [],
+	wordsNotProofreadInRange: [],
+	sentences: [],
+	sentencesInRange: [],
+	sentencesNotProofread: [],
+	sentencesNotProofreadInRange: []
+};
 
 describe('buildStaffActivity', () => {
 	it('always includes staff users, even with no contributions', () => {
@@ -24,32 +33,39 @@ describe('buildStaffActivity', () => {
 
 	it('joins word and sentence counts per user', () => {
 		const { rows } = buildStaffActivity([admin, manager], {
+			...emptyCounts,
 			words: [
 				{ createdById: 'u1', count: 10 },
 				{ createdById: 'u2', count: 3 }
 			],
 			wordsInRange: [{ createdById: 'u2', count: 1 }],
+			wordsNotProofread: [{ createdById: 'u2', count: 2 }],
+			wordsNotProofreadInRange: [{ createdById: 'u2', count: 1 }],
 			sentences: [{ createdById: 'u2', count: 5 }],
-			sentencesInRange: [{ createdById: 'u2', count: 4 }]
+			sentencesInRange: [{ createdById: 'u2', count: 4 }],
+			sentencesNotProofread: [{ createdById: 'u2', count: 3 }]
 		});
 		expect(rows.find((row) => row.userId === 'u1')).toMatchObject({ words: 10, sentences: 0 });
 		expect(rows.find((row) => row.userId === 'u2')).toMatchObject({
 			words: 3,
 			wordsInRange: 1,
+			wordsNotProofread: 2,
+			wordsNotProofreadInRange: 1,
 			sentences: 5,
-			sentencesInRange: 4
+			sentencesInRange: 4,
+			sentencesNotProofread: 3,
+			sentencesNotProofreadInRange: 0
 		});
 	});
 
 	it('sorts by in-range activity, then all-time totals, then username', () => {
 		const { rows } = buildStaffActivity([admin, manager], {
+			...emptyCounts,
 			words: [
 				{ createdById: 'u1', count: 100 },
 				{ createdById: 'u2', count: 5 }
 			],
-			wordsInRange: [{ createdById: 'u2', count: 5 }],
-			sentences: [],
-			sentencesInRange: []
+			wordsInRange: [{ createdById: 'u2', count: 5 }]
 		});
 		// u2 is more active in the range even though u1 leads all-time.
 		expect(rows.map((row) => row.userId)).toEqual(['u2', 'u1']);

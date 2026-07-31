@@ -21,22 +21,54 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const { from, to } = await rangeBounds(range);
 	const inRange = range === 'allTime' ? {} : { createdAt: { gte: from, lt: to } };
 
-	const [users, words, wordsInRange, sentences, sentencesInRange] = await Promise.all([
+	const wordNotProofread = { proofreadAt: null };
+	const sentenceNotProofread = { status: 'NEEDS_PROOFREAD' as const };
+	const [
+		users,
+		words,
+		wordsInRange,
+		wordsNotProofread,
+		wordsNotProofreadInRange,
+		sentences,
+		sentencesInRange,
+		sentencesNotProofread,
+		sentencesNotProofreadInRange
+	] = await Promise.all([
 		prisma.user.findMany({
 			select: { id: true, username: true, displayName: true, role: true }
 		}),
 		prisma.word.groupBy({ by: ['createdById'], _count: { _all: true } }),
 		prisma.word.groupBy({ by: ['createdById'], where: inRange, _count: { _all: true } }),
+		prisma.word.groupBy({ by: ['createdById'], where: wordNotProofread, _count: { _all: true } }),
+		prisma.word.groupBy({
+			by: ['createdById'],
+			where: { ...inRange, ...wordNotProofread },
+			_count: { _all: true }
+		}),
 		prisma.exampleSentence.groupBy({ by: ['createdById'], _count: { _all: true } }),
-		prisma.exampleSentence.groupBy({ by: ['createdById'], where: inRange, _count: { _all: true } })
+		prisma.exampleSentence.groupBy({ by: ['createdById'], where: inRange, _count: { _all: true } }),
+		prisma.exampleSentence.groupBy({
+			by: ['createdById'],
+			where: sentenceNotProofread,
+			_count: { _all: true }
+		}),
+		prisma.exampleSentence.groupBy({
+			by: ['createdById'],
+			where: { ...inRange, ...sentenceNotProofread },
+			_count: { _all: true }
+		})
 	]);
 
 	return {
 		activity: buildStaffActivity(users, {
 			words: toActivityCounts(words),
 			wordsInRange: toActivityCounts(wordsInRange),
+			wordsNotProofread: toActivityCounts(wordsNotProofread),
+			wordsNotProofreadInRange: toActivityCounts(wordsNotProofreadInRange),
 			sentences: toActivityCounts(sentences),
-			sentencesInRange: toActivityCounts(sentencesInRange)
+			sentencesInRange: toActivityCounts(sentencesInRange),
+			sentencesNotProofread: toActivityCounts(sentencesNotProofread),
+			sentencesNotProofreadInRange: toActivityCounts(sentencesNotProofreadInRange)
 		}),
 		range
 	};

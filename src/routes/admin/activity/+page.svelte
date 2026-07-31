@@ -52,15 +52,25 @@
 		<tr>
 			<th class="user-col">User</th>
 			<th class="role-col">Role</th>
-			<th class="num count-col">Words</th>
-			<th class="num count-col">Sentences</th>
+			<th class="num count-col">
+				<Tooltip label="Not proofread (total)" placement="bottom">Words</Tooltip>
+			</th>
+			<th class="num count-col">
+				<Tooltip label="Not proofread (total)" placement="bottom">Sentences</Tooltip>
+			</th>
 			<th class="spacer-col"></th>
 		</tr>
 	</thead>
 	<tbody>
 		{#each data.activity.rows as row (row.userId)}
 			{@const words = showRangeColumns ? row.wordsInRange : row.words}
+			{@const wordsNotProofread = showRangeColumns
+				? row.wordsNotProofreadInRange
+				: row.wordsNotProofread}
 			{@const sentences = showRangeColumns ? row.sentencesInRange : row.sentences}
+			{@const sentencesNotProofread = showRangeColumns
+				? row.sentencesNotProofreadInRange
+				: row.sentencesNotProofread}
 			<tr>
 				<td>
 					<strong>{row.username}</strong>
@@ -71,7 +81,10 @@
 				<td><span class="role-pill {row.role.toLowerCase()}">{row.role}</span></td>
 				<td class="num">
 					{#if words > 0}
-						<a href={entriesHref(row.userId, 'words', data.range)}>{numberFmt.format(words)}</a>
+						<a href={entriesHref(row.userId, 'words', data.range)}>
+							{numberFmt.format(wordsNotProofread)}
+							<span class="count-total">({numberFmt.format(words)})</span>
+						</a>
 					{:else}
 						{numberFmt.format(words)}
 					{/if}
@@ -79,7 +92,8 @@
 				<td class="num">
 					{#if sentences > 0}
 						<a href={entriesHref(row.userId, 'sentences', data.range)}>
-							{numberFmt.format(sentences)}
+							{numberFmt.format(sentencesNotProofread)}
+							<span class="count-total">({numberFmt.format(sentences)})</span>
 						</a>
 					{:else}
 						{numberFmt.format(sentences)}
@@ -128,6 +142,10 @@
 
 	.spacer-col {
 		padding: 0;
+	}
+
+	.count-total {
+		color: var(--ink-mute);
 	}
 
 	.display-name {

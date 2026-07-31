@@ -59,8 +59,8 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 	};
 
 	let totalCount: number;
-	/** Words marked proofread within the same filter; null on the sentences view. */
-	let proofreadCount: number | null = null;
+	/** Entries accepted within the same filter: words with proofreadAt set, sentences past NEEDS_PROOFREAD. */
+	let proofreadCount: number;
 	let entries: ActivityEntry[];
 
 	if (type === 'words') {
@@ -103,8 +103,9 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 			isSingularOnly: word.isSingularOnly
 		}));
 	} else {
-		const [count, sentences] = await Promise.all([
+		const [count, accepted, sentences] = await Promise.all([
 			prisma.exampleSentence.count({ where }),
+			prisma.exampleSentence.count({ where: { ...where, status: { not: 'NEEDS_PROOFREAD' } } }),
 			prisma.exampleSentence.findMany({
 				where,
 				orderBy: { createdAt: 'desc' },
@@ -114,6 +115,7 @@ export async function loadActivityEntries(userId: string, url: URL, viewerIsAdmi
 			})
 		]);
 		totalCount = count;
+		proofreadCount = accepted;
 		entries = sentences.map((sentence) => ({
 			id: sentence.id,
 			href: `/corpus/${sentence.id}`,

@@ -154,11 +154,7 @@
 			{data.type === 'words'
 				? `word${data.totalCount === 1 ? '' : 's'}`
 				: `sentence${data.totalCount === 1 ? '' : 's'}`}
-			{#if data.proofreadCount !== null}
-				<span class="entry-count-accepted"
-					>({numberFmt.format(data.proofreadCount)} accepted)</span
-				>
-			{/if}
+			<span class="entry-count-accepted">({numberFmt.format(data.proofreadCount)} accepted)</span>
 		</div>
 	</div>
 	<div class="period-buttons" role="radiogroup" aria-label="Range">
